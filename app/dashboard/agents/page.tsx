@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { MongoClient, ObjectId } from "mongodb";
-import { AgentTab } from "../AgentTab";
+import { AgentsClient } from "./AgentsClient";
 import type { Signal } from "../DashboardClient";
 
 export default async function AgentsPage() {
@@ -10,7 +10,7 @@ export default async function AgentsPage() {
 
   const signals = await fetchSignals(userId);
 
-  return <AgentTab signals={signals} loading={false} />;
+  return <AgentsClient signals={signals} />;
 }
 
 async function fetchSignals(userId: string): Promise<Signal[]> {

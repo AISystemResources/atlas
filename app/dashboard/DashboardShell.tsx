@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AccountDropdown } from "@/components/AccountDropdown";
+import { AssetClassProvider } from "./AssetClassProvider";
+import { AssetClassToggle } from "./AssetClassToggle";
 import type { UserRole } from "@/lib/api";
 import type { ReactNode } from "react";
 
@@ -23,6 +25,7 @@ export function DashboardShell({
   const router = useRouter();
 
   return (
+    <AssetClassProvider>
     <div
       className="flex flex-col min-h-screen max-w-[520px] md:max-w-[1100px] mx-auto"
       style={{ background: "var(--bg)" }}
@@ -74,7 +77,8 @@ export function DashboardShell({
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
+          <AssetClassToggle />
+          <div className="hidden md:flex items-center gap-1.5">
             <span className="live-dot" />
             <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>live</span>
           </div>
@@ -126,5 +130,6 @@ export function DashboardShell({
         })}
       </nav>
     </div>
+    </AssetClassProvider>
   );
 }

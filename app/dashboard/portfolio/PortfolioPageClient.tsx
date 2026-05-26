@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { PortfolioTab } from "../DashboardClient";
+import { useAssetClass } from "../AssetClassProvider";
+import { FuturesView } from "./FuturesView";
 import type { Portfolio } from "../DashboardClient";
 
 const API_URL = "/api";
@@ -22,14 +24,20 @@ export function PortfolioPageClient({
   pendingTicker: string | null;
 }) {
   const router = useRouter();
+  const { assetClass } = useAssetClass();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
   useEffect(() => {
+    if (assetClass !== "equity") return;
     fetchWithAuth(`${API_URL}/v1/portfolio`)
       .then((r) => r?.json())
       .then((data) => { if (data) setPortfolio(data); })
       .catch(console.error);
-  }, []);
+  }, [assetClass]);
+
+  if (assetClass === "futures") {
+    return <FuturesView />;
+  }
 
   return (
     <div className="flex flex-col gap-3 pb-6">
