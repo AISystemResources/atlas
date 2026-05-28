@@ -49,11 +49,13 @@ The `.claude/worktrees/` path contains stale agent-session checkouts that pollut
 
 ## 🚨 HARD RULES (an autonomous agent must never break these)
 
-1. **Deploy ceiling — autonomous agents merge to `agents`, never `main`.**
-   - `main` deploys Production at `atlas-broker.vercel.app` on every push. **Only humans push to `main`.**
-   - `agents` is the autonomous-run target. Vercel's Ignored Build Step skips deploys on every branch except `main`, so `agents` pushes are git-only — no live site impact.
-   - Human review path: review the agent's diff on `agents`, then `git checkout main && git merge --ff-only agents && git push origin main` to ship.
-   - If the agent finds the human has moved `main` ahead, rebase `agents` onto `main` before continuing — never force-push `main`.
+1. **Deploy ceiling — work on `feat/<sprint-id>-<slug>` branches, merge to `main` via PR only.**
+   - `main` deploys Production at `atlas-broker.vercel.app` on every push. **Direct pushes to `main` are blocked by GitHub branch protection** (`enforce_admins: true`, `required_pull_request_reviews` enabled). Every change must go through a PR.
+   - One branch per sprint: `feat/<sprint-id>-<short-slug>` (e.g. `feat/041-futures-simulator`). Multiple may exist concurrently.
+   - `feat/*` branches produce Vercel **Preview** deployments at `atlas-git-feat-<slug>-elzmings-projects.vercel.app` — they **cannot** touch the canonical Production alias. The Preview URL is useful for visual / behavioural QA before merging.
+   - Human merge path: open PR `feat/...→ main`, review diff + Preview deploy, click **Merge** in the GitHub UI.
+   - If the agent finds `main` has moved ahead while a feat branch is in flight, rebase the feat branch onto `main` (`git fetch && git rebase origin/main`) — never force-push to `main`.
+   - There is no long-lived agent-shared branch. Each autonomous run gets its own short-lived `feat/*` branch and is deleted after merge.
 
 2. **Never commit secrets.** `.env.local` is gitignored. Real secrets named in `.env.example` — none of these may appear in tracked files:
    `SUPABASE_SERVICE_ROLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `MONGODB_URI`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
@@ -73,11 +75,13 @@ The `.claude/worktrees/` path contains stale agent-session checkouts that pollut
 
 ## Branch & commit conventions
 
-- **Human branch:** `main`. Default upstream. Pushes deploy Production.
-- **Agent branch:** `agents`. Created 2026-05-28. Vercel's Ignored Build Step blocks deploys for everything except `main`, so pushes here are inert until a human fast-forwards `main`.
-- No other branches — no feature branches in remote; consolidation happened 2026-05-21.
-- Commit prefix: `feat(NNN):` / `fix(NNN):` / `chore(NNN):` / `perf:` / `refactor:` / `test:` — where `NNN` is the sprint number. Sprint numbers come from `projects/ATLAS/BUILD.md` *Active sprints* or *Next* sections.
-- Co-authorship trailer on agent commits: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` (or whatever model is running).
+- **Production branch:** `main`. PR-protected. GitHub will reject direct pushes with `GH006: Protected branch update failed`. `enforce_admins: true` means even repo admins must use PRs.
+- **Working branches:** `feat/<sprint-id>-<short-slug>` per sprint. Branch from `main`, merge back via PR. Multiple may exist concurrently — this is the parallelism mechanism for multi-sprint work.
+- **Vercel behaviour:** main = Production deploy (`atlas-broker.vercel.app`). `feat/*` = Preview deploy at `atlas-git-feat-<slug>-elzmings-projects.vercel.app`. The Production-vs-Preview separation is enforced by Vercel's "Production Branch = main" project setting (dashboard, not version-controlled — there is no Vercel mechanism to express "allow previews on feat/* but block Production" via vercel.json with globs).
+- **Branch naming examples:** `feat/041-futures-simulator`, `feat/042-execute-trade-test-coverage`, `feat/043-emdee-doc-refresh`.
+- **Commit prefix:** `feat(NNN):` / `fix(NNN):` / `chore(NNN):` / `perf:` / `refactor:` / `test:` — where `NNN` is the sprint number. Sprint numbers come from `projects/ATLAS/BUILD.md` *Active sprints* or *Next* sections.
+- **Co-authorship trailer** on agent commits: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` (or whatever model is running).
+- **No long-lived non-main branches.** No `dev`, no `staging`, no `agents`. Each sprint owns a short-lived `feat/*` that disappears at merge.
 
 ## Sprint workflow
 
@@ -96,7 +100,7 @@ Authoritative protocol lives in EMDEE. Short summary only:
 - A written sprint spec in `projects/ATLAS/BUILD.md` with **testable acceptance criteria**.
 - A single, named target module — no fan-out across multiple lib subfolders.
 - Tests already exist (or are written as the first commit) that encode the acceptance criteria. **No tests → no autonomous run.**
-- Working from the `agents` branch (Hard Rule #1). Confirm `git rev-parse --abbrev-ref HEAD` returns `agents` before the first commit.
+- Working from a fresh `feat/<sprint-id>-<slug>` branch off `main` (Hard Rule #1). Confirm `git rev-parse --abbrev-ref HEAD` matches `^feat/` before the first commit. **Never `main`** — GitHub will reject the push.
 
 **Definition of done** — all four must pass, no exceptions:
 - `npm run build` clean
@@ -105,7 +109,7 @@ Authoritative protocol lives in EMDEE. Short summary only:
 - `npm test` green (with `--testPathIgnorePatterns='worktrees'`)
 - No files modified outside the assigned module
 - Migrations (if any) applied via `mcp__supabase__apply_migration` and verified
-- Pushed to `origin/agents` — **never `main` until the human reviews** (see Hard Rule #1)
+- Pushed to `origin/feat/<sprint-id>-<slug>` and opened as a PR against `main` — **never direct-pushed to `main`** (GitHub will reject; see Hard Rule #1)
 
 **Safety rails:**
 - `--max-iterations` is mandatory. Suggested ceiling: 30 inner iterations per task.
@@ -117,8 +121,9 @@ Authoritative protocol lives in EMDEE. Short summary only:
   - **Attempted:** what was tried
   - **Blocked by:** the specific obstacle (commit SHA, log line, missing env, etc.)
   - **Would unblock:** what input or decision is needed
-  - **Branch & commit:** where the work-in-progress lives
+  - **Branch & commit:** the `feat/*` branch + HEAD commit SHA where the work-in-progress lives
 - Silent failure is worse than loud failure. A blocked sprint with context is recoverable; an abandoned worktree is not.
+- **Do not open a PR for blocked work** unless explicitly asked. Push the feat branch, leave it. The human decides whether to PR, abandon, or hand off.
 
 ## Directory map
 
