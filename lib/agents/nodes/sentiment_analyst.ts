@@ -72,7 +72,7 @@ Return ONLY valid JSON with this exact structure:
     parsed = {};
   }
 
-  const modelId = llmConfig?.model ?? "gemini-2.5-flash";
+  const modelId = llmConfig?.model ?? "llama-3.1-8b-instant";
 
   const result = validateStateSlice<SentimentOutput>(
     SentimentOutputSchema,

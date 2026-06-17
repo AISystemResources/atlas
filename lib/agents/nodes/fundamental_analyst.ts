@@ -78,7 +78,7 @@ Return ONLY valid JSON with this exact structure:
       ? Math.round(((target - current) / current) * 100 * 100) / 100
       : (parsed["upside_to_target_pct"] as number | null) ?? null;
 
-  const modelId = llmConfig?.model ?? "gemini-2.5-flash";
+  const modelId = llmConfig?.model ?? "llama-3.1-8b-instant";
 
   const result = validateStateSlice<FundamentalOutput>(
     FundamentalOutputSchema,

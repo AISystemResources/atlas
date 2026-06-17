@@ -126,7 +126,7 @@ Construct a bull case and bear case, then give a verdict. Return ONLY valid JSON
     parsed = {};
   }
 
-  const modelId = llmConfig?.model ?? "gemini-2.5-flash";
+  const modelId = llmConfig?.model ?? "llama-3.3-70b-versatile";
 
   const result = validateStateSlice<SynthesisOutput>(
     SynthesisOutputSchema,
