@@ -31,6 +31,7 @@ export function AssetClassProvider({ children }: { children: ReactNode }) {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (stored && isAssetClass(stored)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setAssetClassState(stored);
       }
     } catch {

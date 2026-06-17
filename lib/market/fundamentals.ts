@@ -10,6 +10,39 @@ import { getServiceClient } from "@/lib/supabase-server";
 
 const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
+interface YFQuoteSummary {
+  price?: {
+    shortName?: string | null;
+    marketCap?: number | null;
+    regularMarketPrice?: number | null;
+  };
+  assetProfile?: { sector?: string | null; industry?: string | null };
+  defaultKeyStatistics?: {
+    trailingPE?: number | null;
+    forwardPE?: number | null;
+    priceToBook?: number | null;
+    profitMargins?: number | null;
+  };
+  summaryDetail?: {
+    trailingPE?: number | null;
+    forwardPE?: number | null;
+    marketCap?: number | null;
+    fiftyTwoWeekHigh?: number | null;
+    fiftyTwoWeekLow?: number | null;
+  };
+  financialData?: {
+    revenueGrowth?: number | null;
+    earningsGrowth?: number | null;
+    profitMargins?: number | null;
+    debtToEquity?: number | null;
+    returnOnEquity?: number | null;
+    currentRatio?: number | null;
+    currentPrice?: number | null;
+    targetMeanPrice?: number | null;
+    recommendationMean?: number | null;
+  };
+}
+
 /**
  * Module set required to cover all 18 `_INFO_KEYS`.
  * Derived from `frontend/lib/probe-yahoo.ts::FIELD_PATHS`.
@@ -63,7 +96,7 @@ export async function fetchTickerInfo(ticker: string): Promise<AtlasTickerInfo> 
   };
 
   try {
-    const q = await (yf.quoteSummary as (t: string, opts: unknown) => Promise<any>)(ticker, {
+    const q = await (yf.quoteSummary as (t: string, opts: unknown) => Promise<YFQuoteSummary>)(ticker, {
       modules: REQUIRED_MODULES,
     });
 
@@ -75,41 +108,41 @@ export async function fetchTickerInfo(ticker: string): Promise<AtlasTickerInfo> 
 
       // defaultKeyStatistics (fallback summaryDetail)
       trailingPE: toNullableNumber(
-        (q?.defaultKeyStatistics as any)?.trailingPE ??
-        (q?.summaryDetail as any)?.trailingPE
+        q?.defaultKeyStatistics?.trailingPE ??
+        q?.summaryDetail?.trailingPE
       ),
       forwardPE: toNullableNumber(
-        (q?.defaultKeyStatistics as any)?.forwardPE ??
-        (q?.summaryDetail as any)?.forwardPE
+        q?.defaultKeyStatistics?.forwardPE ??
+        q?.summaryDetail?.forwardPE
       ),
-      priceToBook: toNullableNumber((q?.defaultKeyStatistics as any)?.priceToBook),
+      priceToBook: toNullableNumber(q?.defaultKeyStatistics?.priceToBook),
 
       // financialData
-      revenueGrowth: toNullableNumber((q?.financialData as any)?.revenueGrowth),
-      earningsGrowth: toNullableNumber((q?.financialData as any)?.earningsGrowth),
+      revenueGrowth: toNullableNumber(q?.financialData?.revenueGrowth),
+      earningsGrowth: toNullableNumber(q?.financialData?.earningsGrowth),
       profitMargins: toNullableNumber(
-        (q?.financialData as any)?.profitMargins ??
-        (q?.defaultKeyStatistics as any)?.profitMargins
+        q?.financialData?.profitMargins ??
+        q?.defaultKeyStatistics?.profitMargins
       ),
-      debtToEquity: toNullableNumber((q?.financialData as any)?.debtToEquity),
-      returnOnEquity: toNullableNumber((q?.financialData as any)?.returnOnEquity),
-      currentRatio: toNullableNumber((q?.financialData as any)?.currentRatio),
+      debtToEquity: toNullableNumber(q?.financialData?.debtToEquity),
+      returnOnEquity: toNullableNumber(q?.financialData?.returnOnEquity),
+      currentRatio: toNullableNumber(q?.financialData?.currentRatio),
 
       // price / summaryDetail
       marketCap: toNullableNumber(
-        (q?.price as any)?.marketCap ??
-        (q?.summaryDetail as any)?.marketCap
+        q?.price?.marketCap ??
+        q?.summaryDetail?.marketCap
       ),
-      fiftyTwoWeekHigh: toNullableNumber((q?.summaryDetail as any)?.fiftyTwoWeekHigh),
-      fiftyTwoWeekLow: toNullableNumber((q?.summaryDetail as any)?.fiftyTwoWeekLow),
+      fiftyTwoWeekHigh: toNullableNumber(q?.summaryDetail?.fiftyTwoWeekHigh),
+      fiftyTwoWeekLow: toNullableNumber(q?.summaryDetail?.fiftyTwoWeekLow),
 
       // financialData (fallback price.regularMarketPrice)
       currentPrice: toNullableNumber(
-        (q?.financialData as any)?.currentPrice ??
-        (q?.price as any)?.regularMarketPrice
+        q?.financialData?.currentPrice ??
+        q?.price?.regularMarketPrice
       ),
-      targetMeanPrice: toNullableNumber((q?.financialData as any)?.targetMeanPrice),
-      recommendationMean: toNullableNumber((q?.financialData as any)?.recommendationMean),
+      targetMeanPrice: toNullableNumber(q?.financialData?.targetMeanPrice),
+      recommendationMean: toNullableNumber(q?.financialData?.recommendationMean),
     };
   } catch {
     return empty;

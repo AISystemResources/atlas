@@ -166,34 +166,37 @@ beforeEach(() => {
 });
 
 describe("graph topology", () => {
-  it("registers 9 nodes", () => {
+  it("registers 10 nodes", () => {
     expect(capturedNodes).toContain("fetch_data");
     expect(capturedNodes).toContain("technical_analyst");
     expect(capturedNodes).toContain("fundamental_analyst");
     expect(capturedNodes).toContain("sentiment_analyst");
-    expect(capturedNodes).toContain("synthesis");
+    expect(capturedNodes).toContain("review_analyst");
+    expect(capturedNodes).toContain("synthesize");
     expect(capturedNodes).toContain("fetch_account");
-    expect(capturedNodes).toContain("risk");
+    expect(capturedNodes).toContain("assess_risk");
     expect(capturedNodes).toContain("portfolio");
     expect(capturedNodes).toContain("save_trace");
   });
 
-  it("wires fan-out edges from fetch_data to all three analysts", () => {
+  it("wires fan-out edges from fetch_data to all four analysts", () => {
     expect(capturedEdges).toContain("fetch_data→technical_analyst");
     expect(capturedEdges).toContain("fetch_data→fundamental_analyst");
     expect(capturedEdges).toContain("fetch_data→sentiment_analyst");
+    expect(capturedEdges).toContain("fetch_data→review_analyst");
   });
 
-  it("wires fan-in edges from all three analysts to synthesis", () => {
-    expect(capturedEdges).toContain("technical_analyst→synthesis");
-    expect(capturedEdges).toContain("fundamental_analyst→synthesis");
-    expect(capturedEdges).toContain("sentiment_analyst→synthesis");
+  it("wires fan-in edges from all four analysts to synthesize", () => {
+    expect(capturedEdges).toContain("technical_analyst→synthesize");
+    expect(capturedEdges).toContain("fundamental_analyst→synthesize");
+    expect(capturedEdges).toContain("sentiment_analyst→synthesize");
+    expect(capturedEdges).toContain("review_analyst→synthesize");
   });
 
-  it("wires sequential tail: synthesis → fetch_account → risk → portfolio → save_trace", () => {
-    expect(capturedEdges).toContain("synthesis→fetch_account");
-    expect(capturedEdges).toContain("fetch_account→risk");
-    expect(capturedEdges).toContain("risk→portfolio");
+  it("wires sequential tail: synthesize → fetch_account → assess_risk → portfolio → save_trace", () => {
+    expect(capturedEdges).toContain("synthesize→fetch_account");
+    expect(capturedEdges).toContain("fetch_account→assess_risk");
+    expect(capturedEdges).toContain("assess_risk→portfolio");
     expect(capturedEdges).toContain("portfolio→save_trace");
   });
 

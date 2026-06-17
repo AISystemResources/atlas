@@ -456,6 +456,7 @@ function JobCard({ job, expType, onCancel, onResume }: {
 }) {
   const [showLogs, setShowLogs] = useState(false);
   const isActive = job.status === "running" || job.status === "queued";
+  // eslint-disable-next-line react-hooks/purity
   const isStale  = isActive && (Date.now() - new Date(job.created_at).getTime()) > STALE_MS;
   const accent   = jobAccentColor(job, expType);
   const label    = jobLabel(job, expType);
@@ -633,8 +634,12 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   const errorCount     = experiment.jobs.filter((j) => j.status === "failed" || j.status === "cancelled").length;
   const allDone        = experiment.jobs.every((j) => ["completed", "failed", "cancelled"].includes(j.status));
   const hasStale       = experiment.jobs.some(
+    // eslint-disable-next-line react-hooks/purity
     (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
   );
+
+  // Must be declared before any early return to satisfy rules of hooks
+  const [adopting, setAdopting] = useState(false);
 
   const typeColor: Record<ExperimentType, string> = {
     philosophy: philosophyColors.lynch,
@@ -683,7 +688,6 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   }
 
   // Legacy/orphan experiments: adopt on click then navigate
-  const [adopting, setAdopting] = useState(false);
   async function handleOrphanClick() {
     setAdopting(true);
     const res = await fetchWithAuth(`${API}/v1/experiments/adopt`, {
@@ -1221,6 +1225,7 @@ export function BacktestComparisonView() {
   const activeCount    = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const completedCount = allJobs.filter((j) => j.status === "completed").length;
   const staleCount     = allJobs.filter(
+    // eslint-disable-next-line react-hooks/purity
     (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
   ).length;
 

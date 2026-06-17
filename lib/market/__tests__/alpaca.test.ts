@@ -20,6 +20,7 @@ jest.mock("@alpacahq/alpaca-trade-api", () => {
   }));
   // CJS interop: module.exports = class, so return MockAlpaca directly
   // AND attach as default for esModuleInterop
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (MockAlpaca as any).default = MockAlpaca;
   return MockAlpaca;
 });

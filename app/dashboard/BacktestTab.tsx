@@ -111,7 +111,8 @@ const STATUS_ORDER: Record<JobStatus, number> = {
 function tradingDayEstimate(start: string, end: string): number {
   if (!start || !end) return 0;
   const s = new Date(start), e = new Date(end);
-  let days = 0, cur = new Date(s);
+  let days = 0;
+  const cur = new Date(s);
   while (cur <= e) {
     const d = cur.getDay();
     if (d !== 0 && d !== 6) days++;
@@ -327,6 +328,7 @@ export function BacktestTab({ role }: { role?: string }) {
   const runningCount = jobs.filter((j) => j.status === "running").length;
   const staleCount   = jobs.filter(
     (j) => (j.status === "running" || j.status === "queued") &&
+            // eslint-disable-next-line react-hooks/purity
             Date.now() - new Date(j.created_at).getTime() > STALE_MS
   ).length;
 

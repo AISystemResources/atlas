@@ -26,11 +26,17 @@ jest.mock("../../inngest", () => ({
   },
 }))
 
-// ── agents/index virtual mock (module does not exist yet — sprint 009) ────────
+// ── agents mock ───────────────────────────────────────────────────────────────
 
 const mockRunGraph = jest.fn()
 
-jest.mock("../../agents/index", () => ({ runGraph: mockRunGraph }), { virtual: true })
+jest.mock("../../agents", () => ({ runGraph: mockRunGraph }))
+
+// ── execute-trade mock ────────────────────────────────────────────────────────
+
+jest.mock("../execute-trade", () => ({
+  executeTrade: jest.fn().mockResolvedValue({ skipped: true, reason: "mocked" }),
+}))
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
@@ -80,7 +86,7 @@ beforeEach(() => {
 
 describe("onPipelineTriggered", () => {
   it("calls runGraph with correct arguments", async () => {
-    mockRunGraph.mockResolvedValue({ confidence: 0.8, action: "BUY" })
+    mockRunGraph.mockResolvedValue({ portfolio_decision: { confidence: 0.8, action: "BUY" } })
     const step = buildStep()
 
     await capturedHandler({ event: buildEvent({ mode: "advisory" }), step })
@@ -94,7 +100,7 @@ describe("onPipelineTriggered", () => {
   })
 
   it("returns the graph result", async () => {
-    const graphResult = { confidence: 0.9, action: "HOLD" }
+    const graphResult = { portfolio_decision: { confidence: 0.9, action: "HOLD" } }
     mockRunGraph.mockResolvedValue(graphResult)
 
     const result = await capturedHandler({
@@ -107,7 +113,7 @@ describe("onPipelineTriggered", () => {
 
   describe("advisory mode", () => {
     it("does NOT send a notification regardless of confidence", async () => {
-      mockRunGraph.mockResolvedValue({ confidence: 0.3, action: "SELL" })
+      mockRunGraph.mockResolvedValue({ portfolio_decision: { confidence: 0.3, action: "SELL" } })
       mockedSend.mockResolvedValue(undefined)
 
       await capturedHandler({
@@ -121,7 +127,7 @@ describe("onPipelineTriggered", () => {
 
   describe("autonomous mode", () => {
     it("does NOT send a notification when confidence >= 0.65", async () => {
-      mockRunGraph.mockResolvedValue({ confidence: 0.65, action: "BUY" })
+      mockRunGraph.mockResolvedValue({ portfolio_decision: { confidence: 0.65, action: "BUY" } })
       mockedSend.mockResolvedValue(undefined)
 
       await capturedHandler({
@@ -133,7 +139,7 @@ describe("onPipelineTriggered", () => {
     })
 
     it("does NOT send a notification when confidence is exactly 0.65", async () => {
-      mockRunGraph.mockResolvedValue({ confidence: 0.65, action: "HOLD" })
+      mockRunGraph.mockResolvedValue({ portfolio_decision: { confidence: 0.65, action: "HOLD" } })
 
       await capturedHandler({
         event: buildEvent({ mode: "autonomous" }),
@@ -144,7 +150,7 @@ describe("onPipelineTriggered", () => {
     })
 
     it("sends a notification event when confidence < 0.65", async () => {
-      const graphResult = { confidence: 0.5, action: "HOLD" }
+      const graphResult = { portfolio_decision: { confidence: 0.5, action: "HOLD" } }
       mockRunGraph.mockResolvedValue(graphResult)
       mockedSend.mockResolvedValue(undefined)
 
@@ -165,7 +171,7 @@ describe("onPipelineTriggered", () => {
     })
 
     it("sends a notification when confidence is 0", async () => {
-      const graphResult = { confidence: 0, action: "HOLD" }
+      const graphResult = { portfolio_decision: { confidence: 0, action: "HOLD" } }
       mockRunGraph.mockResolvedValue(graphResult)
       mockedSend.mockResolvedValue(undefined)
 

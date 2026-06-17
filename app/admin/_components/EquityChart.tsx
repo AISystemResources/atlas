@@ -44,11 +44,11 @@ export function EquityChart({
   const byDate = new Map(curve.map((p) => [p.date, p.value]));
 
   // Build dataset: null for days without data (stops the line there)
-  let hitData = false;
-  const data = labels.map((d) => {
+  const firstDataIdx = labels.findIndex((d) => byDate.has(d));
+  const data = labels.map((d, i) => {
     const v = byDate.get(d);
-    if (v != null) { hitData = true; return v; }
-    return hitData ? null : null; // null before first point too — line starts at first available day
+    if (v != null) return v;
+    return i >= firstDataIdx ? null : null; // null before first point too — line starts at first available day
   });
 
   const finalVal = curve[curve.length - 1].value;

@@ -10,39 +10,14 @@ import { dispatch, queryEnabledUsers, publishPipelineEvents } from "../dispatche
 
 // ── Supabase mock ──────────────────────────────────────────────────────────────
 
-const mockSelect = jest.fn()
-const mockEq = jest.fn()
-const mockFrom = jest.fn()
-
-const buildChain = (data: unknown[] | null, error: { message: string } | null) => {
-  const chain = {
-    select: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-  }
-  // Last .eq() resolves the promise
-  let callCount = 0
-  chain.eq.mockImplementation(() => {
-    callCount++
-    if (callCount >= 2) {
-      return Promise.resolve({ data, error })
-    }
-    return chain
-  })
-  return chain
-}
-
 jest.mock("@supabase/supabase-js", () => ({
   createClient: jest.fn(),
 }))
 
 // ── Inngest mock ───────────────────────────────────────────────────────────────
 
-const mockSend = jest.fn()
-
 jest.mock("../../inngest", () => ({
-  inngest: {
-    send: jest.fn(),
-  },
+  inngest: { send: jest.fn() },
 }))
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -53,18 +28,47 @@ import { inngest } from "../../inngest"
 const mockedCreateClient = createClient as jest.MockedFunction<typeof createClient>
 const mockedSend = (inngest.send as jest.Mock)
 
-function mockSupabaseRows(rows: unknown[]) {
-  const chain = buildChain(rows, null)
+type WatchlistRow = { user_id: string; ticker: string; mode: string; philosophy: string }
+
+/** Chain for user_schedules: resolves after two .eq() calls */
+function makeEqChain(result: unknown) {
+  const chain = { select: jest.fn().mockReturnThis(), eq: jest.fn() }
+  let count = 0
+  chain.eq.mockImplementation(() => {
+    count++
+    return count >= 2 ? Promise.resolve(result) : chain
+  })
+  return chain
+}
+
+/** Chain for watchlist / profiles: resolves via .in() */
+function makeInChain(result: unknown) {
+  return { select: jest.fn().mockReturnThis(), in: jest.fn().mockResolvedValue(result) }
+}
+
+function mockSupabaseRows(rows: WatchlistRow[]) {
+  const userIds = [...new Set(rows.map(r => r.user_id))]
+  const scheduleResult = { data: userIds.map(id => ({ user_id: id })), error: null }
+  const watchlistResult = { data: rows.map(r => ({ user_id: r.user_id, ticker: r.ticker })), error: null }
+  const profilesResult = {
+    data: userIds.map(id => {
+      const r = rows.find(x => x.user_id === id)!
+      return { id, boundary_mode: r.mode, investment_philosophy: r.philosophy }
+    }),
+    error: null,
+  }
   mockedCreateClient.mockReturnValue({
-    from: jest.fn().mockReturnValue(chain),
+    from: jest.fn()
+      .mockReturnValueOnce(makeEqChain(scheduleResult))
+      .mockReturnValueOnce(makeInChain(watchlistResult))
+      .mockReturnValueOnce(makeInChain(profilesResult)),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
 }
 
 function mockSupabaseError(message: string) {
-  const chain = buildChain(null, { message })
   mockedCreateClient.mockReturnValue({
-    from: jest.fn().mockReturnValue(chain),
+    from: jest.fn().mockReturnValue(makeEqChain({ data: null, error: { message } })),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
 }

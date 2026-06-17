@@ -409,7 +409,7 @@ export default function LandingPage() {
               fontFamily:"var(--font-body)", fontSize:17, lineHeight:1.7,
               color:"var(--dim)", maxWidth:480, marginBottom:40,
             }}>
-              Start with AI suggestions. Expand to full automation when you're ready.
+              Start with AI suggestions. Expand to full automation when you&apos;re ready.
               You can change modes at any time.
             </p>
 

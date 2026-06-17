@@ -3,6 +3,9 @@ import type { Config } from "jest";
 const config: Config = {
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
+  // Custom resolver forces @langchain/* sub-paths to their CJS bundles via
+  // each package's exports map. Handles both flat files and directory sub-paths.
+  resolver: "<rootDir>/jest-langchain-resolver.cjs",
   transform: {
     "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: { jsx: "react-jsx" } }],
   },
@@ -10,12 +13,6 @@ const config: Config = {
   moduleNameMapper: {
     // bson ships an ESM default entry that Jest (CJS) cannot parse; force the CJS bundle
     "^bson$": "<rootDir>/node_modules/bson/lib/bson.cjs",
-    // LangGraph/LangChain packages (avoid browser ESM entry)
-    "^@langchain/langgraph$": "<rootDir>/node_modules/@langchain/langgraph/dist/index.cjs",
-    "^@langchain/langgraph/(.*)$": "<rootDir>/node_modules/@langchain/langgraph/dist/$1",
-    "^@langchain/google-genai$": "<rootDir>/node_modules/@langchain/google-genai/dist/index.cjs",
-    "^@langchain/core/(.*)$": "<rootDir>/node_modules/@langchain/core/dist/$1",
-    "^@langchain/core$": "<rootDir>/node_modules/@langchain/core/dist/index.cjs",
     "^@/(.*)$": "<rootDir>/$1",
     "^@clerk/nextjs/server$": "<rootDir>/__mocks__/@clerk/nextjs/server.ts",
     "^@clerk/themes$": "<rootDir>/__mocks__/@clerk/themes.ts",

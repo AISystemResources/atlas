@@ -211,6 +211,7 @@ function JobCard({ job, type, onCancel, onResume }: {
 }) {
   const router   = useRouter();
   const isActive = job.status === "running" || job.status === "queued";
+  // eslint-disable-next-line react-hooks/purity
   const isStale  = isActive && Date.now() - new Date(job.created_at).getTime() > STALE_MS;
   const accent   = jobAccent(job, type);
   const label    = jobLabel(job, type);
@@ -408,6 +409,7 @@ export default function ExperimentDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load().finally(() => setLoading(false));
   }, [load]);
 

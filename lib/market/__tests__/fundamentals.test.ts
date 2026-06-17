@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for fetchTickerInfo (fundamentals.ts)
  * Mocks yahoo-finance2 to avoid live API calls.

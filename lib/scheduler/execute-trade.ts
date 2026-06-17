@@ -160,7 +160,7 @@ export async function executeTrade(input: ExecuteTradeInput): Promise<ExecuteTra
   let alpacaStatus = "rejected";
   let errorMessage: string | undefined;
   let placedShares: number | null = null;
-  let placedPrice: number | null = risk?.current_price ?? null;
+  const placedPrice: number | null = risk?.current_price ?? null;
 
   try {
     const order = await broker.submitOrder({
