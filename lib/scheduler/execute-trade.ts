@@ -184,6 +184,29 @@ export async function executeTrade(input: ExecuteTradeInput): Promise<ExecuteTra
     }
   }
 
+  // ── Compute realized P&L for SELL trades (Sprint 042 — History Agent) ──
+  // Look up the most recent filled BUY for this ticker to compute round-trip P&L.
+  // Only computed when the order fills so we have an actual execution price.
+  let realizedPnl: number | null = null;
+  if (action === "SELL" && alpacaStatus === "filled" && placedPrice !== null && (placedShares ?? 0) > 0) {
+    const { data: lastBuy } = await sb
+      .from("trades")
+      .select("price")
+      .eq("user_id", userId)
+      .eq("ticker", ticker)
+      .eq("action", "BUY")
+      .eq("status", "filled")
+      .order("executed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastBuy?.price) {
+      realizedPnl = Math.round(
+        ((placedPrice - Number(lastBuy.price)) * (placedShares ?? 0)) * 10000,
+      ) / 10000;
+    }
+  }
+
   // ── Persist trades row ────────────────────────────────────────────────
   // Insert even on rejection so the rejection is auditable. The unique index
   // on signal_id guards against the Inngest-retry-double-order race.
@@ -199,6 +222,7 @@ export async function executeTrade(input: ExecuteTradeInput): Promise<ExecuteTra
     signal_id: signalId,
     order_id: alpacaOrderId ?? null,
     executed_at: alpacaStatus === "filled" ? new Date().toISOString() : null,
+    realized_pnl: realizedPnl,
   };
 
   const { data: insertedTrade, error: insertError } = await sb

@@ -39,6 +39,12 @@ export interface BacktestRequest {
    * autonomous-with-circuit-breaker. Only meaningful when ebc_mode = "autonomous".
    */
   circuit_breaker_enabled?: boolean;
+  /**
+   * Enable/disable the History Agent confidence modifier for this run.
+   * false = A/B control arm (modifier=0, identical to pre-agent behaviour).
+   * Defaults to true when absent.
+   */
+  history_agent_enabled?: boolean;
 }
 
 export interface BacktestSlice {
