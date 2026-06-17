@@ -1,14 +1,18 @@
 /**
- * Intraday scalper — sprint 040.
+ * Intraday scalper — sprint 043.
  *
- * Scans DJIA-30 for RSI(14) oversold entries every minute during market hours.
+ * Sandy Jadeja S1 (Keltner Channel Mean Reversion) entry on DJIA-30.
  * Restricted to users with scalper_enabled=true AND boundary_mode=autonomous.
  *
- * Entry: RSI < 30 + ATR > 0.1% of price + no position + past cooldown window
- * Exit:  RSI > 55 OR price < avgCost - 1.5 × ATR  OR  EOD force-close at 15:50 ET
+ * Regime filter: RSI(21) > 50 (bullish regime only; shorts deferred per supervisor).
+ * Entry (S1 long): prev bar low ≤ outer KC lower band (touch) AND
+ *   signal bar close > open (bullish candle) AND close > inner KC lower band.
+ * Entry price: signal bar high + 0.05% buffer (market order approximation).
+ * Stop:  signal bar low - 0.05% buffer → translated to avgCost - 1.5×ATR at runtime.
+ * Target: entry + ATR(14) / 2 → RSI(21) < 50 regime flip OR ATR stop as exit signal.
+ * EOD force-close at 15:50 ET.
  *
- * Scalper trades are tagged strategy='scalper' in the trades table so they are
- * never confused with swing positions managed by the main pipeline.
+ * Scalper trades tagged strategy='scalper' in the trades table.
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -16,7 +20,7 @@ import { AlpacaAdapter } from "@/lib/broker";
 import type { Order } from "@/lib/broker";
 import { getBrokerCredentials } from "@/lib/broker/credentials";
 import { fetchIntradayBars } from "@/lib/market/alpaca";
-import { computeIndicators } from "@/lib/indicators";
+import { computeIndicators, detectS1Signal } from "@/lib/indicators";
 import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
 
 // DJIA-30 composition as of Nov 2024 (NVDA replaced INTC; AMZN replaced WBA Feb 2024)
@@ -26,11 +30,10 @@ export const DJIA_30 = [
   "MRK",  "MSFT", "NKE",  "NVDA", "PG",   "TRV",  "UNH",  "V",    "VZ",   "WMT",
 ];
 
-const RSI_ENTRY      = 30;               // oversold entry threshold
-const RSI_EXIT       = 55;               // RSI profit-take level
-const STOP_MULT      = 1.5;              // stop = avgCost − STOP_MULT × ATR
+const RSI_EXIT       = 55;               // RSI(14) momentum exit (secondary)
+const RSI_REGIME_EXIT = 50;             // RSI(21) regime flip exit (primary)
+const STOP_MULT      = 1.5;              // stop = avgCost − STOP_MULT × ATR(14)
 const SCALP_NOTIONAL = 200;              // $200 per scalper entry
-const MIN_ATR_PCT    = 0.001;            // ATR must be > 0.1% of price
 const COOLDOWN_MS    = 10 * 60 * 1000;  // 10-min cooldown after any BUY
 const LOOKBACK_H     = 8;               // hours to scan for recent scalper trades
 
@@ -236,12 +239,17 @@ async function runUserScalper(
     if (br.status === "rejected") continue;
     const { ticker, bars } = br.value;
 
-    const ind = computeIndicators(bars);
+    // RSI(14) + ATR(14) for exit mechanics
+    const ind = computeIndicators(bars, 14);
     if (!ind) {
       result.skipped++;
       continue;
     }
     const { rsi, atr, lastClose } = ind;
+
+    // RSI(21) for regime filter (used in both entry and exit)
+    const regime = computeIndicators(bars, 21);
+    const rsi21 = regime?.rsi ?? rsi;
 
     const hasPosition = posMap.has(ticker);
     const buyAt = scalperBuyAt.get(ticker);
@@ -250,7 +258,11 @@ async function runUserScalper(
       // ── Exit path ────────────────────────────────────────────────────
       const pos = posMap.get(ticker)!;
       const stopPrice = pos.avgCost - STOP_MULT * atr;
-      const shouldExit = rsi > RSI_EXIT || lastClose < stopPrice;
+      // Exit on: ATR stop loss, RSI(21) regime flip (<50), or RSI(14) momentum exit (>55)
+      const shouldExit =
+        lastClose < stopPrice ||
+        rsi21 < RSI_REGIME_EXIT ||
+        rsi > RSI_EXIT;
 
       if (shouldExit) {
         try {
@@ -262,9 +274,11 @@ async function runUserScalper(
           await recordTrade(sb, { userId, portfolioId, ticker, action: "SELL", order, price: lastClose });
           result.exits++;
           const reason =
-            rsi > RSI_EXIT
-              ? `rsi=${rsi.toFixed(1)}>55`
-              : `price ${lastClose}<stop ${stopPrice.toFixed(2)}`;
+            lastClose < stopPrice
+              ? `stop price=${lastClose.toFixed(2)}<${stopPrice.toFixed(2)}`
+              : rsi21 < RSI_REGIME_EXIT
+                ? `regime flip rsi21=${rsi21.toFixed(1)}<50`
+                : `rsi14=${rsi.toFixed(1)}>55`;
           console.info(`[scalper] SELL ${ticker} (${reason})`);
         } catch (err) {
           result.errors.push(
@@ -273,11 +287,12 @@ async function runUserScalper(
         }
       }
     } else if (!hasPosition) {
-      // ── Entry path ───────────────────────────────────────────────────
-      if (rsi >= RSI_ENTRY) continue;
-      if (atr < MIN_ATR_PCT * lastClose) continue;
-      // Cooldown: skip if a BUY was filed within the last COOLDOWN_MS
+      // ── Entry path: S1 KC signal ─────────────────────────────────────
       if (buyAt != null && Date.now() - buyAt < COOLDOWN_MS) continue;
+
+      // detectS1Signal encapsulates RSI(21) regime filter + KC band-touch + bullish candle
+      const s1 = detectS1Signal(bars);
+      if (!s1) continue;
 
       const scaledNotional =
         Math.round(SCALP_NOTIONAL * ebcGate.notionalMultiplier * 100) / 100;
@@ -290,7 +305,7 @@ async function runUserScalper(
         await recordTrade(sb, { userId, portfolioId, ticker, action: "BUY", order, price: lastClose });
         result.entries++;
         console.info(
-          `[scalper] BUY ${ticker} rsi=${rsi.toFixed(1)} atr=${atr.toFixed(4)} notional=$${scaledNotional}`,
+          `[scalper] S1-BUY ${ticker} rsi21=${s1.rsi21.toFixed(1)} entry=${s1.entryPrice.toFixed(2)} stop=${s1.stopPrice.toFixed(2)} target=${s1.targetPrice.toFixed(2)} atr=${s1.atr.toFixed(4)} notional=$${scaledNotional}`,
         );
       } catch (err) {
         result.errors.push(
