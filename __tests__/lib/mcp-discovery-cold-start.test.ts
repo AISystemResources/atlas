@@ -131,8 +131,10 @@ describe("MCP discovery cold-start guardrail", () => {
   // Detector test: a synthetic file whose import IS banned must be flagged.
   // Proves the BANNED-pattern matching and Violation reporting actually fire.
   test("detects a banned import in a synthetic fixture", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const tmp = require("os").tmpdir();
     const fixturePath = join(tmp, "atlas-mcp-coldstart-fixture.ts");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("fs").writeFileSync(
       fixturePath,
       'import { auth } from "@clerk/nextjs/server";\nexport const x = 1;\n',

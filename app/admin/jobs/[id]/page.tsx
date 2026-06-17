@@ -481,6 +481,7 @@ export default function JobDetailPage() {
     : "/admin/backtesting";
 
   const isActive = job?.status === "running" || job?.status === "queued";
+  // eslint-disable-next-line react-hooks/purity
   const isStale  = isActive && job ? Date.now() - new Date(job.created_at).getTime() > STALE_MS : false;
   const accent   = job ? jobAccent(job) : "var(--brand)";
   const runs     = job?.results?.daily_runs ?? [];

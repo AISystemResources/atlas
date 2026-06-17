@@ -31,13 +31,18 @@ jest.mock("../components/UserMenu", () => ({
   UserMenu: () => null,
 }));
 
+// Mock ClaudeConnectorSection to avoid PAT fetch calls interfering with fetch count assertions
+jest.mock("../app/dashboard/ClaudeConnectorSection", () => ({
+  ClaudeConnectorSection: () => null,
+}));
+
 // Import SettingsTab (named export from DashboardClient)
 import { SettingsTab } from "../app/dashboard/DashboardClient";
 
-const API_URL = "";
+const API_URL = "/api";
 
 // Reusable response stubs
-const profileResponse = (overrides: object = {}) =>
+const settingsResponse = (overrides: object = {}) =>
   ({
     json: async () => ({ boundary_mode: "advisory", ...overrides }),
     ok: true,
@@ -63,8 +68,9 @@ const okResponse = {
 } as Response;
 
 // SettingsTab sub-components fire fetchWithAuth on mount:
-//   1. GET /v1/broker/connection (AlpacaConnectionSection — child fires first)
-//   2. GET /v1/profile (boundary mode hydration — SettingsTab's own useEffect)
+//   1. GET /v1/broker (AlpacaConnectionSection — child fires first)
+//   2. GET /v1/user/settings (boundary mode hydration — SettingsTab's own useEffect)
+// ClaudeConnectorSection is mocked to suppress its /api/v1/pats fetch.
 // Each test queues mocks for both initial calls before interacting.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -105,14 +111,14 @@ describe("SettingsTab — boundary mode", () => {
     // AlpacaConnectionSection's effect fires before SettingsTab's effect (child-first order)
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)
-      .mockResolvedValueOnce(profileResponse({ boundary_mode: "autonomous" }));
+      .mockResolvedValueOnce(settingsResponse({ boundary_mode: "autonomous" }));
 
     await act(async () => {
       render(<SettingsTab tier="pro" />);
     });
 
     await waitFor(() => {
-      expect(mockFetchWithAuth).toHaveBeenCalledWith(`${API_URL}/v1/profile`);
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(`${API_URL}/v1/user/settings`);
     });
 
     // Main view shows the current mode label in the tappable row
@@ -124,7 +130,7 @@ describe("SettingsTab — boundary mode", () => {
   it("opens execution mode sub-view when tappable row is clicked", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)
-      .mockResolvedValueOnce(profileResponse({ boundary_mode: "advisory" }));
+      .mockResolvedValueOnce(settingsResponse({ boundary_mode: "advisory" }));
 
     await act(async () => {
       render(<SettingsTab tier="pro" />);
@@ -147,7 +153,7 @@ describe("SettingsTab — boundary mode", () => {
   it("PATCHes profile on Confirm after selecting a different boundary mode", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)        // initial AlpacaConnectionSection mount
-      .mockResolvedValueOnce(profileResponse({ boundary_mode: "advisory" })) // SettingsTab profile fetch
+      .mockResolvedValueOnce(settingsResponse({ boundary_mode: "advisory" })) // SettingsTab profile fetch
       .mockResolvedValueOnce(okResponse)                // PATCH response
       .mockResolvedValueOnce(brokerNotConnected);       // AlpacaConnectionSection re-mounts on return to main
 
@@ -175,7 +181,7 @@ describe("SettingsTab — boundary mode", () => {
     });
 
     await waitFor(() => {
-      expect(mockFetchWithAuth).toHaveBeenCalledWith(`${API_URL}/v1/profile`, {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(`${API_URL}/v1/user/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ boundary_mode: "autonomous_guardrail" }),
@@ -189,7 +195,7 @@ describe("SettingsTab — boundary mode", () => {
   it("Cancel discards selection and returns to main view without PATCHing", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)        // initial mount
-      .mockResolvedValueOnce(profileResponse({ boundary_mode: "advisory" }))
+      .mockResolvedValueOnce(settingsResponse({ boundary_mode: "advisory" }))
       .mockResolvedValueOnce(brokerNotConnected);       // AlpacaConnectionSection re-mounts on Cancel
 
     await act(async () => {
@@ -232,7 +238,7 @@ describe("SettingsTab — boundary mode", () => {
   it("shows locked advisory row for free tier with upgrade prompt", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)
-      .mockResolvedValueOnce(profileResponse());
+      .mockResolvedValueOnce(settingsResponse());
 
     await act(async () => {
       render(<SettingsTab tier="free" />);
@@ -256,7 +262,7 @@ describe("SettingsTab — investment philosophy", () => {
 
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)
-      .mockResolvedValueOnce(profileResponse());
+      .mockResolvedValueOnce(settingsResponse());
 
     await act(async () => {
       render(<SettingsTab tier="pro" initialPhilosophy="buffett" />);
@@ -270,7 +276,7 @@ describe("SettingsTab — investment philosophy", () => {
   it("defaults philosophy to Balanced when no initialPhilosophy prop is provided", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)
-      .mockResolvedValueOnce(profileResponse());
+      .mockResolvedValueOnce(settingsResponse());
 
     await act(async () => {
       render(<SettingsTab tier="pro" />);
@@ -282,7 +288,7 @@ describe("SettingsTab — investment philosophy", () => {
   it("opens philosophy sub-view when tappable row is clicked", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)
-      .mockResolvedValueOnce(profileResponse());
+      .mockResolvedValueOnce(settingsResponse());
 
     await act(async () => {
       render(<SettingsTab tier="pro" initialPhilosophy="balanced" />);
@@ -304,7 +310,7 @@ describe("SettingsTab — investment philosophy", () => {
   it("PATCHes /v1/profile with investment_philosophy on Confirm", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)    // initial mount
-      .mockResolvedValueOnce(profileResponse())
+      .mockResolvedValueOnce(settingsResponse())
       .mockResolvedValueOnce(okResponse)            // PATCH
       .mockResolvedValueOnce(brokerNotConnected);   // AlpacaConnectionSection re-mounts on return to main
 
@@ -327,7 +333,7 @@ describe("SettingsTab — investment philosophy", () => {
     });
 
     await waitFor(() => {
-      expect(mockFetchWithAuth).toHaveBeenCalledWith(`${API_URL}/v1/profile`, {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(`${API_URL}/v1/user/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ investment_philosophy: "lynch" }),
@@ -342,7 +348,7 @@ describe("SettingsTab — investment philosophy", () => {
   it("Cancel in philosophy sub-view does not PATCH and discards selection", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)    // initial mount
-      .mockResolvedValueOnce(profileResponse())
+      .mockResolvedValueOnce(settingsResponse())
       .mockResolvedValueOnce(brokerNotConnected);   // AlpacaConnectionSection re-mounts on Cancel
 
     await act(async () => {
@@ -372,7 +378,7 @@ describe("SettingsTab — investment philosophy", () => {
 
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)    // initial mount
-      .mockResolvedValueOnce(profileResponse())
+      .mockResolvedValueOnce(settingsResponse())
       .mockResolvedValueOnce(okResponse)            // PATCH
       .mockResolvedValueOnce(brokerNotConnected);   // AlpacaConnectionSection re-mounts on return to main
 
@@ -403,7 +409,7 @@ describe("SettingsTab — investment philosophy", () => {
   it("does not crash when philosophy PATCH fails — main view reflects confirmed selection", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)          // initial mount
-      .mockResolvedValueOnce(profileResponse())
+      .mockResolvedValueOnce(settingsResponse())
       .mockRejectedValueOnce(new Error("Network error"))  // PATCH fails
       .mockResolvedValueOnce(brokerNotConnected);         // AlpacaConnectionSection re-mounts on return to main
 
@@ -431,7 +437,7 @@ describe("SettingsTab — investment philosophy", () => {
   it("shows locked philosophy row for free tier with upgrade prompt", async () => {
     mockFetchWithAuth
       .mockResolvedValueOnce(brokerNotConnected)
-      .mockResolvedValueOnce(profileResponse());
+      .mockResolvedValueOnce(settingsResponse());
 
     await act(async () => {
       render(<SettingsTab tier="free" />);

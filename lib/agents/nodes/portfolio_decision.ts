@@ -160,6 +160,7 @@ DECISION RULES (hard constraints — override any bullish signal):
 3. If synthesis verdict is bearish and there is no existing ${ticker} position → output HOLD, not SELL.
 4. Only output SELL if the position exists and you want to exit it.
 5. Prefer a small, high-conviction position over a large, uncertain one.
+6. If ${ticker} already occupies ≥15% of portfolio AND synthesis verdict is bearish or neutral → output SELL to reduce the over-concentrated position. Over-concentration combined with a bearish/neutral outlook is a mandatory exit, not a hold.
 
 Return ONLY valid JSON:
 {

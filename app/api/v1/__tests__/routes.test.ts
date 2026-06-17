@@ -219,6 +219,10 @@ describe("POST /api/v1/backtest", () => {
 
   it("returns 422 for validation errors", async () => {
     auth.mockResolvedValueOnce({ userId: "user_1" });
+    // requireTier queries profiles for tier — return pro so validation runs
+    mockSupabaseFrom.mockReturnValueOnce(
+      mockSupabaseChain({ data: { tier: "pro" }, error: null })
+    );
     const { POST } = await import("@/app/api/v1/backtest/route");
     // Missing required fields
     const res = await POST(makeReq("POST", { tickers: [] }));

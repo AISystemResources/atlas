@@ -13,9 +13,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 
+import { fetchWithAuth } from "../lib/api";
 jest.mock("../lib/api", () => ({
   fetchWithAuth: jest.fn(),
 }));
+const mockFetchWithAuth = fetchWithAuth as jest.MockedFunction<typeof fetchWithAuth>;
 
 const mockSignal = {
   id: "sig-001",
@@ -31,12 +33,11 @@ const mockSignal = {
 describe("SignalCard reject button", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn() as jest.Mock;
   });
 
   it("shows loading state while rejecting", async () => {
-    // Make fetch hang (never resolves) so we can check loading state
-    (global.fetch as jest.Mock).mockImplementation(() => new Promise(() => {}));
+    // Make fetchWithAuth hang so we can check loading state
+    mockFetchWithAuth.mockImplementation(() => new Promise(() => {}));
     const { SignalCard } = await import("../app/dashboard/DashboardClient");
 
     render(<SignalCard signal={mockSignal} />);
@@ -51,7 +52,7 @@ describe("SignalCard reject button", () => {
   });
 
   it("shows rejected state after successful rejection", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    mockFetchWithAuth.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
     const { SignalCard } = await import("../app/dashboard/DashboardClient");
     const onReject = jest.fn();
 
@@ -71,7 +72,7 @@ describe("SignalCard reject button", () => {
   });
 
   it("calls onReject callback with signal id on success", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    mockFetchWithAuth.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
     const { SignalCard } = await import("../app/dashboard/DashboardClient");
     const onReject = jest.fn();
 

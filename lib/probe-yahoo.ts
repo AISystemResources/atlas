@@ -42,6 +42,7 @@ export type InfoKey = (typeof INFO_KEYS)[number];
 
 // Map each field to its (module, source-path) so the close-out can report
 // which endpoint the value came from, and so partial-coverage can fall back.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const FIELD_PATHS: Record<InfoKey, { modules: string[]; pick: (q: any) => unknown }> = {
   shortName: { modules: ["price"], pick: (q) => q?.price?.shortName },
   sector: { modules: ["assetProfile"], pick: (q) => q?.assetProfile?.sector },
@@ -83,6 +84,7 @@ export async function probeTicker(ticker: string): Promise<ProbeResult> {
     // Cast to any — yahoo-finance2's module union types are strict literals;
     // the library accepts any valid module string at runtime.
     const q = await yahooFinance.quoteSummary(ticker, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       modules: REQUIRED_MODULES as any,
     });
     const info: Partial<Record<InfoKey, unknown>> = {};
@@ -133,6 +135,7 @@ export async function probeMany(
 }
 
 export function summarizeCoverage(results: ProbeResult[]) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const coverage: Record<InfoKey, { ok: number; missing: number; null: number }> = {} as any;
   for (const key of INFO_KEYS) coverage[key] = { ok: 0, missing: 0, null: 0 };
   for (const r of results) {

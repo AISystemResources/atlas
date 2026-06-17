@@ -17,18 +17,21 @@ jest.mock("next/navigation", () => ({
 }));
 
 // Mock lib/api since it uses Clerk auth
+import { fetchWithAuth } from "../lib/api";
 jest.mock("../lib/api", () => ({
   fetchWithAuth: jest.fn(),
 }));
+const mockFetchWithAuth = fetchWithAuth as jest.MockedFunction<typeof fetchWithAuth>;
 
 describe("OverrideButton", () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     jest.useFakeTimers();
     jest.spyOn(window, "confirm").mockReturnValue(true);
-    global.fetch = jest.fn().mockResolvedValue({
+    mockFetchWithAuth.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, message: "Order cancelled successfully" }),
-    }) as jest.Mock;
+    } as Response);
   });
 
   afterEach(() => {
@@ -92,7 +95,7 @@ describe("OverrideButton", () => {
     fireEvent.click(screen.getByRole("button"));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(
         expect.stringContaining("/v1/trades/trade-abc/override"),
         expect.objectContaining({ method: "POST" })
       );
@@ -116,7 +119,7 @@ describe("OverrideButton", () => {
     fireEvent.click(screen.getByRole("button"));
 
     await waitFor(() => {
-      expect(global.fetch).not.toHaveBeenCalled();
+      expect(mockFetchWithAuth).not.toHaveBeenCalled();
     });
   });
 });

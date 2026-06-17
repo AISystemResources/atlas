@@ -170,6 +170,7 @@ export class AlpacaAdapter implements BrokerAdapter {
         direction: undefined,
         nested: undefined,
         symbols: undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
       if (filter?.ticker !== undefined) {

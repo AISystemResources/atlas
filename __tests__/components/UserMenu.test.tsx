@@ -13,6 +13,7 @@ jest.mock("@clerk/nextjs", () => ({
 
 jest.mock("next/image", () => ({
   __esModule: true,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default: (props: any) => <img {...props} />,
 }));
 
@@ -24,6 +25,7 @@ describe("UserMenu", () => {
 
   it("displays the user's full name", () => {
     render(<UserMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
     expect(screen.getByText("Jane Doe")).toBeInTheDocument();
   });
 
@@ -35,6 +37,7 @@ describe("UserMenu", () => {
 
   it("calls signOut when Sign Out button is clicked", () => {
     render(<UserMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
     const signOutBtn = screen.getByRole("button", { name: /sign out/i });
     fireEvent.click(signOutBtn);
     expect(mockSignOut).toHaveBeenCalledTimes(1);

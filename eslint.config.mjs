@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // External directories that must not be linted
+    "node_modules/**",
+    ".agents/**",
+    ".claude/**",
+    ".venv/**",
   ]),
 ]);
 

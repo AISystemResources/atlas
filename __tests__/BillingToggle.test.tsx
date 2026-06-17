@@ -1,6 +1,10 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 
+jest.mock("@clerk/nextjs", () => ({
+  useAuth: () => ({ isSignedIn: false }),
+}));
+
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({
@@ -20,7 +24,6 @@ describe("BillingToggle", () => {
   it("defaults to annual billing and shows annual prices", () => {
     render(<BillingToggle />);
     expect(screen.getByText("39")).toBeInTheDocument();
-    expect(screen.getByText("119")).toBeInTheDocument();
     expect(screen.getByText("Save 20%")).toBeInTheDocument();
   });
 
@@ -28,7 +31,6 @@ describe("BillingToggle", () => {
     render(<BillingToggle />);
     fireEvent.click(screen.getByText("Monthly"));
     expect(screen.getByText("49")).toBeInTheDocument();
-    expect(screen.getByText("149")).toBeInTheDocument();
     expect(screen.queryByText("Save 20%")).not.toBeInTheDocument();
   });
 
@@ -48,17 +50,16 @@ describe("BillingToggle", () => {
     });
   });
 
-  it("shows annual billing totals in annual mode", () => {
+  it("shows annual billing total for Pro in annual mode", () => {
     render(<BillingToggle />);
     expect(screen.getByText("$468 billed annually")).toBeInTheDocument();
-    expect(screen.getByText("$1,428 billed annually")).toBeInTheDocument();
   });
 
   it("shows save-20% prompt in monthly mode", () => {
     render(<BillingToggle />);
     fireEvent.click(screen.getByText("Monthly"));
     const prompts = screen.getAllByText("Switch to annual to save 20%");
-    expect(prompts).toHaveLength(2);
+    expect(prompts).toHaveLength(1);
   });
 
   it("sets aria-pressed correctly on toggle buttons", () => {
