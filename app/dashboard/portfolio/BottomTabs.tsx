@@ -197,6 +197,43 @@ function PositionsTabContent({
   portfolio: Portfolio | null;
   onPositionClick: (ticker: string) => void;
 }) {
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, number>>({});
+  const [closeConfirm, setCloseConfirm] = useState<{ ticker: string; pnl: number; price: number; shares: number } | null>(null);
+
+  const tickers = portfolio?.positions?.map((p) => p.ticker) ?? [];
+  const tickerKey = tickers.join(",");
+
+  useEffect(() => {
+    if (tickers.length === 0) return;
+    let active = true;
+
+    async function pullLive() {
+      try {
+        const url = `/api/v1/market/quotes?symbols=${encodeURIComponent(tickerKey)}`;
+        const res = await fetchWithAuth(url);
+        const json = (await res?.json()) as { data?: { symbol: string; price: number | null }[] } | null;
+        if (!active || !json?.data) return;
+        const next: Record<string, number> = {};
+        for (const q of json.data) {
+          if (q.price != null) next[q.symbol] = q.price;
+        }
+        setLiveQuotes(next);
+      } catch {
+        // silent
+      }
+    }
+
+    pullLive();
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") pullLive();
+    }, 20_000);
+
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [tickerKey, tickers.length]);
+
   if (!portfolio || !portfolio.positions?.length) {
     return (
       <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", padding: "32px 0" }}>
@@ -207,53 +244,310 @@ function PositionsTabContent({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {portfolio.positions.map((pos) => (
-        <button
-          key={pos.ticker}
-          onClick={() => onPositionClick(pos.ticker)}
-          style={{
-            width: "100%",
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: 10,
-            padding: "14px 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-            textAlign: "left",
-            boxShadow: "var(--card-shadow)",
-          }}
-        >
-          <div>
-            <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>
-              {pos.ticker}
-            </span>
-            <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>
-              {pos.shares} shares
-            </span>
-            <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginTop: 3 }}>
-              avg {fmt(pos.avg_cost)} · now {fmt(pos.current_price)}
-            </div>
-          </div>
-          <div className="text-right">
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {portfolio.positions.map((pos) => {
+          const livePrice = liveQuotes[pos.ticker] ?? pos.current_price;
+          const livePnl = (livePrice - pos.avg_cost) * pos.shares;
+          const livePnlPos = livePnl >= 0;
+          const isLive = liveQuotes[pos.ticker] != null;
+
+          return (
             <div
-              className="num"
+              key={pos.ticker}
               style={{
-                color: pos.pnl >= 0 ? "var(--bull)" : "var(--bear)",
-                fontSize: 14,
-                fontWeight: 700,
+                background: "var(--surface)",
+                border: "1px solid var(--line)",
+                borderRadius: 10,
+                padding: "14px 16px",
+                boxShadow: "var(--card-shadow)",
               }}
             >
-              {pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)}
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>
+                    {pos.ticker}
+                  </span>
+                  <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>
+                    {pos.shares} sh
+                  </span>
+                  {isLive && (
+                    <span
+                      className="ml-2 inline-flex items-center gap-1"
+                      style={{
+                        fontSize: 9,
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--bull)",
+                        letterSpacing: "0.08em",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: 5,
+                          height: 5,
+                          borderRadius: "50%",
+                          background: "var(--bull)",
+                        }}
+                      />
+                      LIVE
+                    </span>
+                  )}
+                </div>
+                <div
+                  className="num text-right"
+                  style={{
+                    color: livePnlPos ? "var(--bull)" : "var(--bear)",
+                    fontSize: 14,
+                    fontWeight: 700,
+                  }}
+                >
+                  {livePnlPos ? "+" : ""}{fmt(livePnl)}
+                </div>
+              </div>
+
+              <div
+                className="flex items-center justify-between"
+                style={{ marginBottom: 10 }}
+              >
+                <span
+                  style={{
+                    color: "var(--ghost)",
+                    fontSize: 11,
+                    fontFamily: "var(--font-jb)",
+                  }}
+                >
+                  avg {fmt(pos.avg_cost)} · now {fmt(livePrice)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  onClick={() => onPositionClick(pos.ticker)}
+                  style={{
+                    flex: 1,
+                    background: "var(--elevated)",
+                    border: "1px solid var(--line)",
+                    color: "var(--ghost)",
+                    fontSize: 11,
+                    fontFamily: "var(--font-jb)",
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  AI LOG →
+                </button>
+                <button
+                  onClick={() =>
+                    setCloseConfirm({
+                      ticker: pos.ticker,
+                      pnl: livePnl,
+                      price: livePrice,
+                      shares: pos.shares,
+                    })
+                  }
+                  style={{
+                    flex: 1,
+                    background: "var(--surface)",
+                    border: `1px solid ${livePnlPos ? "var(--bull)" : "var(--bear)"}40`,
+                    color: livePnlPos ? "var(--bull)" : "var(--bear)",
+                    fontSize: 11,
+                    fontFamily: "var(--font-jb)",
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    letterSpacing: "0.04em",
+                    fontWeight: 600,
+                  }}
+                >
+                  CLOSE
+                </button>
+              </div>
             </div>
-            <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginTop: 2 }}>
-              AI log →
-            </div>
-          </div>
-        </button>
-      ))}
+          );
+        })}
+      </div>
+
+      {closeConfirm && (
+        <ManualCloseConfirmation
+          ticker={closeConfirm.ticker}
+          shares={closeConfirm.shares}
+          price={closeConfirm.price}
+          pnl={closeConfirm.pnl}
+          onCancel={() => setCloseConfirm(null)}
+          onDone={() => {
+            setCloseConfirm(null);
+            // soft refresh — wait a beat then trigger parent reload via location reload
+            setTimeout(() => window.location.reload(), 500);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function ManualCloseConfirmation({
+  ticker,
+  shares,
+  price,
+  pnl,
+  onCancel,
+  onDone,
+}: {
+  ticker: string;
+  shares: number;
+  price: number;
+  pnl: number;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const positive = pnl >= 0;
+
+  async function submitClose() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetchWithAuth(
+        `/api/v1/portfolio/positions/${encodeURIComponent(ticker)}/close`,
+        { method: "POST" },
+      );
+      const json = (await res?.json()) as { success?: boolean; error?: string } | null;
+      if (res?.ok && json?.success) {
+        onDone();
+      } else {
+        setError(json?.error ?? "Manual close failed.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        zIndex: 50,
+      }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
+          borderRadius: 14,
+          padding: "22px 24px",
+          maxWidth: 420,
+          width: "100%",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+        }}
+      >
+        <h3
+          className="font-display font-bold"
+          style={{ fontSize: 17, color: "var(--ink)", marginBottom: 12 }}
+        >
+          Close {ticker}?
+        </h3>
+        <p
+          style={{
+            color: "var(--ink)",
+            fontSize: 13,
+            fontFamily: "var(--font-nunito)",
+            lineHeight: 1.55,
+            marginBottom: 14,
+          }}
+        >
+          Sell <strong>{shares}</strong> shares at the next market price (currently <strong>${fmt(price)}</strong>). Estimated realised P&amp;L:
+        </p>
+        <div
+          className="num"
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: positive ? "var(--bull)" : "var(--bear)",
+            marginBottom: 16,
+            textAlign: "center",
+          }}
+        >
+          {positive ? "+" : ""}${fmt(pnl)}
+        </div>
+        <p
+          style={{
+            color: "var(--ghost)",
+            fontSize: 12,
+            fontFamily: "var(--font-nunito)",
+            lineHeight: 1.55,
+            marginBottom: 16,
+          }}
+        >
+          This will be recorded as a <strong>manual close</strong> (closed_by=human) so your AI does
+          not get attributed with the decision.
+        </p>
+        {error && (
+          <p
+            style={{
+              color: "var(--bear)",
+              fontSize: 12,
+              fontFamily: "var(--font-jb)",
+              background: "rgba(255,45,85,0.08)",
+              padding: "8px 10px",
+              borderRadius: 6,
+              marginBottom: 12,
+            }}
+          >
+            {error}
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={onCancel}
+            disabled={submitting}
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
+              color: "var(--ghost)",
+              fontSize: 13,
+              fontFamily: "var(--font-jb)",
+              padding: "8px 16px",
+              borderRadius: 6,
+              cursor: submitting ? "default" : "pointer",
+              letterSpacing: "0.04em",
+            }}
+          >
+            CANCEL
+          </button>
+          <button
+            onClick={submitClose}
+            disabled={submitting}
+            style={{
+              background: "var(--ink)",
+              color: "var(--bg)",
+              border: "none",
+              fontSize: 13,
+              fontFamily: "var(--font-jb)",
+              padding: "8px 18px",
+              borderRadius: 6,
+              cursor: submitting ? "default" : "pointer",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+            }}
+          >
+            {submitting ? "CLOSING…" : "CONFIRM CLOSE"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

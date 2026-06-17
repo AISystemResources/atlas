@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type DecisionLogEntry } from "@/lib/api";
+import { PriceChart } from "./PriceChart";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,20 @@ export function StockLogClient({ ticker, entries }: StockLogClientProps) {
       </header>
 
       <main style={{ padding: "16px 20px" }}>
+        <PriceChart ticker={ticker} />
+
+        <div
+          style={{
+            color: "var(--ghost)",
+            fontSize: 10,
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.08em",
+            marginBottom: 10,
+          }}
+        >
+          AI DECISIONS
+        </div>
+
         {entries.length === 0 ? (
           <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", paddingTop: 48 }}>
             No AI decisions recorded for {ticker} yet.
