@@ -120,6 +120,14 @@ export const PortfolioDecisionSchema = z.object({
   latency_ms: z.number(),
 });
 
+export const HistoryModifierSchema = z.object({
+  win_rate: z.number().min(0).max(1),
+  n_trades: z.number().int().min(0),
+  modifier: z.number().min(-0.15).max(0.15),
+  confidence_modified: z.number().min(0).max(1),
+  enabled: z.boolean(),
+});
+
 export const ReviewOutputSchema = z.object({
   recent_trade_count: z.number(),
   recent_win_rate: z.number().min(0).max(1).nullable(),
@@ -193,6 +201,14 @@ export const AtlasStateSchema = z.object({
   portfolio_decision: PortfolioDecisionSchema.nullable().optional(),
   trace_id: z.string().nullable().optional(),
 
+  // History Agent output — populated by history_modifier node
+  history_modifier: HistoryModifierSchema.nullable().optional(),
+
+  // Controls whether the history_modifier node computes a modifier or passes through.
+  // false = disabled (byte-for-byte equivalence with pre-agent behaviour).
+  // Defaults to true when absent.
+  history_agent_enabled: z.boolean().nullable().optional(),
+
   // Optional LLM config — injected by backtest runner.
   // When absent, each node defaults to Gemini (backward-compatible).
   llm_config: z.object({
@@ -206,6 +222,7 @@ export const AtlasStateSchema = z.object({
 // ── TypeScript types ─────────────────────────────────────────────────────────
 
 export type AtlasState = z.infer<typeof AtlasStateSchema>;
+export type HistoryModifierOutput = z.infer<typeof HistoryModifierSchema>;
 export type TechnicalOutput = z.infer<typeof TechnicalOutputSchema>;
 export type FundamentalOutput = z.infer<typeof FundamentalOutputSchema>;
 export type SentimentOutput = z.infer<typeof SentimentOutputSchema>;

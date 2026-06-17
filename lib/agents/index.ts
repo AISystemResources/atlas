@@ -43,6 +43,12 @@ export interface RunGraphOptions {
    * Only respected in backtest mode — live trading is always Gemini.
    */
   llmConfig?: import("./llm").LLMConfig;
+  /**
+   * Enable/disable the History Agent confidence modifier.
+   * false = modifier=0, confidence_modified=base_confidence (A/B control arm).
+   * Defaults to true when absent.
+   */
+  historyAgentEnabled?: boolean;
 }
 
 /**
@@ -63,6 +69,7 @@ export async function runGraph(
     isBacktest = false,
     asOfDate,
     llmConfig,
+    historyAgentEnabled,
   } = opts;
 
   const graph = getGraph();
@@ -78,6 +85,8 @@ export async function runGraph(
     as_of_date: isBacktest
       ? (asOfDate ?? new Date().toISOString().slice(0, 10))
       : null,
+    // Defaults to true (enabled) when not specified
+    history_agent_enabled: historyAgentEnabled !== false,
     llm_config: resolvedLlmConfig
       ? {
           provider: resolvedLlmConfig.provider,

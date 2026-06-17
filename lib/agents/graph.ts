@@ -25,6 +25,7 @@ import { synthesisNode } from "./nodes/synthesis";
 import { fetchAccountNode } from "./nodes/fetch_account";
 import { riskNode } from "./nodes/risk";
 import { portfolioDecisionNode } from "./nodes/portfolio_decision";
+import { historyModifierNode } from "./nodes/history_modifier";
 import { saveTraceNode } from "./nodes/save_trace";
 
 // ── State annotation with analyst_outputs reducer ───────────────────────────
@@ -77,6 +78,14 @@ const AtlasStateAnnotation = Annotation.Root({
     reducer: (_prev: any, next: any) => next,
   }),
 
+  // History Agent output and control flag
+  history_modifier: Annotation<AtlasState["history_modifier"]>({
+    reducer: (_prev: any, next: any) => next,
+  }),
+  history_agent_enabled: Annotation<AtlasState["history_agent_enabled"]>({
+    reducer: (_prev: any, next: any) => next,
+  }),
+
   // Optional LLM config — flows top-down, never mutated by nodes
   llm_config: Annotation<AtlasState["llm_config"]>({
     reducer: (_prev: any, next: any) => next,
@@ -99,6 +108,7 @@ function buildGraph() {
   builder.addNode("fetch_account", fetchAccountNode);
   builder.addNode("assess_risk", riskNode);
   builder.addNode("portfolio", portfolioDecisionNode);
+  builder.addNode("history_modifier", historyModifierNode);
   builder.addNode("save_trace", saveTraceNode);
 
   // Fan-out: fetch_data → all four analysts in parallel
@@ -118,7 +128,8 @@ function buildGraph() {
   builder.addEdge("synthesize", "fetch_account");
   builder.addEdge("fetch_account", "assess_risk");
   builder.addEdge("assess_risk", "portfolio");
-  builder.addEdge("portfolio", "save_trace");
+  builder.addEdge("portfolio", "history_modifier");
+  builder.addEdge("history_modifier", "save_trace");
   builder.addEdge("save_trace", END);
 
   return builder.compile();

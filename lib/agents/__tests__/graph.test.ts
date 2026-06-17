@@ -128,6 +128,18 @@ jest.mock("@/lib/agents/memory/trace", () => ({
   saveTrace: jest.fn().mockResolvedValue("mock-trace-id-123"),
 }));
 
+jest.mock("@supabase/supabase-js", () => ({
+  createClient: jest.fn(() => ({
+    from: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      lt: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+    }),
+  })),
+}));
+
 // ── Import after mocks ─────────────────────────────────────────────────────
 
 import { getGraph } from "../graph";
@@ -166,7 +178,7 @@ beforeEach(() => {
 });
 
 describe("graph topology", () => {
-  it("registers 10 nodes", () => {
+  it("registers 11 nodes including history_modifier", () => {
     expect(capturedNodes).toContain("fetch_data");
     expect(capturedNodes).toContain("technical_analyst");
     expect(capturedNodes).toContain("fundamental_analyst");
@@ -176,6 +188,7 @@ describe("graph topology", () => {
     expect(capturedNodes).toContain("fetch_account");
     expect(capturedNodes).toContain("assess_risk");
     expect(capturedNodes).toContain("portfolio");
+    expect(capturedNodes).toContain("history_modifier");
     expect(capturedNodes).toContain("save_trace");
   });
 
@@ -193,11 +206,12 @@ describe("graph topology", () => {
     expect(capturedEdges).toContain("review_analyst→synthesize");
   });
 
-  it("wires sequential tail: synthesize → fetch_account → assess_risk → portfolio → save_trace", () => {
+  it("wires sequential tail: synthesize → fetch_account → assess_risk → portfolio → history_modifier → save_trace", () => {
     expect(capturedEdges).toContain("synthesize→fetch_account");
     expect(capturedEdges).toContain("fetch_account→assess_risk");
     expect(capturedEdges).toContain("assess_risk→portfolio");
-    expect(capturedEdges).toContain("portfolio→save_trace");
+    expect(capturedEdges).toContain("portfolio→history_modifier");
+    expect(capturedEdges).toContain("history_modifier→save_trace");
   });
 
   it("starts with START→fetch_data and ends with save_trace→END", () => {

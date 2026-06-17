@@ -134,7 +134,7 @@ export const runBacktest = inngest.createFunction(
     triggers: [{ event: "app/backtest.requested" }],
   },
   async ({ event, step }: { event: { data: BacktestRequest }; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
-    const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig, ebc_mode, circuit_breaker_enabled } = event.data;
+    const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig, ebc_mode, circuit_breaker_enabled, history_agent_enabled } = event.data;
 
     // Default to Gemini when no config supplied
     const resolvedLlmConfig = llmConfig ?? {
@@ -158,6 +158,7 @@ export const runBacktest = inngest.createFunction(
               isBacktest: true,
               asOfDate: date,
               llmConfig: resolvedLlmConfig,
+              historyAgentEnabled: history_agent_enabled !== false,
             });
 
             await upsertSlice(jobId, date, ticker, result, {
@@ -208,11 +209,16 @@ export const runBacktest = inngest.createFunction(
         ? cbGate.canExecute ? 1000 * cbGate.notionalMultiplier : 0
         : null;
 
+      // Use confidence_modified when History Agent ran; fall back to raw confidence.
+      // When history_agent_enabled=false, confidence_modified === base confidence (byte-for-byte).
+      const effectiveConfidence =
+        agentState.history_modifier?.confidence_modified ?? decision?.confidence ?? 0;
+
       const tradeResult = portfolio.process({
         date: slice.date,
         ticker: slice.ticker,
         action: cbGate && !cbGate.canExecute ? "HOLD" : (decision?.action ?? "HOLD"),
-        confidence: decision?.confidence ?? 0,
+        confidence: effectiveConfidence,
         ebcMode: resolvedEbcMode,
         executionPrice: currentPrice,
         isLastDay,
