@@ -9,6 +9,8 @@ import { AccountDropdown } from "@/components/AccountDropdown";
 import { AgentTab } from "./AgentTab";
 import { ClaudeConnectorSection } from "./ClaudeConnectorSection";
 import { LlmProviderSection } from "./LlmProviderSection";
+import { WatchlistStrip } from "./portfolio/WatchlistStrip";
+import { BottomTabs } from "./portfolio/BottomTabs";
 
 const API_URL = "/api";
 
@@ -728,44 +730,11 @@ export function PortfolioTab({
         <AIModeStrip philosophy={philosophy} positionCount={portfolio.positions?.length ?? 0} boundaryMode={boundaryMode} />
       )}
 
-      {/* Positions list */}
-      <div>
-        <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginBottom: 10, letterSpacing: "0.06em" }}>POSITIONS</div>
-        {!portfolio || !portfolio.positions?.length ? (
-          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", padding: "24px 0" }}>No open positions yet.</div>
-        ) : (
-          <div className="md:grid md:grid-cols-2 md:gap-3">
-            {portfolio.positions!.map((pos) => (
-              <button
-                key={pos.ticker}
-                onClick={() => onPositionClick(pos.ticker)}
-                className="mb-2 md:mb-0"
-                style={{
-                  width: "100%", background: "var(--surface)", border: "1px solid var(--line)",
-                  borderRadius: 10, padding: "14px 16px", display: "flex",
-                  alignItems: "center", justifyContent: "space-between",
-                  cursor: "pointer", textAlign: "left",
-                  boxShadow: "var(--card-shadow)",
-                }}
-              >
-                <div>
-                  <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>{pos.ticker}</span>
-                  <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>{pos.shares} shares</span>
-                  <div className="hidden md:block" style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginTop: 3 }}>
-                    avg {fmt(pos.avg_cost)} · now {fmt(pos.current_price)}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="num" style={{ color: pos.pnl >= 0 ? "var(--bull)" : "var(--bear)", fontSize: 14, fontWeight: 700 }}>
-                    {pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)}
-                  </div>
-                  <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginTop: 2 }}>AI log →</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Watchlist strip — curated tickers + DJI anchor */}
+      <WatchlistStrip />
+
+      {/* Tabbed activity panel — Positions / Signals / Recent trades / Insights */}
+      <BottomTabs portfolio={portfolio} onPositionClick={onPositionClick} />
     </div>
   );
 }
