@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
 import { SettingsTab } from "../DashboardClient";
+import { AutonomySection } from "./AutonomySection";
 
 export default async function SettingsPage() {
   const { userId } = await auth();
@@ -21,9 +22,12 @@ export default async function SettingsPage() {
   const philosophy = String(p?.["investment_philosophy"] ?? "balanced") as Parameters<typeof SettingsTab>[0]["initialPhilosophy"];
 
   return (
-    <SettingsTab
-      tier={tier}
-      initialPhilosophy={philosophy}
-    />
+    <div>
+      <AutonomySection />
+      <SettingsTab
+        tier={tier}
+        initialPhilosophy={philosophy}
+      />
+    </div>
   );
 }
