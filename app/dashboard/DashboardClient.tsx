@@ -11,6 +11,7 @@ import { ClaudeConnectorSection } from "./ClaudeConnectorSection";
 import { LlmProviderSection } from "./LlmProviderSection";
 import { WatchlistStrip } from "./portfolio/WatchlistStrip";
 import { BottomTabs } from "./portfolio/BottomTabs";
+import { AutonomyBadge } from "./portfolio/AutonomyBadge";
 
 const API_URL = "/api";
 
@@ -724,6 +725,9 @@ export function PortfolioTab({
           <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>since inception</div>
         </div>
       </div>
+
+      {/* Autonomy posture indicator — shows current 4-cell state, click to edit */}
+      <AutonomyBadge />
 
       {/* AI Mode Strip — Pro/Max only */}
       {(tier === "pro" || tier === "max") && portfolio && (

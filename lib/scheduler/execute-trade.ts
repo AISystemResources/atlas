@@ -97,6 +97,23 @@ export async function executeTrade(input: ExecuteTradeInput): Promise<ExecuteTra
     return { skipped: true, reason: "signal_id missing — refusing to execute" };
   }
 
+  const sb = getServiceClient();
+
+  // Sprint 048 Day 2: 4-cell asymmetric autonomy. Gate by ai_intervenes_open / _close
+  // BEFORE the EBC gate so the user's per-side autonomy preference always wins.
+  const { data: autonomyProfile } = await sb
+    .from("profiles")
+    .select("ai_intervenes_open, ai_intervenes_close")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (action === "BUY" && autonomyProfile?.ai_intervenes_open === false) {
+    return { skipped: true, reason: "ai_intervenes_open=false — user controls entries" };
+  }
+  if (action === "SELL" && autonomyProfile?.ai_intervenes_close === false) {
+    return { skipped: true, reason: "ai_intervenes_close=false — user controls exits" };
+  }
+
   // EBC gate — confidence threshold + notional multiplier depend on green/yellow/red.
   const ebcGate = await getEffectiveGate(userId);
   if (!ebcGate.canExecute) {
@@ -109,8 +126,6 @@ export async function executeTrade(input: ExecuteTradeInput): Promise<ExecuteTra
     };
   }
   const scaledNotional = Math.round(notional * ebcGate.notionalMultiplier * 100) / 100;
-
-  const sb = getServiceClient();
 
   // ── Idempotency check ─────────────────────────────────────────────────
   // The partial unique index on trades.signal_id is the DB-layer guard, but
@@ -223,6 +238,10 @@ export async function executeTrade(input: ExecuteTradeInput): Promise<ExecuteTra
     order_id: alpacaOrderId ?? null,
     executed_at: alpacaStatus === "filled" ? new Date().toISOString() : null,
     realized_pnl: realizedPnl,
+    // Sprint 048 Day 2 — per-trade attribution.
+    // Reached this point means autonomy flags are on for this side, so AI is acting.
+    opened_by: action === "BUY" ? "ai" : null,
+    closed_by: action === "SELL" ? "ai" : null,
   };
 
   const { data: insertedTrade, error: insertError } = await sb
