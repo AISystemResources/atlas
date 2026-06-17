@@ -4,9 +4,47 @@
  * Mirrors backend/agents/synthesis/agent.py exactly.
  */
 
+import { createClient } from "@supabase/supabase-js";
 import type { AtlasState, SynthesisOutput, TechnicalOutput, FundamentalOutput, SentimentOutput, ReviewOutput } from "../state";
 import { SynthesisOutputSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
+
+/**
+ * Fetch yesterday's distillation entry (if any) to inject into the synthesis prompt.
+ * Returns null when no entry exists or query fails. Bounded to keep prompt size sane.
+ */
+async function fetchYesterdayLearning(
+  userId: string,
+  asOfDate: string | null | undefined,
+): Promise<{ summary: string; recommendations: string[] } | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+
+  // "Yesterday" = the trading day BEFORE as_of_date (backtest) or before today (live).
+  const ref = asOfDate ?? new Date().toISOString().slice(0, 10);
+  const refDate = new Date(`${ref}T12:00:00Z`);
+  refDate.setUTCDate(refDate.getUTCDate() - 1);
+  const yesterday = refDate.toISOString().slice(0, 10);
+
+  try {
+    const sb = createClient(url, key, { auth: { persistSession: false } });
+    const { data } = await sb
+      .from("daily_learnings")
+      .select("learnings_summary, recommendations")
+      .eq("user_id", userId)
+      .eq("trading_date", yesterday)
+      .maybeSingle();
+    if (!data) return null;
+    const recs = Array.isArray(data.recommendations) ? data.recommendations.slice(0, 5) : [];
+    return {
+      summary: String(data.learnings_summary ?? "").slice(0, 1000),
+      recommendations: recs.map((r: unknown) => String(r).slice(0, 200)),
+    };
+  } catch {
+    return null;
+  }
+}
 
 export async function synthesisNode(
   state: AtlasState,
@@ -37,7 +75,16 @@ Patterns: ${(review.patterns ?? []).join("; ") || "none"}
 
   const analystCount = review ? "four" : "three";
 
-  const prompt = `You are a synthesis agent aggregating ${analystCount} analyst reports for ${ticker} into a unified trading thesis.
+  // Pull yesterday's distillation entry (if available) for cross-day learning context.
+  const yesterdayLearning = await fetchYesterdayLearning(state.user_id, state.as_of_date);
+  const learningSection = yesterdayLearning
+    ? `\n\nDaily context from yesterday's end-of-day reflection:
+${yesterdayLearning.summary}
+Recommendations carried forward:
+${yesterdayLearning.recommendations.map((r) => `- ${r}`).join("\n")}\n`
+    : "";
+
+  const prompt = `You are a synthesis agent aggregating ${analystCount} analyst reports for ${ticker} into a unified trading thesis.${learningSection}
 
 ${signalSummary}
 

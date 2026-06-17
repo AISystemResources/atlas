@@ -12,6 +12,7 @@ import {
   closeCron,
   onPipelineTriggered,
   intradayCron,
+  dailyDistillationCron,
 } from "@/lib/scheduler";
 
 export const maxDuration = 300;
@@ -39,5 +40,6 @@ export const { GET, POST, PUT } = serve({
     closeCron,
     onPipelineTriggered,
     intradayCron,
+    dailyDistillationCron,
   ],
 });
