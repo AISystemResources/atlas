@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 const TABS = [
   { id: "portfolio", label: "Portfolio", icon: "◈", href: "/dashboard/portfolio" },
   { id: "agents",    label: "Agents",    icon: "◉", href: "/dashboard/agents" },
+  { id: "insights",  label: "Insights",  icon: "✦", href: "/dashboard/insights" },
   { id: "settings",  label: "Settings",  icon: "⊙", href: "/dashboard/settings" },
 ];
 

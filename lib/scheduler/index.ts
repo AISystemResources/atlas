@@ -18,4 +18,6 @@ export { onPipelineTriggered } from "./pipeline-handler"
 
 export { intradayCron } from "./intraday-cron"
 
+export { dailyDistillationCron } from "./daily-distillation-cron"
+
 export type { ScheduleWindow, UserSchedule, PipelineEvent, DispatchResult } from "./types"
