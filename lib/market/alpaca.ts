@@ -6,7 +6,7 @@
  */
 import Alpaca from "@alpacahq/alpaca-trade-api";
 import type { AlpacaCredentials } from "@/lib/broker/credentials";
-import type { Bar, FetchNewsOptions, NewsItem } from "./types";
+import type { Bar, IntradayBar, FetchNewsOptions, NewsItem } from "./types";
 
 function createClient(creds?: AlpacaCredentials): InstanceType<typeof Alpaca> {
   const keyId = creds?.apiKey ?? process.env.ALPACA_API_KEY;
@@ -60,6 +60,50 @@ export async function fetchBars(
     }
   } catch (err) {
     console.error(`fetchBars failed for ${ticker}:`, err);
+    return [];
+  }
+
+  return bars;
+}
+
+export async function fetchIntradayBars(
+  ticker: string,
+  lookbackMinutes: number = 35,
+  creds?: AlpacaCredentials
+): Promise<IntradayBar[]> {
+  const client = createClient(creds);
+  const bars: IntradayBar[] = [];
+
+  const end = new Date();
+  const start = new Date(end.getTime() - lookbackMinutes * 60 * 1000);
+
+  try {
+    const generator = client.getBarsV2(ticker, {
+      start: start.toISOString(),
+      end: end.toISOString(),
+      timeframe: "1Min",
+      feed: "iex",
+    }) as AsyncGenerator<{
+      Timestamp: string;
+      OpenPrice: number;
+      HighPrice: number;
+      LowPrice: number;
+      ClosePrice: number;
+      Volume: number;
+    }>;
+
+    for await (const bar of generator) {
+      bars.push({
+        timestamp: bar.Timestamp,
+        open: bar.OpenPrice,
+        high: bar.HighPrice,
+        low: bar.LowPrice,
+        close: bar.ClosePrice,
+        volume: bar.Volume,
+      });
+    }
+  } catch (err) {
+    console.error(`fetchIntradayBars failed for ${ticker}:`, err);
     return [];
   }
 

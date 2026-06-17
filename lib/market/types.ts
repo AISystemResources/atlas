@@ -41,6 +41,16 @@ export interface AtlasTickerInfo {
   recommendationMean: number | null;
 }
 
+/** OHLCV row with full ISO timestamp — used by intraday bar fetching. */
+export interface IntradayBar {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 /** Options for `fetchNews`. */
 export interface FetchNewsOptions {
   /** ISO date string (YYYY-MM-DD). When provided, only articles before this date are returned. */

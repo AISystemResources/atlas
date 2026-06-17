@@ -16,4 +16,6 @@ export {
 
 export { onPipelineTriggered } from "./pipeline-handler"
 
+export { intradayCron } from "./intraday-cron"
+
 export type { ScheduleWindow, UserSchedule, PipelineEvent, DispatchResult } from "./types"
