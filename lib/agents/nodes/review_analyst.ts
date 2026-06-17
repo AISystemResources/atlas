@@ -61,7 +61,7 @@ export async function reviewAnalystNode(
         consecutive_wins: 0,
         patterns: [reason],
         reasoning: `Insufficient historical data to perform a retrospective review for ${ticker}.`,
-        model: llmConfigFromState(state)?.model ?? "gemini-2.5-flash",
+        model: llmConfigFromState(state)?.model ?? "llama-3.1-8b-instant",
         latency_ms: Date.now() - startMs,
       },
       "review_analyst",
@@ -193,7 +193,7 @@ Return ONLY a plain text summary (no JSON, no markdown).`;
         ? response.content.trim()
         : JSON.stringify(response.content);
 
-    const modelId = llmConfig?.model ?? "gemini-2.5-flash";
+    const modelId = llmConfig?.model ?? "llama-3.1-8b-instant";
 
     const result = validateStateSlice<ReviewOutput>(
       ReviewOutputSchema,

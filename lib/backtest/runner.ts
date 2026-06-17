@@ -136,9 +136,9 @@ export const runBacktest = inngest.createFunction(
   async ({ event, step }: { event: { data: BacktestRequest }; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
     const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig, ebc_mode, circuit_breaker_enabled, history_agent_enabled } = event.data;
 
-    // Default to Gemini when no config supplied
+    // Default to Groq when no config supplied (Sprint 045 — no paid LLM APIs).
     const resolvedLlmConfig = llmConfig ?? {
-      provider: "gemini" as const,
+      provider: "groq" as const,
       model: getModelId("quick"),
     };
 

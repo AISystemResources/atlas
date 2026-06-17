@@ -8,7 +8,6 @@ import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
 import { AgentTab } from "./AgentTab";
 import { ClaudeConnectorSection } from "./ClaudeConnectorSection";
-import { LlmProviderSection } from "./LlmProviderSection";
 import { WatchlistStrip } from "./portfolio/WatchlistStrip";
 import { BottomTabs } from "./portfolio/BottomTabs";
 import { AutonomyBadge } from "./portfolio/AutonomyBadge";
@@ -1774,9 +1773,6 @@ export function SettingsTab({
           <McpUpsellCard />
         )}
       </div>
-
-      {/* LLM Provider — backtest model selector */}
-      <LlmProviderSection />
 
       {/* Philosophy — tappable row */}
       <div>
