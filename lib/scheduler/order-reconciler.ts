@@ -42,12 +42,20 @@ function getServiceClient() {
   return createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 }
 
+interface OpenBracketRow {
+  user_id: string;
+  ticker: string;
+  take_profit_order_id: string | null;
+  stop_loss_order_id: string | null;
+}
+
 export async function reconcilePendingTrades(): Promise<ReconcilerResult> {
   const result: ReconcilerResult = { checked: 0, updated: 0, skipped: 0, errors: [] };
 
   const sb = getServiceClient();
   const cutoff = new Date(Date.now() - PENDING_AGE_SECONDS * 1000).toISOString();
 
+  // Query 1: pending entries (the historical reconciler path).
   const { data: pending, error } = await sb
     .from("trades")
     .select("id, user_id, ticker, action, order_id, created_at")
@@ -61,37 +69,56 @@ export async function reconcilePendingTrades(): Promise<ReconcilerResult> {
     result.errors.push(`pending query: ${error.message}`);
     return result;
   }
-  if (!pending || pending.length === 0) return result;
 
-  // Group by user — each user's Alpaca creds are different.
-  const byUser = new Map<string, PendingTradeRow[]>();
-  for (const row of pending as PendingTradeRow[]) {
-    const list = byUser.get(row.user_id) ?? [];
-    list.push(row);
-    byUser.set(row.user_id, list);
+  // Query 2: open paired-bracket exits (Sprint 052). Filled entries with TP/SL
+  // orders that haven't been reconciled yet — we poll them every minute too.
+  const { data: openBrackets } = await sb
+    .from("trades")
+    .select("user_id, ticker, take_profit_order_id, stop_loss_order_id")
+    .eq("strategy", "scalper")
+    .eq("action", "BUY")
+    .eq("status", "filled")
+    .is("closed_by", null)
+    .or("take_profit_order_id.not.is.null,stop_loss_order_id.not.is.null")
+    .limit(MAX_ROWS_PER_RUN);
+
+  const pendingRows = (pending ?? []) as PendingTradeRow[];
+  const bracketRows = (openBrackets ?? []) as OpenBracketRow[];
+
+  if (pendingRows.length === 0 && bracketRows.length === 0) return result;
+
+  // Collect every (userId → orderIds[]) we need to poll, dedup across queries.
+  const ordersByUser = new Map<string, Set<string>>();
+  function add(userId: string, orderId: string | null) {
+    if (!orderId) return;
+    const set = ordersByUser.get(userId) ?? new Set<string>();
+    set.add(orderId);
+    ordersByUser.set(userId, set);
+  }
+  for (const row of pendingRows) add(row.user_id, row.order_id);
+  for (const row of bracketRows) {
+    add(row.user_id, row.take_profit_order_id);
+    add(row.user_id, row.stop_loss_order_id);
   }
 
-  for (const [userId, rows] of byUser.entries()) {
+  for (const [userId, orderSet] of ordersByUser.entries()) {
     let creds: { apiKey: string; secretKey: string; paper: boolean };
     try {
       creds = await getBrokerCredentials(userId);
     } catch (err) {
-      // No credentials for this user — skip silently, the orders will stay pending.
       result.errors.push(
         `creds ${userId}: ${err instanceof Error ? err.message : String(err)}`,
       );
-      result.skipped += rows.length;
+      result.skipped += orderSet.size;
       continue;
     }
 
     const broker = new AlpacaAdapter(creds.apiKey, creds.secretKey, creds.paper);
 
-    for (const row of rows) {
+    for (const orderId of orderSet) {
       result.checked++;
       try {
-        const order = await broker.getOrder(row.order_id);
-
-        // Map our internal Order status to the reconciler vocabulary
+        const order = await broker.getOrder(orderId);
         const status = order.status === "open" ? "pending" : order.status;
 
         const recRes = await reconcileOrderUpdate({
@@ -111,7 +138,7 @@ export async function reconcilePendingTrades(): Promise<ReconcilerResult> {
         }
       } catch (err) {
         result.errors.push(
-          `getOrder ${row.order_id}: ${err instanceof Error ? err.message : String(err)}`,
+          `getOrder ${orderId}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }

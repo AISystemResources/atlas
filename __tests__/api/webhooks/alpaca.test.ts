@@ -18,6 +18,7 @@ function makeChainable(finalResult: unknown): any {
   const chain: any = {};
   chain.select = jest.fn().mockReturnValue(chain);
   chain.eq = jest.fn().mockReturnValue(chain);
+  chain.or = jest.fn().mockReturnValue(chain);
   chain.order = jest.fn().mockReturnValue(chain);
   chain.limit = jest.fn().mockReturnValue(chain);
   chain.maybeSingle = jest.fn().mockResolvedValue(finalResult);
