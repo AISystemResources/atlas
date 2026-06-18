@@ -29,10 +29,11 @@ const CORS_HEADERS = {
   "Cache-Control": "no-store",
 };
 
-// Tokens minted via the OAuth flow expire after 90 days. Long enough to feel
-// stable to a connected client, short enough to bound the blast radius of a
-// leak. Users can revoke earlier in Settings → Connected apps.
-const PAT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+// Tokens minted via the OAuth flow expire after 30 days. Short enough to bound
+// the blast radius of a leak now that the Settings UI no longer exposes a
+// revoke control (Sprint 055) — users re-authorize from their MCP client at
+// expiry instead. Existing tokens keep whatever TTL was in effect when issued.
+const PAT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function tokenError(code: string, description: string, status: number = 400) {
   return NextResponse.json(
