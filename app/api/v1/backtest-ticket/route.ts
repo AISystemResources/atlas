@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { getUserFromRequest } from "@/lib/auth/context";
 import { backtestTicketLogic } from "@/lib/backtest-ticket/run";
+import { getServiceClient } from "@/lib/supabase-server";
 
 const BodySchema = z.object({
   logic_name: z.string().min(1),
@@ -70,4 +71,32 @@ export async function POST(req: Request): Promise<Response> {
     console.error("[backtest-ticket] failed:", msg);
     return Response.json({ error: msg }, { status: 500 });
   }
+}
+
+export async function GET(req: Request): Promise<Response> {
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(req.url);
+  const limit = Math.min(
+    Math.max(parseInt(url.searchParams.get("limit") ?? "50", 10), 1),
+    200,
+  );
+
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from("ticket_backtests")
+    .select(
+      "id, ticket_logic_id, ticker, timeframe, start_date, end_date, total_trades, winning_trades, losing_trades, win_rate, total_pnl_dollars, avg_pnl_dollars, max_drawdown_dollars, notional_per_trade, total_bars, created_at, ticket_logics(name, version)",
+    )
+    .eq("user_id", user.userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+  return Response.json({ backtests: data ?? [] });
 }
