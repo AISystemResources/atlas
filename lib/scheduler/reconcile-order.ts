@@ -14,6 +14,8 @@
  * are attributed to the AI's committed bracket, not to a human action.
  */
 
+import { AlpacaAdapter } from "@/lib/broker";
+import { getBrokerCredentials } from "@/lib/broker/credentials";
 import { getServiceClient } from "@/lib/supabase-server";
 
 export interface ReconcilableOrderState {
@@ -41,13 +43,29 @@ export async function reconcileOrderUpdate(
 ): Promise<ReconcileResult> {
   const sb = getServiceClient();
 
+  // Existing-row lookup checks both the entry order_id AND the paired exit columns.
+  // For a Sprint 052 crypto bracket, a SELL fill on a TP or SL order matches its
+  // entry trade row via take_profit_order_id / stop_loss_order_id.
   const { data: existing } = await sb
     .from("trades")
     .select(
-      "id, user_id, ticker, action, price, status, realized_pnl, opened_by, closed_by",
+      "id, user_id, ticker, action, price, status, realized_pnl, opened_by, closed_by, take_profit_order_id, stop_loss_order_id, order_id",
     )
-    .eq("order_id", state.orderId)
+    .or(
+      `order_id.eq.${state.orderId},take_profit_order_id.eq.${state.orderId},stop_loss_order_id.eq.${state.orderId}`,
+    )
     .maybeSingle();
+
+  // Detect whether this update is for a paired-exit leg of a crypto bracket.
+  // pairedSurvivor is the order ID we need to cancel when this leg fills.
+  let pairedSurvivor: string | null = null;
+  if (existing && state.action === "SELL" && state.status === "filled") {
+    if (existing.take_profit_order_id === state.orderId && existing.stop_loss_order_id) {
+      pairedSurvivor = existing.stop_loss_order_id;
+    } else if (existing.stop_loss_order_id === state.orderId && existing.take_profit_order_id) {
+      pairedSurvivor = existing.take_profit_order_id;
+    }
+  }
 
   const update: Record<string, unknown> = { status: state.status };
   if (state.filledQty != null && state.filledQty > 0) update.shares = state.filledQty;
@@ -88,11 +106,32 @@ export async function reconcileOrderUpdate(
     // Skip the round-trip if the row is already in the target state.
     if (
       existing.status === state.status &&
-      (state.filledQty == null || Number(existing.price) === state.fillPrice)
+      (state.filledQty == null || Number(existing.price) === state.fillPrice) &&
+      pairedSurvivor == null
     ) {
       return { skipped_reason: "already_in_target_state" };
     }
     await sb.from("trades").update(update).eq("id", existing.id);
+
+    // Paired-orders OCO cleanup (Sprint 052): when a TP or SL fills on a crypto
+    // bracket, cancel the surviving order so it doesn't fire later.
+    if (pairedSurvivor && existing.user_id) {
+      try {
+        const creds = await getBrokerCredentials(existing.user_id);
+        const broker = new AlpacaAdapter(creds.apiKey, creds.secretKey, creds.paper);
+        await broker.cancelOrder(pairedSurvivor);
+        console.info(
+          `[reconcile] Cancelled paired survivor ${pairedSurvivor} for trade ${existing.id}`,
+        );
+      } catch (err) {
+        // Non-fatal — the survivor may already be cancelled or filled.
+        console.error(
+          `[reconcile] Failed to cancel paired survivor ${pairedSurvivor}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
+
     return { updated_row: existing.id };
   }
 

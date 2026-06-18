@@ -37,6 +37,8 @@ function makeChainable(finalResult: unknown): any {
   chain.select = jest.fn().mockReturnValue(chain);
   chain.eq = jest.fn().mockReturnValue(chain);
   chain.not = jest.fn().mockReturnValue(chain);
+  chain.is = jest.fn().mockReturnValue(chain);
+  chain.or = jest.fn().mockReturnValue(chain);
   chain.lt = jest.fn().mockReturnValue(chain);
   chain.order = jest.fn().mockReturnValue(chain);
   chain.limit = jest.fn().mockResolvedValue(finalResult);
@@ -52,7 +54,10 @@ beforeEach(() => {
 
 describe("reconcilePendingTrades", () => {
   it("returns zero counts when no pending trades exist", async () => {
-    mockFrom.mockReturnValueOnce(makeChainable({ data: [], error: null }));
+    // Two queries: pending entries + open brackets — both return empty.
+    mockFrom
+      .mockReturnValueOnce(makeChainable({ data: [], error: null }))
+      .mockReturnValueOnce(makeChainable({ data: [], error: null }));
     const result = await reconcilePendingTrades();
     expect(result.checked).toBe(0);
     expect(result.updated).toBe(0);
@@ -95,9 +100,10 @@ describe("reconcilePendingTrades", () => {
     const updateChain = makeChainable({ data: null, error: null });
 
     mockFrom
-      .mockReturnValueOnce(pendingChain)   // pending list
-      .mockReturnValueOnce(existingChain)  // SELECT existing
-      .mockReturnValueOnce(updateChain);   // UPDATE
+      .mockReturnValueOnce(pendingChain)                                            // pending list
+      .mockReturnValueOnce(makeChainable({ data: [], error: null }))                // open brackets (empty)
+      .mockReturnValueOnce(existingChain)                                           // SELECT existing
+      .mockReturnValueOnce(updateChain);                                            // UPDATE
 
     // Alpaca returns a filled order
     mockGetOrder.mockResolvedValueOnce({
@@ -154,7 +160,10 @@ describe("reconcilePendingTrades", () => {
       error: null,
     });
 
-    mockFrom.mockReturnValueOnce(pendingChain).mockReturnValueOnce(existingChain);
+    mockFrom
+      .mockReturnValueOnce(pendingChain)
+      .mockReturnValueOnce(makeChainable({ data: [], error: null }))  // open brackets (empty)
+      .mockReturnValueOnce(existingChain);
 
     mockGetOrder.mockResolvedValueOnce({
       orderId: "order-still-open",

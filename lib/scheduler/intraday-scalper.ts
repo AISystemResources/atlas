@@ -332,40 +332,106 @@ async function runUserScalper(
       Math.round(params.notional_dollars * ebcGate.notionalMultiplier * 100) / 100;
 
     if (isCrypto) {
-      // Crypto: simple market BUY with GTC. Exits managed by per-minute polling above.
+      // Crypto: paired-orders simulated bracket (Sprint 052). Three orders:
+      //   1. Market BUY (entry)
+      //   2. Limit SELL at take_profit_price
+      //   3. Stop SELL at stop_loss_price
+      // The order-reconciler cron cancels the survivor when one fills.
+      // Polling-exit logic above is the backup if any leg fails to submit.
+      const sbHigh = signalBar.high;
+      const sbLow = signalBar.low;
+      const entryPrice = Math.round(sbHigh * (1 + params.entry_buffer_pct / 100) * 10000) / 10000;
+      const stopLossPrice = Math.round(sbLow * (1 - params.stop_buffer_pct / 100) * 10000) / 10000;
+      const takeProfitPrice = Math.round((entryPrice + atr * params.target_atr_multiple) * 10000) / 10000;
+
+      // Compute fractional qty from notional. Crypto allows fractional shares.
+      const cryptoQty = Math.round((scaledNotional / lastClose) * 100000) / 100000;
+      if (cryptoQty <= 0) {
+        result.skipped++;
+        continue;
+      }
+
+      let buyOrderId: string | null = null;
+      let tpOrderId: string | null = null;
+      let slOrderId: string | null = null;
+      let buyStatus = "pending";
+
       try {
-        const order = await broker.submitOrder({
+        const buy = await broker.submitOrder({
           ticker,
           action: "BUY",
           notional: scaledNotional,
           timeInForce: "gtc",
         });
-
-        await sb.from("trades").insert({
-          portfolio_id: portfolioId,
-          user_id: userId,
-          ticker,
-          action: "BUY",
-          shares: 0,
-          price: lastClose,
-          status: order.status === "filled" ? "filled" : "pending",
-          boundary_mode: "autonomous",
-          signal_id: null,
-          order_id: order.orderId,
-          executed_at: order.status === "filled" ? new Date().toISOString() : null,
-          strategy: "scalper",
-          opened_by: "ai",
-        });
-
-        result.entries++;
-        console.info(
-          `[scalper] CRYPTO-BUY ${ticker} notional≈$${scaledNotional} (rsi21=${s1.rsi21.toFixed(1)} atr=${atr.toFixed(4)})`,
-        );
+        buyOrderId = buy.orderId;
+        buyStatus = buy.status;
       } catch (err) {
         result.errors.push(
           `crypto-buy ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
         );
+        continue;
       }
+
+      // Submit TP + SL legs. We use the computed qty (notional ÷ lastClose) rather
+      // than waiting for the BUY fill — Alpaca crypto fills are near-instant, so
+      // by the time these SELL legs reach the matching engine the BUY should be
+      // settled. If a leg fails (e.g., "insufficient position" race), we log and
+      // continue with whichever legs succeeded. Polling-exit above is the safety net.
+      try {
+        const tp = await broker.submitLimitOrder({
+          ticker,
+          action: "SELL",
+          qty: cryptoQty,
+          limitPrice: takeProfitPrice,
+          timeInForce: "gtc",
+        });
+        tpOrderId = tp.orderId;
+      } catch (err) {
+        result.errors.push(
+          `crypto-tp ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      try {
+        const sl = await broker.submitStopOrder({
+          ticker,
+          action: "SELL",
+          qty: cryptoQty,
+          stopPrice: stopLossPrice,
+          timeInForce: "gtc",
+        });
+        slOrderId = sl.orderId;
+      } catch (err) {
+        result.errors.push(
+          `crypto-sl ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      await sb.from("trades").insert({
+        portfolio_id: portfolioId,
+        user_id: userId,
+        ticker,
+        action: "BUY",
+        shares: cryptoQty,
+        price: lastClose,
+        status: buyStatus === "filled" ? "filled" : "pending",
+        boundary_mode: "autonomous",
+        signal_id: null,
+        order_id: buyOrderId,
+        executed_at: buyStatus === "filled" ? new Date().toISOString() : null,
+        strategy: "scalper",
+        opened_by: "ai",
+        take_profit_order_id: tpOrderId,
+        stop_loss_order_id: slOrderId,
+      });
+
+      result.entries++;
+      console.info(
+        `[scalper] CRYPTO-BUY ${ticker} qty=${cryptoQty} entry≈${entryPrice} ` +
+          `tp=${takeProfitPrice}${tpOrderId ? "" : " (TP FAILED)"} ` +
+          `sl=${stopLossPrice}${slOrderId ? "" : " (SL FAILED)"} ` +
+          `(rsi21=${s1.rsi21.toFixed(1)} atr=${atr.toFixed(4)})`,
+      );
       continue;
     }
 

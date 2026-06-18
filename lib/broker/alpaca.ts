@@ -100,6 +100,91 @@ export class AlpacaAdapter implements BrokerAdapter {
   }
 
   /**
+   * Place a limit order with explicit qty. Used by the crypto scalper to submit
+   * the take-profit leg of a paired-orders bracket (Alpaca crypto doesn't
+   * support order_class="bracket" so we submit the legs independently).
+   */
+  async submitLimitOrder(input: {
+    ticker: string;
+    action: "BUY" | "SELL";
+    qty: number;
+    limitPrice: number;
+    timeInForce?: "day" | "gtc";
+  }): Promise<Order> {
+    if (input.qty <= 0) {
+      throw new BrokerError(
+        `submitLimitOrder requires qty > 0 (got ${input.qty})`,
+      );
+    }
+    if (input.limitPrice <= 0) {
+      throw new BrokerError(
+        `submitLimitOrder requires positive limit_price (got ${input.limitPrice})`,
+      );
+    }
+    try {
+      const symbol = input.ticker.toUpperCase();
+      const tif = input.timeInForce ?? (symbol.includes("/") ? "gtc" : "day");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await this.client.createOrder({
+        symbol,
+        qty: String(input.qty),
+        side: input.action.toLowerCase(),
+        type: "limit",
+        time_in_force: tif,
+        limit_price: String(round2(input.limitPrice)),
+      });
+      return normaliseOrder(raw);
+    } catch (err) {
+      throw new BrokerError(
+        `submitLimitOrder failed for ${input.ticker}: ${errorMessage(err)}`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * Place a stop order — market-on-trigger when price crosses stop_price.
+   * Used by the crypto scalper for the stop-loss leg of a paired-orders bracket.
+   */
+  async submitStopOrder(input: {
+    ticker: string;
+    action: "BUY" | "SELL";
+    qty: number;
+    stopPrice: number;
+    timeInForce?: "day" | "gtc";
+  }): Promise<Order> {
+    if (input.qty <= 0) {
+      throw new BrokerError(
+        `submitStopOrder requires qty > 0 (got ${input.qty})`,
+      );
+    }
+    if (input.stopPrice <= 0) {
+      throw new BrokerError(
+        `submitStopOrder requires positive stop_price (got ${input.stopPrice})`,
+      );
+    }
+    try {
+      const symbol = input.ticker.toUpperCase();
+      const tif = input.timeInForce ?? (symbol.includes("/") ? "gtc" : "day");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await this.client.createOrder({
+        symbol,
+        qty: String(input.qty),
+        side: input.action.toLowerCase(),
+        type: "stop",
+        time_in_force: tif,
+        stop_price: String(round2(input.stopPrice)),
+      });
+      return normaliseOrder(raw);
+    } catch (err) {
+      throw new BrokerError(
+        `submitStopOrder failed for ${input.ticker}: ${errorMessage(err)}`,
+        err,
+      );
+    }
+  }
+
+  /**
    * Place a bracket order — entry + take-profit + stop-loss atomic submission.
    *
    * Alpaca semantics:
