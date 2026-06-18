@@ -6,10 +6,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
-import { BacktestDetailClient, type BacktestDetail, type Trade } from "./BacktestDetailClient";
+import { BacktestDetailClient, type BacktestDetail, type Trade, type ExistingInsight } from "./BacktestDetailClient";
 
 interface BacktestRowRaw {
   id: string;
+  ticket_logic_id: string;
   user_id: string;
   ticker: string;
   timeframe: string;
@@ -42,7 +43,7 @@ export default async function BacktestDetailPage({
   const { data: row } = await sb
     .from("ticket_backtests")
     .select(
-      "id, user_id, ticker, timeframe, start_date, end_date, total_trades, winning_trades, losing_trades, win_rate, total_pnl_dollars, avg_pnl_dollars, max_drawdown_dollars, notional_per_trade, total_bars, created_at, ticket_logics(name, version, description)",
+      "id, ticket_logic_id, user_id, ticker, timeframe, start_date, end_date, total_trades, winning_trades, losing_trades, win_rate, total_pnl_dollars, avg_pnl_dollars, max_drawdown_dollars, notional_per_trade, total_bars, created_at, ticket_logics(name, version, description)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -80,7 +81,21 @@ export default async function BacktestDetailPage({
     logic_name: backtest.ticket_logics?.name ?? null,
     logic_version: backtest.ticket_logics?.version ?? null,
     logic_description: backtest.ticket_logics?.description ?? null,
+    ticket_logic_id: backtest.ticket_logic_id ?? null,
   };
 
-  return <BacktestDetailClient detail={detail} trades={trades} />;
+  const { data: insightRow } = await sb
+    .from("ticket_backtest_insights")
+    .select("*")
+    .eq("backtest_id", id)
+    .maybeSingle();
+  const insight = (insightRow ?? null) as ExistingInsight | null;
+
+  return (
+    <BacktestDetailClient
+      detail={detail}
+      trades={trades}
+      initialInsight={insight}
+    />
+  );
 }

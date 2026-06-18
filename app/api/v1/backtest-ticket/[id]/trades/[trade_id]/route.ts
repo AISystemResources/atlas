@@ -43,5 +43,11 @@ export async function GET(
   if (trErr) return Response.json({ error: trErr.message }, { status: 500 });
   if (!trade) return Response.json({ error: "trade not found" }, { status: 404 });
 
-  return Response.json({ backtest, trade });
+  const { data: review } = await sb
+    .from("ticket_backtest_trade_reviews")
+    .select("*")
+    .eq("trade_id", trade_id)
+    .maybeSingle();
+
+  return Response.json({ backtest, trade, review: review ?? null });
 }
