@@ -24,13 +24,16 @@ import { createClient } from "@supabase/supabase-js";
 import { AlpacaAdapter } from "@/lib/broker";
 import { getBrokerCredentials } from "@/lib/broker/credentials";
 import { fetchIntradayBars, isCryptoSymbol } from "@/lib/market/alpaca";
-import { computeIndicators, detectS1Signal } from "@/lib/indicators";
+import { computeIndicators } from "@/lib/indicators";
 import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
-import { buildS1LongTicket } from "@/lib/signals/types";
+import {
+  detectStrategySignal,
+  loadActiveStrategy,
+  type ActiveStrategy,
+} from "./ticket-adapter";
 
-const SCALP_NOTIONAL = 200;
-const COOLDOWN_MS    = 10 * 60 * 1000;
-const LOOKBACK_H     = 8;
+const COOLDOWN_MS = 10 * 60 * 1000;
+const LOOKBACK_H  = 8;
 
 // Crypto polling-exit thresholds (Alpaca crypto has no bracket orders)
 const CRYPTO_RSI_EXIT  = 55;
@@ -77,57 +80,11 @@ function isWeekday(): boolean {
   return day !== 0 && day !== 6;
 }
 
-// ── Signal parameters lookup ──────────────────────────────────────────────────
-
-interface ScalperParams {
-  stop_buffer_pct: number;
-  target_atr_multiple: number;
-  entry_buffer_pct: number;
-  notional_dollars: number;
-}
-
-const SCALPER_DEFAULTS: ScalperParams = {
-  stop_buffer_pct: 0.5,
-  target_atr_multiple: 0.5,
-  entry_buffer_pct: 0.05,
-  notional_dollars: SCALP_NOTIONAL,
-};
-
-async function loadScalperParams(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sb: any,
-  userId: string,
-  ticker: string,
-): Promise<ScalperParams> {
-  const { data } = await sb
-    .from("signal_parameters")
-    .select("ticker, parameter_key, current_value")
-    .eq("user_id", userId)
-    .eq("strategy", "scalper")
-    .or(`ticker.is.null,ticker.eq.${ticker}`);
-
-  const rows = (data ?? []) as Array<{
-    ticker: string | null;
-    parameter_key: string;
-    current_value: number;
-  }>;
-
-  const merged: Record<string, number> = {};
-  for (const r of rows.filter((r) => r.ticker === null)) {
-    merged[r.parameter_key] = Number(r.current_value);
-  }
-  for (const r of rows.filter((r) => r.ticker === ticker)) {
-    merged[r.parameter_key] = Number(r.current_value);
-  }
-
-  return {
-    stop_buffer_pct: merged.stop_buffer_pct ?? SCALPER_DEFAULTS.stop_buffer_pct,
-    target_atr_multiple:
-      merged.target_atr_multiple ?? SCALPER_DEFAULTS.target_atr_multiple,
-    entry_buffer_pct: merged.entry_buffer_pct ?? SCALPER_DEFAULTS.entry_buffer_pct,
-    notional_dollars: merged.notional_dollars ?? SCALPER_DEFAULTS.notional_dollars,
-  };
-}
+// ── Removed: per-user signal_parameters override layer.
+// Sprint 054 made the ticket_logics row the single source of truth for
+// entry-buffer, stop-buffer, target-ATR, and notional. Per-user overrides
+// can be reintroduced as a parameter-resolution layer if needed in a future
+// sprint, but they are intentionally NOT part of the current contract.
 
 // ── Per-user scalper run ──────────────────────────────────────────────────────
 
@@ -135,6 +92,7 @@ async function runUserScalper(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any,
   userId: string,
+  strategy: ActiveStrategy,
 ): Promise<ScalperResult> {
   const result: ScalperResult = {
     user_id: userId,
@@ -323,13 +281,32 @@ async function runUserScalper(
     // Entry path
     if (buyAt != null && Date.now() - buyAt < COOLDOWN_MS) continue;
 
-    const s1 = detectS1Signal(bars);
-    if (!s1) continue;
+    // Sprint 054: the signal is now produced by the ticket_logics evaluator,
+    // not the hardcoded detectS1Signal. The strategy was loaded once at the
+    // top of runIntradayScalper and threaded through. There is intentionally
+    // NO hardcoded fallback — if the strategy can't be loaded, the scalper
+    // run aborts at the entry-point so production execution always follows
+    // the human+AI-ratified ticket_logics record.
+    const signal = detectStrategySignal(strategy, bars);
+    if (!signal) continue;
 
-    const params = await loadScalperParams(sb, userId, ticker);
-    const signalBar = bars[bars.length - 1];
+    // Long-only at this layer for now; short-side mirror is a separate sprint.
+    // Surface as an error rather than silently skipping — if someone promotes a
+    // short ticket_logic, they should see why no orders are firing.
+    if (signal.direction !== "long") {
+      result.errors.push(
+        `${ticker}: direction='${signal.direction}' not yet supported by live scalper (${signal.logic_name} v${signal.logic_version}); skipping`,
+      );
+      result.skipped++;
+      continue;
+    }
+
     const scaledNotional =
-      Math.round(params.notional_dollars * ebcGate.notionalMultiplier * 100) / 100;
+      Math.round(signal.notional_dollars * ebcGate.notionalMultiplier * 100) / 100;
+    const entryPrice = signal.entry_price;
+    const stopLossPrice = signal.stop_loss;
+    const takeProfitPrice = signal.take_profit;
+    const rsiForLog = signal.indicator_snapshot.rsi_21 ?? 0;
 
     if (isCrypto) {
       // Crypto: paired-orders simulated bracket (Sprint 052). Three orders:
@@ -338,11 +315,6 @@ async function runUserScalper(
       //   3. Stop SELL at stop_loss_price
       // The order-reconciler cron cancels the survivor when one fills.
       // Polling-exit logic above is the backup if any leg fails to submit.
-      const sbHigh = signalBar.high;
-      const sbLow = signalBar.low;
-      const entryPrice = Math.round(sbHigh * (1 + params.entry_buffer_pct / 100) * 10000) / 10000;
-      const stopLossPrice = Math.round(sbLow * (1 - params.stop_buffer_pct / 100) * 10000) / 10000;
-      const takeProfitPrice = Math.round((entryPrice + atr * params.target_atr_multiple) * 10000) / 10000;
 
       // Compute fractional qty from notional. Crypto allows fractional shares.
       const cryptoQty = Math.round((scaledNotional / lastClose) * 100000) / 100000;
@@ -430,35 +402,26 @@ async function runUserScalper(
         `[scalper] CRYPTO-BUY ${ticker} qty=${cryptoQty} entry≈${entryPrice} ` +
           `tp=${takeProfitPrice}${tpOrderId ? "" : " (TP FAILED)"} ` +
           `sl=${stopLossPrice}${slOrderId ? "" : " (SL FAILED)"} ` +
-          `(rsi21=${s1.rsi21.toFixed(1)} atr=${atr.toFixed(4)})`,
+          `(${signal.logic_name} v${signal.logic_version} rsi21=${rsiForLog.toFixed(1)} atr=${atr.toFixed(4)})`,
       );
       continue;
     }
 
     // Equity: bracket order (Sprint 049 path).
-    const ticket = buildS1LongTicket({
-      ticker,
-      signal_bar_high: signalBar.high,
-      signal_bar_low: signalBar.low,
-      atr,
-      notional_dollars: scaledNotional,
-      current_price: lastClose,
-      stop_buffer_pct: params.stop_buffer_pct,
-      target_atr_multiple: params.target_atr_multiple,
-      entry_buffer_pct: params.entry_buffer_pct,
-    });
-    if (!ticket) {
+    // Whole-share qty from the strategy's notional + current price reference.
+    const equityQty = Math.floor(scaledNotional / lastClose);
+    if (equityQty <= 0 || takeProfitPrice <= entryPrice || stopLossPrice >= entryPrice) {
       result.skipped++;
       continue;
     }
 
     try {
       const order = await broker.submitBracketOrder({
-        ticker: ticket.ticker,
-        qty: ticket.qty,
-        take_profit_price: ticket.take_profit,
-        stop_loss_price: ticket.stop_loss,
-        time_in_force: ticket.time_in_force,
+        ticker,
+        qty: equityQty,
+        take_profit_price: takeProfitPrice,
+        stop_loss_price: stopLossPrice,
+        time_in_force: "day",
       });
 
       await sb.from("trades").insert({
@@ -466,8 +429,8 @@ async function runUserScalper(
         user_id: userId,
         ticker,
         action: "BUY",
-        shares: ticket.qty,
-        price: ticket.entry_price,
+        shares: equityQty,
+        price: entryPrice,
         status: order.status === "filled" ? "filled" : "pending",
         boundary_mode: "autonomous",
         signal_id: null,
@@ -479,9 +442,9 @@ async function runUserScalper(
 
       result.entries++;
       console.info(
-        `[scalper] BRACKET-BUY ${ticker} qty=${ticket.qty} entry=${ticket.entry_price} ` +
-          `stop=${ticket.stop_loss} target=${ticket.take_profit} notional≈$${scaledNotional} ` +
-          `(rsi21=${s1.rsi21.toFixed(1)} atr=${atr.toFixed(4)})`,
+        `[scalper] BRACKET-BUY ${ticker} qty=${equityQty} entry=${entryPrice} ` +
+          `stop=${stopLossPrice} target=${takeProfitPrice} notional≈$${scaledNotional} ` +
+          `(${signal.logic_name} v${signal.logic_version} rsi21=${rsiForLog.toFixed(1)} atr=${atr.toFixed(4)})`,
       );
     } catch (err) {
       result.errors.push(
@@ -498,6 +461,18 @@ async function runUserScalper(
 export async function runIntradayScalper(): Promise<ScalperResult[]> {
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 
+  // Sprint 054: load the active ticket_logics row once per cron tick. If it
+  // can't be loaded, the run aborts — there is no hardcoded fallback. The
+  // ticket_logics row is the source of truth for what the scalper trades.
+  const strategy = await loadActiveStrategy("sandy-s1-long");
+  if (!strategy) {
+    console.error(
+      "[scalper] No active ticket_logic for 'sandy-s1-long' — aborting cycle. " +
+        "Set status='active' on a row in public.ticket_logics to resume trading.",
+    );
+    return [];
+  }
+
   const { data: users, error } = await sb
     .from("profiles")
     .select("id")
@@ -511,6 +486,6 @@ export async function runIntradayScalper(): Promise<ScalperResult[]> {
   if (!users || users.length === 0) return [];
 
   return Promise.all(
-    (users as Array<{ id: string }>).map((u) => runUserScalper(sb, u.id)),
+    (users as Array<{ id: string }>).map((u) => runUserScalper(sb, u.id, strategy)),
   );
 }
