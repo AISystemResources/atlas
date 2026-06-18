@@ -7,7 +7,7 @@ import { useAuth } from "@clerk/nextjs";
 import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
 import { AgentTab } from "./AgentTab";
-import { ClaudeConnectorSection } from "./ClaudeConnectorSection";
+import { AtlasMcpConnectorCard } from "./AtlasMcpConnectorCard";
 import { WatchlistStrip } from "./portfolio/WatchlistStrip";
 import { BottomTabs } from "./portfolio/BottomTabs";
 import { AutonomyBadge } from "./portfolio/AutonomyBadge";
@@ -1120,45 +1120,6 @@ function AlpacaConnectionSection({ onConnect }: { onConnect?: () => void }) {
   );
 }
 
-// ─── McpUpsellCard ────────────────────────────────────────────────────────────
-
-function McpUpsellCard() {
-  return (
-    <div style={{
-      background: "var(--elevated)",
-      border: "1px solid var(--line)",
-      borderRadius: 12,
-      padding: "20px 24px",
-      display: "flex",
-      flexDirection: "column",
-      gap: 12,
-    }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>
-        Connect Atlas to Claude
-      </div>
-      <div style={{ fontSize: 12, color: "var(--ghost)", lineHeight: 1.6 }}>
-        Use Claude to query your signals, run backtests, and manage your portfolio via natural language. Available on Pro.
-      </div>
-      <a
-        href="/pricing"
-        style={{
-          display: "inline-block",
-          padding: "8px 16px",
-          borderRadius: 8,
-          background: "var(--tier-pro)",
-          color: "#fff",
-          fontSize: 12,
-          fontWeight: 600,
-          textDecoration: "none",
-          alignSelf: "flex-start",
-        }}
-      >
-        Upgrade to Pro
-      </a>
-    </div>
-  );
-}
-
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
 type PhilosophyMode = "balanced" | "buffett" | "soros" | "lynch";
@@ -1726,21 +1687,9 @@ export function SettingsTab({
         </div>
       )}
 
-      {/* Claude Integration */}
+      {/* MCP connector — Sprint 055: stripped to minimal copy-paste card */}
       <div style={{ marginBottom: 32 }}>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>
-            Claude Integration
-          </div>
-          <div style={{ fontSize: 12, color: "var(--ghost)" }}>
-            Connect Atlas to Claude for natural-language portfolio management.
-          </div>
-        </div>
-        {(tier === "pro" || tier === "max") ? (
-          <ClaudeConnectorSection />
-        ) : (
-          <McpUpsellCard />
-        )}
+        <AtlasMcpConnectorCard />
       </div>
 
       {/* Philosophy — tappable row */}

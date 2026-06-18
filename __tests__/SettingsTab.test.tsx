@@ -31,9 +31,10 @@ jest.mock("../components/UserMenu", () => ({
   UserMenu: () => null,
 }));
 
-// Mock ClaudeConnectorSection to avoid PAT fetch calls interfering with fetch count assertions
-jest.mock("../app/dashboard/ClaudeConnectorSection", () => ({
-  ClaudeConnectorSection: () => null,
+// Sprint 055: ClaudeConnectorSection was replaced by the minimal AtlasMcpConnectorCard.
+// Stub to keep snapshot stability and avoid clipboard API issues in jsdom.
+jest.mock("../app/dashboard/AtlasMcpConnectorCard", () => ({
+  AtlasMcpConnectorCard: () => null,
 }));
 
 // Import SettingsTab (named export from DashboardClient)
@@ -70,7 +71,7 @@ const okResponse = {
 // SettingsTab sub-components fire fetchWithAuth on mount:
 //   1. GET /v1/broker (AlpacaConnectionSection — child fires first)
 //   2. GET /v1/user/settings (boundary mode hydration — SettingsTab's own useEffect)
-// ClaudeConnectorSection is mocked to suppress its /api/v1/pats fetch.
+// AtlasMcpConnectorCard is mocked above to keep render tree stable.
 // Each test queues mocks for both initial calls before interacting.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
