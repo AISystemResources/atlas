@@ -66,7 +66,7 @@ export function WatchlistStrip() {
     loadQuotes();
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") loadQuotes();
-    }, 30_000);
+    }, 60_000);
 
     return () => {
       active = false;

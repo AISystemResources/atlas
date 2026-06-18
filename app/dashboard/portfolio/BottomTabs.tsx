@@ -226,7 +226,7 @@ function PositionsTabContent({
     pullLive();
     const id = setInterval(() => {
       if (document.visibilityState === "visible") pullLive();
-    }, 20_000);
+    }, 60_000);
 
     return () => {
       active = false;

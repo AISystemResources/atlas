@@ -24,11 +24,31 @@ export function PortfolioPageClient({
   const router = useRouter();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
+  // Initial fetch + per-minute refresh so KPI cards (Total Value, Today, Cash,
+  // Total P&L) reflect the live portfolio state. Refresh pauses when the tab is
+  // hidden to avoid burning Alpaca quota on inactive sessions.
   useEffect(() => {
-    fetchWithAuth(`${API_URL}/v1/portfolio`)
-      .then((r) => r?.json())
-      .then((data) => { if (data) setPortfolio(data); })
-      .catch(console.error);
+    let active = true;
+
+    async function pullPortfolio() {
+      try {
+        const res = await fetchWithAuth(`${API_URL}/v1/portfolio`);
+        const data = await res?.json();
+        if (active && data) setPortfolio(data);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    pullPortfolio();
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") pullPortfolio();
+    }, 60_000);
+
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
   }, []);
 
   return (
