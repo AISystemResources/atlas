@@ -50,6 +50,11 @@ export async function POST(req: Request): Promise<Response> {
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
 
   const sb = getServiceClient();
+
+  // Directly-created PATs (this endpoint) intentionally coexist — they're a
+  // developer/script escape hatch with user-chosen names. Only OAuth-issued
+  // tokens enforce single-row-per-(user, client_id) — see app/oauth/token.
+
   const { data, error } = await sb
     .from("user_pats")
     .insert({
