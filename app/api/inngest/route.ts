@@ -13,6 +13,7 @@ import {
   onPipelineTriggered,
   intradayCron,
   dailyDistillationCron,
+  orderReconcilerCron,
 } from "@/lib/scheduler";
 
 export const maxDuration = 300;
@@ -41,5 +42,6 @@ export const { GET, POST, PUT } = serve({
     onPipelineTriggered,
     intradayCron,
     dailyDistillationCron,
+    orderReconcilerCron,
   ],
 });

@@ -185,6 +185,24 @@ export class AlpacaAdapter implements BrokerAdapter {
   }
 
   /**
+   * Fetch a single order by ID. Used by the order reconciler to poll for fill
+   * status — Alpaca's Trading API does not push trade updates to a webhook;
+   * we poll pending orders every minute during market hours.
+   */
+  async getOrder(orderId: string): Promise<Order> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await this.client.getOrder(orderId);
+      return normaliseOrder(raw);
+    } catch (err) {
+      throw new BrokerError(
+        `getOrder failed for ${orderId}: ${errorMessage(err)}`,
+        err,
+      );
+    }
+  }
+
+  /**
    * Cancel an open order by ID.
    */
   async cancelOrder(orderId: string): Promise<void> {
@@ -266,6 +284,15 @@ function normaliseOrder(raw: any): Order {
     status: mapStatus(String(raw.status ?? "")),
     notional: raw.notional != null ? parseFloat(raw.notional) : null,
     qty: raw.qty != null ? parseFloat(raw.qty) : null,
+    filledQty:
+      raw.filled_qty != null && raw.filled_qty !== ""
+        ? parseFloat(raw.filled_qty)
+        : null,
+    filledAvgPrice:
+      raw.filled_avg_price != null && raw.filled_avg_price !== ""
+        ? parseFloat(raw.filled_avg_price)
+        : null,
+    filledAt: raw.filled_at ? String(raw.filled_at) : null,
     createdAt: raw.created_at ? String(raw.created_at) : undefined,
   };
 }

@@ -71,7 +71,7 @@ describe("POST /api/webhooks/alpaca", () => {
 
     const json = await res.json();
     expect(json.ok).toBe(true);
-    expect(json.updated).toBe("trade-1");
+    expect(json.updated_row).toBe("trade-1");
 
     // The update chain's .update should have been called with the fill data
     expect(updateChain.update).toHaveBeenCalled();
