@@ -21,6 +21,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { chartTokens } from "../chart-tokens";
 
 ChartJS.register(
   CategoryScale,
@@ -52,13 +53,14 @@ export interface ComparedBacktest {
   trade_pnls: number[];
 }
 
-// Distinguishable colours, in order picked.
-const SERIES_COLOURS = [
-  "#3b82f6", // blue   = baseline (v1, typically)
-  "#16a34a", // green
-  "#f97316", // orange
-  "#a855f7", // purple
-] as const;
+/**
+ * Distinguishable series palette. Tokens.brand / bull are theme-aware; the
+ * orange and purple are kept as fixed accents (no semantic match in the
+ * Atlas token set) but stay readable in both light + dark themes.
+ */
+function seriesColours(t: ReturnType<typeof chartTokens>): readonly string[] {
+  return [t.brand, t.bull, t.hold, "#8B5CF6"] as const;
+}
 
 function cumulative(pnls: number[]): number[] {
   const out: number[] = [];
@@ -75,14 +77,17 @@ export function CompareClient({
 }: {
   backtests: ComparedBacktest[];
 }) {
+  const tokens = useMemo(() => chartTokens(), []);
+  const palette = useMemo(() => seriesColours(tokens), [tokens]);
+
   const series = useMemo(
     () =>
       backtests.map((b, i) => ({
         label: `${b.logic_name ?? "—"} v${b.logic_version ?? "?"} · ${b.ticker} · ${b.start_date.slice(5)}→${b.end_date.slice(5)}`,
         data: cumulative(b.trade_pnls),
-        colour: SERIES_COLOURS[i % SERIES_COLOURS.length],
+        colour: palette[i % palette.length],
       })),
-    [backtests],
+    [backtests, palette],
   );
 
   // X axis labels: max trade-count across series (1, 2, ... maxN)
@@ -123,10 +128,12 @@ export function CompareClient({
         legend: {
           display: true,
           position: "top" as const,
-          labels: { color: "#9ca3af", font: { size: 11 }, boxWidth: 12 },
+          labels: { color: tokens.dim, font: { size: 11 }, boxWidth: 12 },
         },
         tooltip: {
-          backgroundColor: "rgba(15, 23, 42, 0.92)",
+          backgroundColor: tokens.ink,
+          titleColor: tokens.surface,
+          bodyColor: tokens.surface,
           padding: 8,
           callbacks: {
             label: (ctx: { dataset: { label?: string }; raw: unknown }) =>
@@ -136,26 +143,26 @@ export function CompareClient({
       },
       scales: {
         x: {
-          ticks: { color: "#9ca3af", maxTicksLimit: 12, font: { size: 10 } },
-          grid: { color: "rgba(148, 163, 184, 0.06)" },
+          ticks: { color: tokens.ghost, maxTicksLimit: 12, font: { size: 10 } },
+          grid: { color: tokens.line },
           title: {
             display: true,
             text: "Trade index",
-            color: "#6b7280",
+            color: tokens.dim,
             font: { size: 10 },
           },
         },
         y: {
           ticks: {
-            color: "#9ca3af",
+            color: tokens.ghost,
             font: { size: 10 },
             callback: (v: unknown) => `$${Number(v).toFixed(0)}`,
           },
-          grid: { color: "rgba(148, 163, 184, 0.08)" },
+          grid: { color: tokens.line },
           title: {
             display: true,
             text: "Cumulative PnL ($)",
-            color: "#6b7280",
+            color: tokens.dim,
             font: { size: 10 },
           },
         },
@@ -167,24 +174,24 @@ export function CompareClient({
   const baseline = backtests[0] ?? null;
 
   return (
-    <div className="mx-auto p-6 text-gray-100" style={{ maxWidth: 1100 }}>
+    <div className="mx-auto p-6 text-[var(--ink)]" style={{ maxWidth: 1100 }}>
       <div className="mb-4">
         <Link
           href="/dashboard/backtests"
-          className="text-xs text-gray-500 hover:text-gray-300"
+          className="text-xs text-[var(--ghost)] hover:text-[var(--ink)]"
         >
           ← All backtests
         </Link>
       </div>
 
       <h1 className="text-2xl font-bold mb-1">Backtest comparison</h1>
-      <p className="text-sm text-gray-400 mb-6">
+      <p className="text-sm text-[var(--dim)] mb-6">
         {backtests.length} backtests overlaid. X-axis is trade index — aligned
         across runs regardless of calendar range.
       </p>
 
       {/* Equity overlay */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 mb-8">
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4 mb-8">
         <div style={{ height: 320 }}>
           <Line data={chartData} options={chartOptions} />
         </div>
@@ -195,13 +202,13 @@ export function CompareClient({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-500 border-b border-slate-800">
+            <tr className="text-left text-xs uppercase text-[var(--ghost)] border-b border-[var(--line)]">
               <th className="py-2 pr-2">Metric</th>
               {backtests.map((b, i) => (
                 <th key={b.id} className="py-2 pr-2 text-right">
                   <div
                     className="inline-block w-2 h-2 rounded-full mr-1.5"
-                    style={{ background: SERIES_COLOURS[i % SERIES_COLOURS.length] }}
+                    style={{ background: palette[i % palette.length] }}
                   />
                   {b.logic_name ?? "—"} v{b.logic_version ?? "?"}
                 </th>
@@ -315,7 +322,7 @@ export function CompareClient({
         </table>
       </div>
 
-      <p className="mt-4 text-[11px] text-gray-500 italic">
+      <p className="mt-4 text-[11px] text-[var(--ghost)] italic">
         Out-of-sample is honest only when the date ranges do NOT overlap. Check
         the &ldquo;Range&rdquo; row before drawing conclusions.
       </p>
@@ -341,8 +348,8 @@ function StatRow({
   mono?: boolean;
 }) {
   return (
-    <tr className="border-b border-slate-900">
-      <td className="py-2 pr-2 text-xs text-gray-400">{label}</td>
+    <tr className="border-b border-[var(--line)]">
+      <td className="py-2 pr-2 text-xs text-[var(--dim)]">{label}</td>
       {values.map((v, i) => (
         <td
           key={i}
@@ -356,26 +363,26 @@ function StatRow({
           className={`py-2 pr-2 text-right text-xs font-mono`}
         >
           {delta.map((d, i) => {
-            if (d === null) return <span key={i} className="text-gray-500">—</span>;
+            if (d === null) return <span key={i} className="text-[var(--ghost)]">—</span>;
             const isPositive = d > 0;
             const isNegative = d < 0;
             const tone = deltaColor
               ? deltaColorInverted
                 ? isPositive
-                  ? "text-red-400"
+                  ? "text-[var(--bear)]"
                   : isNegative
-                    ? "text-green-400"
+                    ? "text-[var(--bull)]"
                     : ""
                 : isPositive
-                  ? "text-green-400"
+                  ? "text-[var(--bull)]"
                   : isNegative
-                    ? "text-red-400"
+                    ? "text-[var(--bear)]"
                     : ""
               : "";
             return (
               <span key={i} className={tone}>
                 {deltaFormat(d)}
-                {i < delta.length - 1 && <span className="text-gray-600"> · </span>}
+                {i < delta.length - 1 && <span className="text-[var(--ghost)]"> · </span>}
               </span>
             );
           })}

@@ -18,6 +18,7 @@ import {
   Tooltip,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { chartTokens } from "../chart-tokens";
 
 ChartJS.register(
   CategoryScale,
@@ -97,13 +98,13 @@ export interface Trade {
 const PAGE_SIZE = 50;
 
 function ExitChip({ reason }: { reason: Trade["exit_reason"] }) {
-  if (!reason) return <span className="text-gray-500 text-xs">—</span>;
+  if (!reason) return <span className="text-[var(--ghost)] text-xs">—</span>;
   const styles: Record<Exclude<Trade["exit_reason"], null>, string> = {
-    tp_hit: "bg-green-500/15 text-green-300 ring-green-500/30",
-    sl_hit: "bg-red-500/15 text-red-300 ring-red-500/30",
-    time_stop: "bg-yellow-500/15 text-yellow-300 ring-yellow-500/30",
-    eod: "bg-blue-500/15 text-blue-300 ring-blue-500/30",
-    open_at_end: "bg-slate-500/15 text-slate-300 ring-slate-500/30",
+    tp_hit: "bg-[var(--bull-bg)] text-[var(--bull)] ring-[var(--bull)]/30",
+    sl_hit: "bg-[var(--bear-bg)] text-[var(--bear)] ring-[var(--bear)]/30",
+    time_stop: "bg-[var(--hold-bg)] text-[var(--hold)] ring-[var(--hold)]/30",
+    eod: "bg-[var(--brand)]/10 text-[var(--brand)] ring-[var(--brand)]/30",
+    open_at_end: "bg-[var(--elevated)] text-[var(--dim)] ring-[var(--line)]",
   };
   const labels: Record<Exclude<Trade["exit_reason"], null>, string> = {
     tp_hit: "TP",
@@ -133,10 +134,11 @@ function cumulativePoints(trades: Trade[]): { idx: number; value: number }[] {
 
 function EquityChart({ trades }: { trades: Trade[] }) {
   const points = useMemo(() => cumulativePoints(trades), [trades]);
+  const tokens = useMemo(() => chartTokens(), []);
 
   const positive = points.length > 0 && points[points.length - 1].value >= 0;
-  const lineColor = positive ? "#16a34a" : "#dc2626";
-  const fillColor = positive ? "rgba(22, 163, 74, 0.08)" : "rgba(220, 38, 38, 0.06)";
+  const lineColor = positive ? tokens.bull : tokens.bear;
+  const fillColor = positive ? tokens.bullBg : tokens.bearBg;
 
   const data = useMemo(
     () => ({
@@ -152,13 +154,13 @@ function EquityChart({ trades }: { trades: Trade[] }) {
           pointHitRadius: 12,
           pointHoverRadius: 4,
           pointHoverBackgroundColor: lineColor,
-          pointHoverBorderColor: "#fff",
+          pointHoverBorderColor: tokens.surface,
           pointHoverBorderWidth: 2,
           borderWidth: 2,
         },
       ],
     }),
-    [points, lineColor, fillColor],
+    [points, lineColor, fillColor, tokens.surface],
   );
 
   const options = useMemo(
@@ -168,7 +170,9 @@ function EquityChart({ trades }: { trades: Trade[] }) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(15, 23, 42, 0.92)",
+          backgroundColor: tokens.ink,
+          titleColor: tokens.surface,
+          bodyColor: tokens.surface,
           padding: 8,
           callbacks: {
             label: (ctx: { raw: unknown }) =>
@@ -178,25 +182,25 @@ function EquityChart({ trades }: { trades: Trade[] }) {
       },
       scales: {
         x: {
-          ticks: { color: "#9ca3af", maxTicksLimit: 10, font: { size: 10 } },
-          grid: { color: "rgba(148, 163, 184, 0.08)" },
+          ticks: { color: tokens.ghost, maxTicksLimit: 10, font: { size: 10 } },
+          grid: { color: tokens.line },
         },
         y: {
           ticks: {
-            color: "#9ca3af",
+            color: tokens.ghost,
             font: { size: 10 },
             callback: (v: unknown) => `$${Number(v).toFixed(0)}`,
           },
-          grid: { color: "rgba(148, 163, 184, 0.08)" },
+          grid: { color: tokens.line },
         },
       },
     }),
-    [],
+    [tokens],
   );
 
   if (points.length === 0) {
     return (
-      <div className="text-center text-sm text-gray-500 py-10">
+      <div className="text-center text-sm text-[var(--ghost)] py-10">
         No trades to plot.
       </div>
     );
@@ -303,24 +307,24 @@ export function BacktestDetailClient({
   const pageTrades = trades.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const pnl = detail.total_pnl_dollars ?? 0;
-  const pnlColor = pnl > 0 ? "text-green-400" : pnl < 0 ? "text-red-400" : "text-gray-300";
+  const pnlColor = pnl > 0 ? "text-[var(--bull)]" : pnl < 0 ? "text-[var(--bear)]" : "text-[var(--ink)]";
 
   return (
-    <div className="mx-auto p-6 text-gray-100" style={{ maxWidth: 1100 }}>
+    <div className="mx-auto p-6" style={{ maxWidth: 1100, color: "var(--ink)" }}>
       <div className="mb-4">
-        <Link href="/dashboard/backtests" className="text-xs text-gray-500 hover:text-gray-300">
+        <Link href="/dashboard/backtests" className="text-xs text-[var(--ghost)] hover:text-[var(--ink)]">
           ← All backtests
         </Link>
       </div>
 
       <h1 className="text-2xl font-bold mb-1">
         {detail.ticker}{" "}
-        <span className="text-base font-mono text-gray-400">
+        <span className="text-base font-mono text-[var(--dim)]">
           {detail.logic_name}
           {detail.logic_version ? ` v${detail.logic_version}` : ""}
         </span>
       </h1>
-      <p className="text-sm text-gray-400 mb-6">
+      <p className="text-sm text-[var(--dim)] mb-6">
         {detail.start_date} → {detail.end_date} · {detail.timeframe} ·{" "}
         {detail.total_bars} bars · ${detail.notional_per_trade} / trade
       </p>
@@ -365,12 +369,12 @@ export function BacktestDetailClient({
       </div>
 
       {/* Equity curve */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 mb-8">
-        <h2 className="text-sm font-semibold text-gray-300 mb-3">
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4 mb-8">
+        <h2 className="text-sm font-semibold text-[var(--ink)] mb-3">
           Cumulative PnL across trades
         </h2>
         <EquityChart trades={trades} />
-        <p className="mt-2 text-[11px] text-gray-500">
+        <p className="mt-2 text-[11px] text-[var(--ghost)]">
           Last value: <span className={pnlColor}>${pnl.toFixed(2)}</span>. Trade
           index on x-axis — not real time.
         </p>
@@ -399,14 +403,14 @@ export function BacktestDetailClient({
       {/* Trade table */}
       <h2 className="text-lg font-semibold mb-3">Trades</h2>
       {trades.length === 0 ? (
-        <div className="text-sm text-gray-500 p-6 border border-slate-800 rounded-lg text-center">
+        <div className="text-sm text-[var(--ghost)] p-6 border border-[var(--line)] rounded-lg text-center">
           No trades fired in this backtest.
         </div>
       ) : (
         <>
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase text-gray-500 border-b border-slate-800">
+              <tr className="text-left text-xs uppercase text-[var(--ghost)] border-b border-[var(--line)]">
                 <th className="py-2 pr-2">#</th>
                 <th className="py-2 pr-2">Entry</th>
                 <th className="py-2 pr-2 text-right">Entry $</th>
@@ -426,25 +430,25 @@ export function BacktestDetailClient({
                 return (
                   <tr
                     key={t.id}
-                    className="border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer"
+                    className="border-b border-[var(--line)] hover:bg-[var(--elevated)] cursor-pointer"
                     onClick={() =>
                       router.push(`/dashboard/backtests/${detail.id}/trades/${t.id}`)
                     }
                   >
-                    <td className="py-2 pr-2 text-gray-500">{idx}</td>
-                    <td className="py-2 pr-2 text-xs text-gray-400">
+                    <td className="py-2 pr-2 text-[var(--ghost)]">{idx}</td>
+                    <td className="py-2 pr-2 text-xs text-[var(--dim)]">
                       {fmtTs(t.entry_ts)}
                     </td>
                     <td className="py-2 pr-2 text-right font-mono">
                       {t.entry_price.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-2 text-right font-mono text-green-400/70">
+                    <td className="py-2 pr-2 text-right font-mono text-[var(--bull)]/70">
                       {t.take_profit_price.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-2 text-right font-mono text-red-400/70">
+                    <td className="py-2 pr-2 text-right font-mono text-[var(--bear)]/70">
                       {t.stop_loss_price.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-2 text-xs text-gray-400">
+                    <td className="py-2 pr-2 text-xs text-[var(--dim)]">
                       {fmtTs(t.exit_ts)}
                     </td>
                     <td className="py-2 pr-2 text-right font-mono">
@@ -456,15 +460,15 @@ export function BacktestDetailClient({
                     <td
                       className={`py-2 pr-2 text-right font-mono ${
                         tradePnl > 0
-                          ? "text-green-400"
+                          ? "text-[var(--bull)]"
                           : tradePnl < 0
-                            ? "text-red-400"
+                            ? "text-[var(--bear)]"
                             : ""
                       }`}
                     >
                       {tradePnl.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-2 text-right text-xs text-gray-400">
+                    <td className="py-2 pr-2 text-right text-xs text-[var(--dim)]">
                       {t.pnl_pct != null
                         ? `${(t.pnl_pct * 100).toFixed(2)}%`
                         : "—"}
@@ -478,7 +482,7 @@ export function BacktestDetailClient({
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 text-xs">
-              <span className="text-gray-500">
+              <span className="text-[var(--ghost)]">
                 {page * PAGE_SIZE + 1}–
                 {Math.min((page + 1) * PAGE_SIZE, trades.length)} of {trades.length}
               </span>
@@ -486,17 +490,17 @@ export function BacktestDetailClient({
                 <button
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
-                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-gray-600 rounded"
+                  className="px-3 py-1 bg-[var(--elevated)] border border-[var(--line)] hover:bg-[var(--surface)] disabled:opacity-50 rounded"
                 >
                   Prev
                 </button>
-                <span className="px-2 py-1 text-gray-400">
+                <span className="px-2 py-1 text-[var(--dim)]">
                   {page + 1} / {totalPages}
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={page >= totalPages - 1}
-                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-gray-600 rounded"
+                  className="px-3 py-1 bg-[var(--elevated)] border border-[var(--line)] hover:bg-[var(--surface)] disabled:opacity-50 rounded"
                 >
                   Next
                 </button>
@@ -522,17 +526,17 @@ function SummaryStat({
 }) {
   const toneColor =
     tone === "good"
-      ? "text-green-400"
+      ? "text-[var(--bull)]"
       : tone === "bad"
-        ? "text-red-400"
+        ? "text-[var(--bear)]"
         : tone === "warn"
-          ? "text-yellow-400"
-          : "text-gray-100";
+          ? "text-[var(--hold)]"
+          : "text-[var(--ink)]";
   return (
-    <div className="bg-slate-900/40 border border-slate-800 rounded p-3">
-      <div className="text-[10px] uppercase text-gray-500 mb-1">{label}</div>
+    <div className="bg-[var(--elevated)] border border-[var(--line)] rounded p-3">
+      <div className="text-[10px] uppercase text-[var(--ghost)] mb-1">{label}</div>
       <div className={`text-lg font-mono font-semibold ${toneColor}`}>{value}</div>
-      {sub && <div className="text-[11px] text-gray-500 mt-0.5">{sub}</div>}
+      {sub && <div className="text-[11px] text-[var(--ghost)] mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -556,9 +560,9 @@ function RecommendationChip({
   rec: "promote" | "keep" | "deprecate";
 }) {
   const styles = {
-    promote: "bg-green-500/15 text-green-300 ring-green-500/30",
-    keep: "bg-blue-500/15 text-blue-300 ring-blue-500/30",
-    deprecate: "bg-red-500/15 text-red-300 ring-red-500/30",
+    promote: "bg-[var(--bull-bg)] text-[var(--bull)] ring-[var(--bull)]/30",
+    keep: "bg-[var(--brand)]/10 text-[var(--brand)] ring-[var(--brand)]/30",
+    deprecate: "bg-[var(--bear-bg)] text-[var(--bear)] ring-[var(--bear)]/30",
   } as const;
   return (
     <span
@@ -590,24 +594,24 @@ function AggregateInsightPanel({
 }) {
   if (!insight) {
     return (
-      <div className="bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4 mb-8">
+      <div className="bg-[var(--elevated)] border border-dashed border-[var(--line)] rounded-lg p-4 mb-8">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-gray-300">
+          <h2 className="text-sm font-semibold text-[var(--ink)]">
             Aggregate AI Insight
           </h2>
           <button
             onClick={onRunInsight}
             disabled={reviewing}
-            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+            className="px-3 py-1.5 text-xs bg-[var(--brand)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded font-medium"
           >
             {reviewing ? "Analyzing…" : "Run aggregate review"}
           </button>
         </div>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-[var(--ghost)]">
           Have an LLM analyze all trades, identify winning/losing patterns, and
           propose parameter changes for a new strategy version.
         </p>
-        {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-[11px] text-[var(--bear)]">{error}</p>}
       </div>
     );
   }
@@ -621,10 +625,10 @@ function AggregateInsightPanel({
     canPromote;
 
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 mb-8">
+    <div className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4 mb-8">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-gray-300">
+          <h2 className="text-sm font-semibold text-[var(--ink)]">
             Aggregate AI Insight
           </h2>
           <RecommendationChip rec={insight.recommendation} />
@@ -632,48 +636,48 @@ function AggregateInsightPanel({
         <button
           onClick={onRunInsight}
           disabled={reviewing}
-          className="text-[11px] text-gray-400 hover:text-gray-200 underline disabled:opacity-40"
+          className="text-[11px] text-[var(--dim)] hover:text-[var(--ink)] underline disabled:opacity-40"
         >
           {reviewing ? "Re-running…" : "Re-run"}
         </button>
       </div>
 
       <div className="grid md:grid-cols-2 gap-3 mb-3">
-        <div className="bg-slate-950/40 border border-slate-800 rounded p-3">
-          <div className="text-[10px] uppercase text-green-400/70 mb-1">
+        <div className="bg-[var(--bg)] border border-[var(--line)] rounded p-3">
+          <div className="text-[10px] uppercase text-[var(--bull)]/70 mb-1">
             Winning pattern
           </div>
-          <p className="text-xs text-gray-200">{insight.winning_pattern}</p>
+          <p className="text-xs text-[var(--ink)]">{insight.winning_pattern}</p>
         </div>
-        <div className="bg-slate-950/40 border border-slate-800 rounded p-3">
-          <div className="text-[10px] uppercase text-red-400/70 mb-1">
+        <div className="bg-[var(--bg)] border border-[var(--line)] rounded p-3">
+          <div className="text-[10px] uppercase text-[var(--bear)]/70 mb-1">
             Losing pattern
           </div>
-          <p className="text-xs text-gray-200">{insight.losing_pattern}</p>
+          <p className="text-xs text-[var(--ink)]">{insight.losing_pattern}</p>
         </div>
       </div>
 
-      <p className="text-xs text-gray-300 leading-relaxed mb-3">
+      <p className="text-xs text-[var(--ink)] leading-relaxed mb-3">
         {insight.rationale}
       </p>
 
       {proposedChanges.length > 0 && (
         <div className="mt-3 mb-3">
-          <div className="text-[10px] uppercase text-blue-400 mb-2">
+          <div className="text-[10px] uppercase text-[var(--brand)] mb-2">
             Proposed parameter changes
           </div>
           <div className="space-y-2">
             {proposedChanges.map((c, i) => (
               <div
                 key={i}
-                className="bg-slate-950/50 border border-slate-800 rounded p-2"
+                className="bg-[var(--bg)] border border-[var(--line)] rounded p-2"
               >
-                <div className="text-xs font-mono text-gray-200">
+                <div className="text-xs font-mono text-[var(--ink)]">
                   {c.name}:{" "}
-                  <span className="text-gray-400">{c.current_value}</span> →{" "}
-                  <span className="text-green-400">{c.proposed_value}</span>
+                  <span className="text-[var(--dim)]">{c.current_value}</span> →{" "}
+                  <span className="text-[var(--bull)]">{c.proposed_value}</span>
                 </div>
-                <p className="text-[11px] text-gray-400 mt-0.5">{c.reason}</p>
+                <p className="text-[11px] text-[var(--dim)] mt-0.5">{c.reason}</p>
               </div>
             ))}
           </div>
@@ -681,7 +685,7 @@ function AggregateInsightPanel({
       )}
 
       {isPromoted ? (
-        <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-300">
+        <div className="mt-3 p-2 bg-[var(--bull-bg)] border border-[var(--bull)]/30 rounded text-xs text-[var(--bull)]">
           ✓ Promoted to a new draft version on{" "}
           {insight.promoted_at
             ? new Date(insight.promoted_at).toLocaleString()
@@ -694,15 +698,15 @@ function AggregateInsightPanel({
           <button
             onClick={onPromote}
             disabled={promoting}
-            className="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+            className="px-3 py-1.5 text-xs bg-[var(--bull)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded font-medium"
           >
             {promoting ? "Promoting…" : "Promote to new version"}
           </button>
-          <span className="ml-2 text-[11px] text-gray-500">
+          <span className="ml-2 text-[11px] text-[var(--ghost)]">
             Creates a draft v(N+1) with these changes applied. Won&apos;t affect
             live trading until activated.
           </span>
-          <div className="mt-2 p-2 bg-yellow-500/5 border border-yellow-500/20 rounded text-[11px] text-yellow-300/80">
+          <div className="mt-2 p-2 bg-[var(--hold-bg)] border border-[var(--hold)]/30 rounded text-[11px] text-[var(--hold)]">
             <strong>In-sample bias caveat:</strong> the AI proposed these
             changes after seeing this backtest&apos;s trades. To validate the new
             version honestly, backtest it on a <em>different</em> date range
@@ -710,12 +714,12 @@ function AggregateInsightPanel({
             because the tuning was fit to those exact trades.
           </div>
           {promoteError && (
-            <p className="mt-2 text-[11px] text-red-400">{promoteError}</p>
+            <p className="mt-2 text-[11px] text-[var(--bear)]">{promoteError}</p>
           )}
         </div>
       ) : null}
 
-      <div className="mt-3 text-[10px] text-gray-500">
+      <div className="mt-3 text-[10px] text-[var(--ghost)]">
         {insight.model}
       </div>
     </div>
@@ -814,11 +818,11 @@ function OutOfSamplePanel({
   }
 
   return (
-    <div className="bg-blue-500/5 border border-blue-500/30 rounded-lg p-4 mb-8">
-      <h2 className="text-sm font-semibold text-blue-300 mb-2">
+    <div className="bg-[var(--brand)]/5 border border-[var(--brand)]/30 rounded-lg p-4 mb-8">
+      <h2 className="text-sm font-semibold text-[var(--brand)] mb-2">
         Out-of-sample test for {promotedTo.name} v{promotedTo.version}
       </h2>
-      <p className="text-xs text-gray-300 mb-3">
+      <p className="text-xs text-[var(--ink)] mb-3">
         Run the promoted version on a <strong>different date range</strong> to
         honestly evaluate whether the proposed parameter changes hold up.
         Same-range comparison would be in-sample bias — the AI saw these trades
@@ -827,38 +831,38 @@ function OutOfSamplePanel({
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Ticker</span>
+          <span className="text-[var(--dim)] mb-1">Ticker</span>
           <input
             type="text"
             value={originalDetail.ticker}
             disabled
-            className="bg-slate-950/60 border border-slate-700 rounded px-2 py-1.5 text-sm text-gray-400"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm text-[var(--dim)]"
           />
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Out-of-sample start</span>
+          <span className="text-[var(--dim)] mb-1">Out-of-sample start</span>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
           />
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Out-of-sample end</span>
+          <span className="text-[var(--dim)] mb-1">Out-of-sample end</span>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
           />
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Timeframe</span>
+          <span className="text-[var(--dim)] mb-1">Timeframe</span>
           <select
             value={timeframe}
             onChange={(e) => setTimeframe(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
           >
             <option value="5m">5m</option>
             <option value="15m">15m</option>
@@ -869,7 +873,7 @@ function OutOfSamplePanel({
       </div>
 
       {suggestion.timeframeChanged && (
-        <p className="mt-1 mb-2 text-[11px] text-blue-300/80">
+        <p className="mt-1 mb-2 text-[11px] text-[var(--brand)]/80">
           Auto-bumped timeframe from <code>{originalDetail.timeframe}</code> to{" "}
           <code>{suggestion.timeframe}</code> because the OOS range falls
           outside Yahoo&apos;s ~60-day 5m/15m window.
@@ -880,17 +884,17 @@ function OutOfSamplePanel({
         <button
           onClick={runOos}
           disabled={submitting}
-          className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+          className="px-4 py-1.5 text-sm bg-[var(--brand)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded font-medium"
         >
           {submitting ? "Running & comparing…" : "Run OOS + open comparison"}
         </button>
-        <span className="text-[11px] text-gray-500">
+        <span className="text-[11px] text-[var(--ghost)]">
           Original in-sample range: {originalDetail.start_date} →{" "}
           {originalDetail.end_date}
         </span>
       </div>
 
-      {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-[11px] text-[var(--bear)]">{error}</p>}
     </div>
   );
 }
