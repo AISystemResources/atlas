@@ -12,7 +12,7 @@
  */
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -74,6 +74,24 @@ export interface ParentBacktest {
   logic_version: number | null;
 }
 
+export interface ExistingReview {
+  id: string;
+  model: string;
+  prompt_version: string;
+  skill_or_luck: "skill" | "luck" | "mixed";
+  confidence: number;
+  rationale: string;
+  what_worked: string[];
+  what_didnt: string[];
+  suggested_adjustment: {
+    parameter: string;
+    current_value: number;
+    proposed_value: number;
+    reason: string;
+  } | null;
+  created_at: string;
+}
+
 function fmtTs(ts: string | null): string {
   if (!ts) return "—";
   return new Date(ts).toLocaleString("en-US", {
@@ -97,10 +115,45 @@ function fmtBarTs(ts?: string): string {
 export function TradeInspectorClient({
   backtest,
   trade,
+  initialReview,
 }: {
   backtest: ParentBacktest;
   trade: TradeWithBars;
+  initialReview: ExistingReview | null;
 }) {
+  const [review, setReview] = useState<ExistingReview | null>(initialReview);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  async function runReview() {
+    setReviewing(true);
+    setReviewError(null);
+    try {
+      const res = await fetch(
+        `/api/v1/backtest-ticket/${backtest.id}/trades/${trade.id}/review`,
+        { method: "POST" },
+      );
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setReview({
+        id: body.id,
+        model: body.model,
+        prompt_version: "trade-review-v1",
+        skill_or_luck: body.review.skill_or_luck,
+        confidence: body.review.confidence,
+        rationale: body.review.rationale,
+        what_worked: body.review.what_worked ?? [],
+        what_didnt: body.review.what_didnt ?? [],
+        suggested_adjustment: body.review.suggested_adjustment ?? null,
+        created_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReviewing(false);
+    }
+  }
+
   const bars = trade.bars_around_entry ?? [];
   const pnl = trade.pnl_dollars ?? 0;
   const pnlColor =
@@ -336,22 +389,151 @@ export function TradeInspectorClient({
             )}
           </div>
 
-          {/* AI Review placeholder — 053d wires this */}
-          <div className="bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4">
-            <h3 className="text-xs uppercase text-gray-500 mb-2">AI Review</h3>
-            <p className="text-xs text-gray-500 mb-3">
-              Not yet reviewed. The AI Trade Reviewer (Sprint 053d) will analyze
-              this trade and tag it as skill vs. luck with rule-tweak suggestions.
-            </p>
+          <AIReviewPanel
+            review={review}
+            running={reviewing}
+            error={reviewError}
+            onRun={runReview}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkillChip({ kind }: { kind: "skill" | "luck" | "mixed" }) {
+  const styles = {
+    skill: "bg-green-500/15 text-green-300 ring-green-500/30",
+    luck:  "bg-yellow-500/15 text-yellow-300 ring-yellow-500/30",
+    mixed: "bg-blue-500/15 text-blue-300 ring-blue-500/30",
+  } as const;
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset rounded uppercase ${styles[kind]}`}
+    >
+      {kind}
+    </span>
+  );
+}
+
+function AIReviewPanel({
+  review,
+  running,
+  error,
+  onRun,
+}: {
+  review: ExistingReview | null;
+  running: boolean;
+  error: string | null;
+  onRun: () => void;
+}) {
+  if (review) {
+    return (
+      <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs uppercase text-gray-500">AI Review</h3>
+          <div className="flex items-center gap-2">
+            <SkillChip kind={review.skill_or_luck} />
             <button
-              disabled
-              className="w-full px-3 py-1.5 text-xs bg-slate-800 text-gray-500 rounded cursor-not-allowed"
+              onClick={onRun}
+              disabled={running}
+              className="text-[10px] text-gray-400 hover:text-gray-200 underline disabled:opacity-40"
             >
-              Coming in 053d
+              {running ? "Re-running…" : "Re-run"}
             </button>
           </div>
         </div>
+
+        <div className="mb-3">
+          <div className="text-[10px] text-gray-500 mb-1">
+            Confidence ·{" "}
+            <span className="text-gray-300">
+              {(review.confidence * 100).toFixed(0)}%
+            </span>
+          </div>
+          <div className="h-1 bg-slate-800 rounded overflow-hidden">
+            <div
+              className="h-full bg-blue-500"
+              style={{ width: `${review.confidence * 100}%` }}
+            />
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-300 leading-relaxed mb-3">
+          {review.rationale}
+        </p>
+
+        {review.what_worked.length > 0 && (
+          <div className="mb-2">
+            <div className="text-[10px] uppercase text-green-400/70 mb-1">
+              What worked
+            </div>
+            <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
+              {review.what_worked.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {review.what_didnt.length > 0 && (
+          <div className="mb-3">
+            <div className="text-[10px] uppercase text-red-400/70 mb-1">
+              What didn&apos;t
+            </div>
+            <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
+              {review.what_didnt.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {review.suggested_adjustment && (
+          <div className="mt-3 p-2 bg-slate-950/50 border border-slate-800 rounded">
+            <div className="text-[10px] uppercase text-blue-400 mb-1">
+              Suggested adjustment
+            </div>
+            <div className="text-xs font-mono text-gray-200 mb-1">
+              {review.suggested_adjustment.parameter}:{" "}
+              <span className="text-gray-400">
+                {review.suggested_adjustment.current_value}
+              </span>{" "}
+              →{" "}
+              <span className="text-green-400">
+                {review.suggested_adjustment.proposed_value}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              {review.suggested_adjustment.reason}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-3 text-[10px] text-gray-500">
+          {review.model}
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4">
+      <h3 className="text-xs uppercase text-gray-500 mb-2">AI Review</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Not yet reviewed. Tag this trade as skill vs. luck and get a parameter
+        adjustment suggestion.
+      </p>
+      <button
+        onClick={onRun}
+        disabled={running}
+        className="w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+      >
+        {running ? "Reviewing…" : "Run AI review"}
+      </button>
+      {error && (
+        <p className="mt-2 text-[11px] text-red-400">{error}</p>
+      )}
     </div>
   );
 }

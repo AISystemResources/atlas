@@ -6,7 +6,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
-import { TradeInspectorClient, type TradeWithBars, type ParentBacktest } from "./TradeInspectorClient";
+import { TradeInspectorClient, type TradeWithBars, type ParentBacktest, type ExistingReview } from "./TradeInspectorClient";
 
 interface BacktestRow {
   id: string;
@@ -48,6 +48,14 @@ export default async function TradeInspectorPage({
 
   const trade = tradeRow as unknown as TradeWithBars;
 
+  const { data: reviewRow } = await sb
+    .from("ticket_backtest_trade_reviews")
+    .select("*")
+    .eq("trade_id", trade_id)
+    .maybeSingle();
+
+  const review = (reviewRow ?? null) as ExistingReview | null;
+
   const parent: ParentBacktest = {
     id: backtest.id,
     ticker: backtest.ticker,
@@ -56,5 +64,5 @@ export default async function TradeInspectorPage({
     logic_version: backtest.ticket_logics?.version ?? null,
   };
 
-  return <TradeInspectorClient backtest={parent} trade={trade} />;
+  return <TradeInspectorClient backtest={parent} trade={trade} initialReview={review} />;
 }

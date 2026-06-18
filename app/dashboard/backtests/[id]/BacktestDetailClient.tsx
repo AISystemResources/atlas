@@ -47,6 +47,29 @@ export interface BacktestDetail {
   logic_name: string | null;
   logic_version: number | null;
   logic_description: string | null;
+  ticket_logic_id: string | null;
+}
+
+export interface ExistingInsight {
+  id: string;
+  backtest_id: string;
+  model: string;
+  prompt_version: string;
+  winning_pattern: string;
+  losing_pattern: string;
+  recommendation: "promote" | "keep" | "deprecate";
+  rationale: string;
+  proposed_changes:
+    | Array<{
+        name: string;
+        current_value: number;
+        proposed_value: number;
+        reason: string;
+      }>
+    | null;
+  promoted_to_version_id: string | null;
+  promoted_at: string | null;
+  created_at: string;
 }
 
 export interface Trade {
@@ -189,12 +212,82 @@ function EquityChart({ trades }: { trades: Trade[] }) {
 export function BacktestDetailClient({
   detail,
   trades,
+  initialInsight,
 }: {
   detail: BacktestDetail;
   trades: Trade[];
+  initialInsight: ExistingInsight | null;
 }) {
   const router = useRouter();
   const [page, setPage] = useState(0);
+  const [insight, setInsight] = useState<ExistingInsight | null>(initialInsight);
+  const [reviewing, setReviewing] = useState(false);
+  const [insightError, setInsightError] = useState<string | null>(null);
+  const [promoting, setPromoting] = useState(false);
+  const [promoteError, setPromoteError] = useState<string | null>(null);
+
+  async function runInsight() {
+    setReviewing(true);
+    setInsightError(null);
+    try {
+      const res = await fetch(`/api/v1/backtest-ticket/${detail.id}/insight`, {
+        method: "POST",
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setInsight({
+        id: body.id,
+        backtest_id: detail.id,
+        model: body.model,
+        prompt_version: "backtest-insight-v1",
+        winning_pattern: body.insight.winning_pattern,
+        losing_pattern: body.insight.losing_pattern,
+        recommendation: body.insight.recommendation,
+        rationale: body.insight.rationale,
+        proposed_changes: body.insight.proposed_changes ?? [],
+        promoted_to_version_id: null,
+        promoted_at: null,
+        created_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      setInsightError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  async function promoteToNewVersion() {
+    if (!insight || !detail.ticket_logic_id) return;
+    setPromoting(true);
+    setPromoteError(null);
+    try {
+      const res = await fetch("/api/v1/ticket-logics/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parent_logic_id: detail.ticket_logic_id,
+          backtest_insight_id: insight.id,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setInsight((prev) =>
+        prev
+          ? {
+              ...prev,
+              promoted_to_version_id: body.new_logic_id,
+              promoted_at: new Date().toISOString(),
+            }
+          : prev,
+      );
+      router.refresh();
+    } catch (err) {
+      setPromoteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPromoting(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(trades.length / PAGE_SIZE));
   const pageTrades = trades.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -271,6 +364,18 @@ export function BacktestDetailClient({
           index on x-axis — not real time.
         </p>
       </div>
+
+      {/* Aggregate insight panel (053e) */}
+      <AggregateInsightPanel
+        insight={insight}
+        reviewing={reviewing}
+        error={insightError}
+        promoting={promoting}
+        promoteError={promoteError}
+        onRunInsight={runInsight}
+        onPromote={promoteToNewVersion}
+        canPromote={Boolean(detail.ticket_logic_id)}
+      />
 
       {/* Trade table */}
       <h2 className="text-lg font-semibold mb-3">Trades</h2>
@@ -422,4 +527,178 @@ function fmtTs(ts: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// ── Aggregate insight panel (053e) ──────────────────────────────────────────
+
+function RecommendationChip({
+  rec,
+}: {
+  rec: "promote" | "keep" | "deprecate";
+}) {
+  const styles = {
+    promote: "bg-green-500/15 text-green-300 ring-green-500/30",
+    keep: "bg-blue-500/15 text-blue-300 ring-blue-500/30",
+    deprecate: "bg-red-500/15 text-red-300 ring-red-500/30",
+  } as const;
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset rounded uppercase ${styles[rec]}`}
+    >
+      {rec}
+    </span>
+  );
+}
+
+function AggregateInsightPanel({
+  insight,
+  reviewing,
+  error,
+  promoting,
+  promoteError,
+  onRunInsight,
+  onPromote,
+  canPromote,
+}: {
+  insight: ExistingInsight | null;
+  reviewing: boolean;
+  error: string | null;
+  promoting: boolean;
+  promoteError: string | null;
+  onRunInsight: () => void;
+  onPromote: () => void;
+  canPromote: boolean;
+}) {
+  if (!insight) {
+    return (
+      <div className="bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4 mb-8">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-gray-300">
+            Aggregate AI Insight
+          </h2>
+          <button
+            onClick={onRunInsight}
+            disabled={reviewing}
+            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+          >
+            {reviewing ? "Analyzing…" : "Run aggregate review"}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">
+          Have an LLM analyze all trades, identify winning/losing patterns, and
+          propose parameter changes for a new strategy version.
+        </p>
+        {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
+      </div>
+    );
+  }
+
+  const proposedChanges = insight.proposed_changes ?? [];
+  const isPromoted = Boolean(insight.promoted_to_version_id);
+  const canShowPromote =
+    insight.recommendation === "promote" &&
+    proposedChanges.length > 0 &&
+    !isPromoted &&
+    canPromote;
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-gray-300">
+            Aggregate AI Insight
+          </h2>
+          <RecommendationChip rec={insight.recommendation} />
+        </div>
+        <button
+          onClick={onRunInsight}
+          disabled={reviewing}
+          className="text-[11px] text-gray-400 hover:text-gray-200 underline disabled:opacity-40"
+        >
+          {reviewing ? "Re-running…" : "Re-run"}
+        </button>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3 mb-3">
+        <div className="bg-slate-950/40 border border-slate-800 rounded p-3">
+          <div className="text-[10px] uppercase text-green-400/70 mb-1">
+            Winning pattern
+          </div>
+          <p className="text-xs text-gray-200">{insight.winning_pattern}</p>
+        </div>
+        <div className="bg-slate-950/40 border border-slate-800 rounded p-3">
+          <div className="text-[10px] uppercase text-red-400/70 mb-1">
+            Losing pattern
+          </div>
+          <p className="text-xs text-gray-200">{insight.losing_pattern}</p>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-300 leading-relaxed mb-3">
+        {insight.rationale}
+      </p>
+
+      {proposedChanges.length > 0 && (
+        <div className="mt-3 mb-3">
+          <div className="text-[10px] uppercase text-blue-400 mb-2">
+            Proposed parameter changes
+          </div>
+          <div className="space-y-2">
+            {proposedChanges.map((c, i) => (
+              <div
+                key={i}
+                className="bg-slate-950/50 border border-slate-800 rounded p-2"
+              >
+                <div className="text-xs font-mono text-gray-200">
+                  {c.name}:{" "}
+                  <span className="text-gray-400">{c.current_value}</span> →{" "}
+                  <span className="text-green-400">{c.proposed_value}</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-0.5">{c.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isPromoted ? (
+        <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-300">
+          ✓ Promoted to a new draft version on{" "}
+          {insight.promoted_at
+            ? new Date(insight.promoted_at).toLocaleString()
+            : "—"}
+          . The new version is in <code>draft</code> status — activate it from
+          the database when you&apos;re ready to backtest it.
+        </div>
+      ) : canShowPromote ? (
+        <div className="mt-3">
+          <button
+            onClick={onPromote}
+            disabled={promoting}
+            className="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+          >
+            {promoting ? "Promoting…" : "Promote to new version"}
+          </button>
+          <span className="ml-2 text-[11px] text-gray-500">
+            Creates a draft v(N+1) with these changes applied. Won&apos;t affect
+            live trading until activated.
+          </span>
+          <div className="mt-2 p-2 bg-yellow-500/5 border border-yellow-500/20 rounded text-[11px] text-yellow-300/80">
+            <strong>In-sample bias caveat:</strong> the AI proposed these
+            changes after seeing this backtest&apos;s trades. To validate the new
+            version honestly, backtest it on a <em>different</em> date range
+            (out-of-sample). Same-range comparison will look better simply
+            because the tuning was fit to those exact trades.
+          </div>
+          {promoteError && (
+            <p className="mt-2 text-[11px] text-red-400">{promoteError}</p>
+          )}
+        </div>
+      ) : null}
+
+      <div className="mt-3 text-[10px] text-gray-500">
+        {insight.model}
+      </div>
+    </div>
+  );
 }
