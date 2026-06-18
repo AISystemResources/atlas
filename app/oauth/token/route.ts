@@ -93,6 +93,22 @@ export async function POST(req: NextRequest) {
   const patName = `OAuth: ${clientId} (${new Date().toISOString().slice(0, 10)})`;
 
   const sb = getServiceClient();
+
+  // Sprint 058: one active token per user. Any previously-issued token (OAuth
+  // or directly-created PAT) is invalidated on new issuance. The new row is
+  // the only valid credential for this user from this moment forward.
+  const { error: clearErr } = await sb
+    .from("user_pats")
+    .delete()
+    .eq("user_id", verification.userId);
+  if (clearErr) {
+    return tokenError(
+      "server_error",
+      `failed to clear prior tokens: ${clearErr.message}`,
+      500,
+    );
+  }
+
   const { error } = await sb.from("user_pats").insert({
     user_id: verification.userId,
     name: patName,

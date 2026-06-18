@@ -50,6 +50,20 @@ export async function POST(req: Request): Promise<Response> {
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
 
   const sb = getServiceClient();
+
+  // Sprint 058: one active token per user. Any previously-issued token (OAuth
+  // or directly-created PAT) is invalidated on new issuance.
+  const { error: clearErr } = await sb
+    .from("user_pats")
+    .delete()
+    .eq("user_id", user.userId);
+  if (clearErr) {
+    return Response.json(
+      { error: `failed to clear prior tokens: ${clearErr.message}` },
+      { status: 500 },
+    );
+  }
+
   const { data, error } = await sb
     .from("user_pats")
     .insert({
