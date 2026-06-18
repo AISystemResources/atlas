@@ -1258,7 +1258,7 @@ export function SignalDetailClient({ signal }: { signal: Signal }) {
       style={{
         background: "var(--bg)",
         minHeight: "100vh",
-        maxWidth: 520,
+        maxWidth: 1100,
         margin: "0 auto",
         display: "flex",
         flexDirection: "column",

@@ -188,7 +188,7 @@ function EquityCurveContent() {
   const peakValue = Math.max(...chartPoints.map((p) => p.value));
 
   return (
-    <div style={{ background: "var(--bg)", minHeight: "100vh", maxWidth: 520, margin: "0 auto" }}>
+    <div style={{ background: "var(--bg)", minHeight: "100vh", maxWidth: 1100, margin: "0 auto" }}>
       {/* Header */}
       <header style={{
         background: "var(--header-bg)", backdropFilter: "blur(12px)",
