@@ -256,6 +256,12 @@ export function BacktestDetailClient({
     }
   }
 
+  const [promotedTo, setPromotedTo] = useState<{
+    new_logic_id: string;
+    name: string;
+    version: number;
+  } | null>(null);
+
   async function promoteToNewVersion() {
     if (!insight || !detail.ticket_logic_id) return;
     setPromoting(true);
@@ -280,6 +286,11 @@ export function BacktestDetailClient({
             }
           : prev,
       );
+      setPromotedTo({
+        new_logic_id: body.new_logic_id,
+        name: body.name,
+        version: body.version,
+      });
       router.refresh();
     } catch (err) {
       setPromoteError(err instanceof Error ? err.message : String(err));
@@ -376,6 +387,14 @@ export function BacktestDetailClient({
         onPromote={promoteToNewVersion}
         canPromote={Boolean(detail.ticket_logic_id)}
       />
+
+      {/* Out-of-sample prefill panel (053f) — shown only after fresh promotion */}
+      {promotedTo && (
+        <OutOfSamplePanel
+          promotedTo={promotedTo}
+          originalDetail={detail}
+        />
+      )}
 
       {/* Trade table */}
       <h2 className="text-lg font-semibold mb-3">Trades</h2>
@@ -699,6 +718,179 @@ function AggregateInsightPanel({
       <div className="mt-3 text-[10px] text-gray-500">
         {insight.model}
       </div>
+    </div>
+  );
+}
+
+// ── Out-of-sample prefill panel (053f) ──────────────────────────────────────
+
+function suggestOutOfSampleRange(
+  originalStart: string,
+  originalEnd: string,
+  originalTimeframe: string,
+) {
+  // Suggest the 58 days BEFORE the original start date.
+  // If the suggested range falls outside Yahoo's 5m/15m window (~60 days from
+  // today), auto-bump the timeframe to 1h so the fetch actually returns data.
+  const start = new Date(originalStart);
+  start.setDate(start.getDate() - 1);
+  const end = start.toISOString().slice(0, 10);
+  start.setDate(start.getDate() - 57);
+  const startStr = start.toISOString().slice(0, 10);
+
+  const today = new Date();
+  const daysBackFromToday =
+    (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+
+  // Yahoo 5m/15m: ~60 days from today. If our suggested start is beyond that,
+  // step up to 1h (730-day window).
+  let suggestedTimeframe = originalTimeframe;
+  if (
+    (originalTimeframe === "5m" || originalTimeframe === "15m") &&
+    daysBackFromToday > 55
+  ) {
+    suggestedTimeframe = "1h";
+  }
+
+  return {
+    start: startStr,
+    end,
+    timeframe: suggestedTimeframe,
+    timeframeChanged: suggestedTimeframe !== originalTimeframe,
+    originalDays:
+      (new Date(originalEnd).getTime() - new Date(originalStart).getTime()) /
+      (1000 * 60 * 60 * 24),
+  };
+}
+
+function OutOfSamplePanel({
+  promotedTo,
+  originalDetail,
+}: {
+  promotedTo: { new_logic_id: string; name: string; version: number };
+  originalDetail: BacktestDetail;
+}) {
+  const router = useRouter();
+  const suggestion = useMemo(
+    () =>
+      suggestOutOfSampleRange(
+        originalDetail.start_date,
+        originalDetail.end_date,
+        originalDetail.timeframe,
+      ),
+    [originalDetail.start_date, originalDetail.end_date, originalDetail.timeframe],
+  );
+  const [startDate, setStartDate] = useState(suggestion.start);
+  const [endDate, setEndDate] = useState(suggestion.end);
+  const [timeframe, setTimeframe] = useState(suggestion.timeframe);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function runOos() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/backtest-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          logic_name: promotedTo.name,
+          version: promotedTo.version,
+          ticker: originalDetail.ticker,
+          start_date: startDate,
+          end_date: endDate,
+          timeframe,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      router.push(
+        `/dashboard/backtests/compare?ids=${originalDetail.id},${body.backtest_id}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="bg-blue-500/5 border border-blue-500/30 rounded-lg p-4 mb-8">
+      <h2 className="text-sm font-semibold text-blue-300 mb-2">
+        Out-of-sample test for {promotedTo.name} v{promotedTo.version}
+      </h2>
+      <p className="text-xs text-gray-300 mb-3">
+        Run the promoted version on a <strong>different date range</strong> to
+        honestly evaluate whether the proposed parameter changes hold up.
+        Same-range comparison would be in-sample bias — the AI saw these trades
+        when it proposed the changes.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+        <label className="flex flex-col text-xs">
+          <span className="text-gray-400 mb-1">Ticker</span>
+          <input
+            type="text"
+            value={originalDetail.ticker}
+            disabled
+            className="bg-slate-950/60 border border-slate-700 rounded px-2 py-1.5 text-sm text-gray-400"
+          />
+        </label>
+        <label className="flex flex-col text-xs">
+          <span className="text-gray-400 mb-1">Out-of-sample start</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="flex flex-col text-xs">
+          <span className="text-gray-400 mb-1">Out-of-sample end</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="flex flex-col text-xs">
+          <span className="text-gray-400 mb-1">Timeframe</span>
+          <select
+            value={timeframe}
+            onChange={(e) => setTimeframe(e.target.value)}
+            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+          >
+            <option value="5m">5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="1d">1d</option>
+          </select>
+        </label>
+      </div>
+
+      {suggestion.timeframeChanged && (
+        <p className="mt-1 mb-2 text-[11px] text-blue-300/80">
+          Auto-bumped timeframe from <code>{originalDetail.timeframe}</code> to{" "}
+          <code>{suggestion.timeframe}</code> because the OOS range falls
+          outside Yahoo&apos;s ~60-day 5m/15m window.
+        </p>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={runOos}
+          disabled={submitting}
+          className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+        >
+          {submitting ? "Running & comparing…" : "Run OOS + open comparison"}
+        </button>
+        <span className="text-[11px] text-gray-500">
+          Original in-sample range: {originalDetail.start_date} →{" "}
+          {originalDetail.end_date}
+        </span>
+      </div>
+
+      {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
     </div>
   );
 }
