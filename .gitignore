@@ -90,3 +90,5 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .superpowers/
+.playwright-mcp/
+verify-playwright-landing.png
