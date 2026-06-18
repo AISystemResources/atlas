@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
+import { RunReflectionButton } from "./RunReflectionButton";
 
 interface DailyLearning {
   id: string;
@@ -79,6 +80,8 @@ export default async function InsightsPage() {
           Atlas&apos;s server-side Groq fallback.
         </p>
       </header>
+
+      <RunReflectionButton />
 
       {error ? (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
