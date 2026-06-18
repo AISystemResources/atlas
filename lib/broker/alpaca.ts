@@ -94,6 +94,64 @@ export class AlpacaAdapter implements BrokerAdapter {
   }
 
   /**
+   * Place a bracket order — entry + take-profit + stop-loss atomic submission.
+   *
+   * Alpaca semantics:
+   *   - Entry: market BUY at qty shares (whole shares only — bracket orders
+   *     do NOT support notional or fractional)
+   *   - Take-profit: limit SELL at take_profit_price, sits on the matching engine
+   *   - Stop-loss: stop SELL at stop_loss_price, sits on the matching engine
+   *   - OCO: first exit to trigger cancels the other
+   *
+   * The two exits are committed by Alpaca's matching engine on entry fill —
+   * no Atlas cron is required to manage them. This is the safety guarantee
+   * that the old polling-exit scalper architecture didn't have.
+   */
+  async submitBracketOrder(input: {
+    ticker: string;
+    qty: number;
+    take_profit_price: number;
+    stop_loss_price: number;
+    time_in_force?: "day" | "gtc";
+  }): Promise<Order> {
+    if (input.qty <= 0 || !Number.isInteger(input.qty)) {
+      throw new BrokerError(
+        `submitBracketOrder requires integer qty > 0 (got ${input.qty})`,
+      );
+    }
+    if (input.take_profit_price <= 0 || input.stop_loss_price <= 0) {
+      throw new BrokerError(
+        `submitBracketOrder requires positive take_profit and stop_loss prices`,
+      );
+    }
+    if (input.take_profit_price <= input.stop_loss_price) {
+      throw new BrokerError(
+        `submitBracketOrder: take_profit (${input.take_profit_price}) must be > stop_loss (${input.stop_loss_price})`,
+      );
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await this.client.createOrder({
+        symbol: input.ticker.toUpperCase(),
+        qty: String(input.qty),
+        side: "buy",
+        type: "market",
+        time_in_force: input.time_in_force ?? "day",
+        order_class: "bracket",
+        take_profit: { limit_price: String(round2(input.take_profit_price)) },
+        stop_loss: { stop_price: String(round2(input.stop_loss_price)) },
+      });
+      return normaliseOrder(raw);
+    } catch (err) {
+      throw new BrokerError(
+        `submitBracketOrder failed for ${input.ticker}: ${errorMessage(err)}`,
+        err,
+      );
+    }
+  }
+
+  /**
    * Return all open positions.
    * Handles accounts with >100 positions by fetching all pages.
    * (The JS SDK returns all positions in one call; noted for future pagination.)
@@ -194,6 +252,10 @@ export class AlpacaAdapter implements BrokerAdapter {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normaliseOrder(raw: any): Order {
