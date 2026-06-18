@@ -1,39 +1,31 @@
 /**
- * Intraday scalper — sprint 043.
+ * Intraday scalper — Sprint 049 (Ticket Logic).
  *
- * Sandy Jadeja S1 (Keltner Channel Mean Reversion) entry on DJIA-30.
- * Restricted to users with scalper_enabled=true AND boundary_mode=autonomous.
+ * Architecture: signal → ticket → bracket order.
  *
- * Regime filter: RSI(21) > 50 (bullish regime only; shorts deferred per supervisor).
- * Entry (S1 long): prev bar low ≤ outer KC lower band (touch) AND
- *   signal bar close > open (bullish candle) AND close > inner KC lower band.
- * Entry price: signal bar high + 0.05% buffer (market order approximation).
- * Stop:  signal bar low - 0.05% buffer → translated to avgCost - 1.5×ATR at runtime.
- * Target: entry + ATR(14) / 2 → RSI(21) < 50 regime flip OR ATR stop as exit signal.
- * EOD force-close at 15:50 ET.
+ * Key changes from Sprint 040/043:
+ *   1. **DJIA-30 hardcode is gone.** Scalper universe is now: tickers in the
+ *      user's watchlist where `scalper_enabled = true`. Explicit opt-in.
+ *   2. **No polling exit logic.** Bracket orders submitted at entry carry
+ *      their own take-profit and stop-loss; Alpaca's matching engine handles
+ *      the exits. Atlas does NOT poll for exit conditions every minute.
+ *   3. **EOD force-close** stays as a paranoia safety net (in case TIF=day
+ *      bracket didn't cancel for some reason). Should never fire in practice.
  *
- * Scalper trades tagged strategy='scalper' in the trades table.
+ * The user opts each ticker into scalping via `watchlist.scalper_enabled`.
+ * For the Dow Jones index, the recommended choice is DIA (the ETF), NOT
+ * the 30 constituent stocks.
  */
 
 import { createClient } from "@supabase/supabase-js";
 import { AlpacaAdapter } from "@/lib/broker";
-import type { Order } from "@/lib/broker";
 import { getBrokerCredentials } from "@/lib/broker/credentials";
 import { fetchIntradayBars } from "@/lib/market/alpaca";
 import { computeIndicators, detectS1Signal } from "@/lib/indicators";
 import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
+import { buildS1LongTicket } from "@/lib/signals/types";
 
-// DJIA-30 composition as of Nov 2024 (NVDA replaced INTC; AMZN replaced WBA Feb 2024)
-export const DJIA_30 = [
-  "AAPL", "AMGN", "AMZN", "AXP",  "BA",   "CAT",  "CRM",  "CSCO", "CVX",  "DIS",
-  "DOW",  "GS",   "HD",   "HON",  "IBM",  "JNJ",  "JPM",  "KO",   "MCD",  "MMM",
-  "MRK",  "MSFT", "NKE",  "NVDA", "PG",   "TRV",  "UNH",  "V",    "VZ",   "WMT",
-];
-
-const RSI_EXIT       = 55;               // RSI(14) momentum exit (secondary)
-const RSI_REGIME_EXIT = 50;             // RSI(21) regime flip exit (primary)
-const STOP_MULT      = 1.5;              // stop = avgCost − STOP_MULT × ATR(14)
-const SCALP_NOTIONAL = 200;              // $200 per scalper entry
+const SCALP_NOTIONAL = 200;              // $200 per scalper entry (target — actual qty is whole shares)
 const COOLDOWN_MS    = 10 * 60 * 1000;  // 10-min cooldown after any BUY
 const LOOKBACK_H     = 8;               // hours to scan for recent scalper trades
 
@@ -44,8 +36,8 @@ const SUPABASE_KEY =
 export interface ScalperResult {
   user_id: string;
   entries: number;
-  exits: number;
-  eod_closes: number;
+  exits: number;       // always 0 in the Ticket Logic era (Alpaca handles exits)
+  eod_closes: number;  // paranoia safety net — should always be 0 if brackets fire
   skipped: number;
   errors: string[];
 }
@@ -73,49 +65,58 @@ export function isEodWindow(): boolean {
   return getEtMinute() >= 15 * 60 + 50;
 }
 
-// ── Trade recording ───────────────────────────────────────────────────────────
+// ── Signal parameters lookup ──────────────────────────────────────────────────
 
-async function recordTrade(
+interface ScalperParams {
+  stop_buffer_pct: number;
+  target_atr_multiple: number;
+  entry_buffer_pct: number;
+  notional_dollars: number;
+}
+
+const SCALPER_DEFAULTS: ScalperParams = {
+  stop_buffer_pct: 0.5,
+  target_atr_multiple: 0.5,
+  entry_buffer_pct: 0.05,
+  notional_dollars: SCALP_NOTIONAL,
+};
+
+async function loadScalperParams(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any,
-  params: {
-    userId: string;
-    portfolioId: string;
-    ticker: string;
-    action: "BUY" | "SELL";
-    order: Order;
-    price: number;
-  },
-): Promise<void> {
-  const rawStatus = params.order.status;
-  const status =
-    rawStatus === "filled"
-      ? "filled"
-      : rawStatus === "rejected" || rawStatus === "cancelled" || rawStatus === "expired"
-        ? "rejected"
-        : "pending";
+  userId: string,
+  ticker: string,
+): Promise<ScalperParams> {
+  // Pull all user × scalper rows (global + this-ticker), apply ticker-specific over global.
+  const { data } = await sb
+    .from("signal_parameters")
+    .select("ticker, parameter_key, current_value")
+    .eq("user_id", userId)
+    .eq("strategy", "scalper")
+    .or(`ticker.is.null,ticker.eq.${ticker}`);
 
-  const { error } = await sb.from("trades").insert({
-    portfolio_id: params.portfolioId,
-    user_id: params.userId,
-    ticker: params.ticker,
-    action: params.action,
-    shares: params.order.qty ?? 0,
-    price: params.price,
-    status,
-    boundary_mode: "autonomous",
-    signal_id: null,
-    order_id: params.order.orderId ?? null,
-    strategy: "scalper",
-    executed_at: status === "filled" ? new Date().toISOString() : null,
-  });
+  const rows = (data ?? []) as Array<{
+    ticker: string | null;
+    parameter_key: string;
+    current_value: number;
+  }>;
 
-  if (error && error.code !== "23505") {
-    console.error(
-      `[scalper] trades insert failed (${params.ticker} ${params.action}):`,
-      error.message,
-    );
+  // Two-pass merge: globals first, then per-ticker overrides.
+  const merged: Record<string, number> = {};
+  for (const r of rows.filter((r) => r.ticker === null)) {
+    merged[r.parameter_key] = Number(r.current_value);
   }
+  for (const r of rows.filter((r) => r.ticker === ticker)) {
+    merged[r.parameter_key] = Number(r.current_value);
+  }
+
+  return {
+    stop_buffer_pct: merged.stop_buffer_pct ?? SCALPER_DEFAULTS.stop_buffer_pct,
+    target_atr_multiple:
+      merged.target_atr_multiple ?? SCALPER_DEFAULTS.target_atr_multiple,
+    entry_buffer_pct: merged.entry_buffer_pct ?? SCALPER_DEFAULTS.entry_buffer_pct,
+    notional_dollars: merged.notional_dollars ?? SCALPER_DEFAULTS.notional_dollars,
+  };
 }
 
 // ── Per-user scalper run ──────────────────────────────────────────────────────
@@ -134,7 +135,6 @@ async function runUserScalper(
     errors: [],
   };
 
-  // EBC gate — respect the circuit breaker
   const ebcGate = await getEffectiveGate(userId);
   if (!ebcGate.canExecute) {
     result.errors.push(`ebc ${ebcGate.state} blocks execution`);
@@ -162,27 +162,34 @@ async function runUserScalper(
 
   const broker = new AlpacaAdapter(creds.apiKey, creds.secretKey, creds.paper);
 
-  // Watchlist defines swing universe; scalper never touches those tickers
+  // Scalper universe = watchlist rows where scalper_enabled=true. Explicit opt-in.
   const { data: wlRows } = await sb
     .from("watchlist")
-    .select("ticker")
-    .eq("user_id", userId);
-  const watchlist = new Set(((wlRows ?? []) as Array<{ ticker: string }>).map((r) => r.ticker));
+    .select("ticker, scalper_enabled")
+    .eq("user_id", userId)
+    .eq("scalper_enabled", true);
+  const candidates = ((wlRows ?? []) as Array<{ ticker: string }>).map((r) => r.ticker);
 
-  // Batch-fetch recent scalper BUY trades (last LOOKBACK_H hours)
+  if (candidates.length === 0) {
+    // No tickers opted in — nothing to do. Common case for users who haven't
+    // configured scalping yet. Not an error.
+    return result;
+  }
+
+  // Recent scalper BUYs for cooldown bookkeeping.
   const since = new Date(Date.now() - LOOKBACK_H * 60 * 60 * 1000).toISOString();
   const { data: recentBuys } = await sb
     .from("trades")
-    .select("ticker, executed_at")
+    .select("ticker, executed_at, created_at")
     .eq("user_id", userId)
     .eq("action", "BUY")
     .eq("strategy", "scalper")
-    .gte("executed_at", since);
+    .gte("created_at", since);
 
-  // Map ticker → most-recent scalper BUY timestamp
   const scalperBuyAt = new Map<string, number>();
-  for (const row of (recentBuys ?? []) as Array<{ ticker: string; executed_at: string }>) {
-    const t = new Date(row.executed_at).getTime();
+  for (const row of (recentBuys ?? []) as Array<{ ticker: string; executed_at: string | null; created_at: string }>) {
+    const tstr = row.executed_at ?? row.created_at;
+    const t = new Date(tstr).getTime();
     if (t > (scalperBuyAt.get(row.ticker) ?? 0)) {
       scalperBuyAt.set(row.ticker, t);
     }
@@ -198,37 +205,29 @@ async function runUserScalper(
   }
   const posMap = new Map(positions.map((p) => [p.ticker, p]));
 
-  // ── EOD force-close path ─────────────────────────────────────────────────
+  // ── EOD safety-net: any scalper position still open after 15:50 ET? ──────
+  // With bracket TIF=day this should never fire in practice. Belt-and-braces.
   if (isEodWindow()) {
-    for (const [ticker, pos] of posMap.entries()) {
-      if (watchlist.has(ticker)) continue;
-      if (!scalperBuyAt.has(ticker)) continue; // not a scalper position
-
+    for (const ticker of candidates) {
+      const pos = posMap.get(ticker);
+      if (!pos) continue;
+      if (!scalperBuyAt.has(ticker)) continue;
       try {
-        const order = await broker.submitOrder({ ticker, action: "SELL", notional: pos.marketValue });
-        await recordTrade(sb, {
-          userId,
-          portfolioId,
-          ticker,
-          action: "SELL",
-          order,
-          price: pos.currentPrice ?? 0,
-        });
+        await broker.submitOrder({ ticker, action: "SELL", notional: pos.marketValue });
         result.eod_closes++;
-        console.info(`[scalper] EOD-close ${ticker} marketValue=$${pos.marketValue.toFixed(2)}`);
+        console.warn(
+          `[scalper] EOD-safety-net force-closed ${ticker} marketValue=$${pos.marketValue.toFixed(2)} — investigate why bracket didn't fire.`,
+        );
       } catch (err) {
         result.errors.push(
-          `eod-close ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
+          `eod-safety ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
     return result;
   }
 
-  // ── Normal scan ──────────────────────────────────────────────────────────
-  const candidates = DJIA_30.filter((t) => !watchlist.has(t));
-
-  // Parallel bar fetch — 30 calls well within the 200 req/min Alpaca IEX limit
+  // ── Entry scan ───────────────────────────────────────────────────────────
   const barResults = await Promise.allSettled(
     candidates.map((ticker) =>
       fetchIntradayBars(ticker, 35, creds).then((bars) => ({ ticker, bars })),
@@ -239,81 +238,86 @@ async function runUserScalper(
     if (br.status === "rejected") continue;
     const { ticker, bars } = br.value;
 
-    // RSI(14) + ATR(14) for exit mechanics
+    // ATR(14) for ticket math
     const ind = computeIndicators(bars, 14);
     if (!ind) {
       result.skipped++;
       continue;
     }
-    const { rsi, atr, lastClose } = ind;
-
-    // RSI(21) for regime filter (used in both entry and exit)
-    const regime = computeIndicators(bars, 21);
-    const rsi21 = regime?.rsi ?? rsi;
+    const { atr, lastClose } = ind;
 
     const hasPosition = posMap.has(ticker);
     const buyAt = scalperBuyAt.get(ticker);
 
-    if (hasPosition && buyAt != null) {
-      // ── Exit path ────────────────────────────────────────────────────
-      const pos = posMap.get(ticker)!;
-      const stopPrice = pos.avgCost - STOP_MULT * atr;
-      // Exit on: ATR stop loss, RSI(21) regime flip (<50), or RSI(14) momentum exit (>55)
-      const shouldExit =
-        lastClose < stopPrice ||
-        rsi21 < RSI_REGIME_EXIT ||
-        rsi > RSI_EXIT;
+    if (hasPosition) continue;  // Position already open → bracket is managing exits.
+    if (buyAt != null && Date.now() - buyAt < COOLDOWN_MS) continue;
 
-      if (shouldExit) {
-        try {
-          const order = await broker.submitOrder({
-            ticker,
-            action: "SELL",
-            notional: pos.marketValue,
-          });
-          await recordTrade(sb, { userId, portfolioId, ticker, action: "SELL", order, price: lastClose });
-          result.exits++;
-          const reason =
-            lastClose < stopPrice
-              ? `stop price=${lastClose.toFixed(2)}<${stopPrice.toFixed(2)}`
-              : rsi21 < RSI_REGIME_EXIT
-                ? `regime flip rsi21=${rsi21.toFixed(1)}<50`
-                : `rsi14=${rsi.toFixed(1)}>55`;
-          console.info(`[scalper] SELL ${ticker} (${reason})`);
-        } catch (err) {
-          result.errors.push(
-            `sell ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-    } else if (!hasPosition) {
-      // ── Entry path: S1 KC signal ─────────────────────────────────────
-      if (buyAt != null && Date.now() - buyAt < COOLDOWN_MS) continue;
+    // detectS1Signal encapsulates RSI(21) regime + KC band-touch + bullish candle
+    const s1 = detectS1Signal(bars);
+    if (!s1) continue;
 
-      // detectS1Signal encapsulates RSI(21) regime filter + KC band-touch + bullish candle
-      const s1 = detectS1Signal(bars);
-      if (!s1) continue;
+    // Per-user parameters override the Sandy S1 defaults
+    const params = await loadScalperParams(sb, userId, ticker);
 
-      const scaledNotional =
-        Math.round(SCALP_NOTIONAL * ebcGate.notionalMultiplier * 100) / 100;
-      try {
-        const order = await broker.submitOrder({
-          ticker,
-          action: "BUY",
-          notional: scaledNotional,
-        });
-        await recordTrade(sb, { userId, portfolioId, ticker, action: "BUY", order, price: lastClose });
-        result.entries++;
-        console.info(
-          `[scalper] S1-BUY ${ticker} rsi21=${s1.rsi21.toFixed(1)} entry=${s1.entryPrice.toFixed(2)} stop=${s1.stopPrice.toFixed(2)} target=${s1.targetPrice.toFixed(2)} atr=${s1.atr.toFixed(4)} notional=$${scaledNotional}`,
-        );
-      } catch (err) {
-        result.errors.push(
-          `buy ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+    const signalBar = bars[bars.length - 1];
+    const scaledNotional =
+      Math.round(params.notional_dollars * ebcGate.notionalMultiplier * 100) / 100;
+
+    const ticket = buildS1LongTicket({
+      ticker,
+      signal_bar_high: signalBar.high,
+      signal_bar_low: signalBar.low,
+      atr,
+      notional_dollars: scaledNotional,
+      current_price: lastClose,
+      stop_buffer_pct: params.stop_buffer_pct,
+      target_atr_multiple: params.target_atr_multiple,
+      entry_buffer_pct: params.entry_buffer_pct,
+    });
+
+    if (!ticket) {
+      result.skipped++;
+      continue;
     }
-    // hasPosition && buyAt == null → swing position, leave for main pipeline
+
+    try {
+      const order = await broker.submitBracketOrder({
+        ticker: ticket.ticker,
+        qty: ticket.qty,
+        take_profit_price: ticket.take_profit,
+        stop_loss_price: ticket.stop_loss,
+        time_in_force: ticket.time_in_force,
+      });
+
+      // Record entry trade — closed_by stays null (the bracket will fill the SELL
+      // separately; the webhook reconciler updates that row with closed_by='ai').
+      await sb.from("trades").insert({
+        portfolio_id: portfolioId,
+        user_id: userId,
+        ticker,
+        action: "BUY",
+        shares: ticket.qty,
+        price: ticket.entry_price,
+        status: order.status === "filled" ? "filled" : "pending",
+        boundary_mode: "autonomous",
+        signal_id: null,
+        order_id: order.orderId,
+        executed_at: order.status === "filled" ? new Date().toISOString() : null,
+        strategy: "scalper",
+        opened_by: "ai",
+      });
+
+      result.entries++;
+      console.info(
+        `[scalper] BRACKET-BUY ${ticker} qty=${ticket.qty} entry=${ticket.entry_price} ` +
+          `stop=${ticket.stop_loss} target=${ticket.take_profit} notional≈$${scaledNotional} ` +
+          `(rsi21=${s1.rsi21.toFixed(1)} atr=${atr.toFixed(4)})`,
+      );
+    } catch (err) {
+      result.errors.push(
+        `bracket-buy ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   return result;
