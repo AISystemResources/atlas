@@ -32,12 +32,14 @@ export type OrderStatus =
  * Input to submitOrder — the minimum required to place a market order.
  */
 export interface OrderRequest {
-  /** Equity ticker symbol, e.g. "AAPL" */
+  /** Equity ticker (e.g. "AAPL") or crypto pair (e.g. "BTC/USD") */
   ticker: string;
   /** Direction of the trade */
   action: OrderAction;
   /** Dollar notional amount to trade, e.g. 1000.00 */
   notional: number;
+  /** Alpaca time-in-force. "day" for equities (default), "gtc" required for crypto. */
+  timeInForce?: "day" | "gtc";
 }
 
 /**

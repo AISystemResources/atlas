@@ -66,11 +66,23 @@ export async function fetchBars(
   return bars;
 }
 
+/**
+ * Returns true for Alpaca crypto pairs (e.g. "BTC/USD", "ETH/USD").
+ * Crypto symbols always contain a "/" — equity tickers never do.
+ */
+export function isCryptoSymbol(ticker: string): boolean {
+  return ticker.includes("/");
+}
+
 export async function fetchIntradayBars(
   ticker: string,
   lookbackMinutes: number = 35,
   creds?: AlpacaCredentials
 ): Promise<IntradayBar[]> {
+  if (isCryptoSymbol(ticker)) {
+    return fetchCryptoIntradayBars(ticker, lookbackMinutes, creds);
+  }
+
   const client = createClient(creds);
   const bars: IntradayBar[] = [];
 
@@ -108,6 +120,67 @@ export async function fetchIntradayBars(
   }
 
   return bars;
+}
+
+/**
+ * Fetch 1-minute bars for an Alpaca crypto pair via the v1beta3 crypto data REST API.
+ * The SDK's getBarsV2 is stock-only; crypto uses a separate endpoint with different shape.
+ */
+export async function fetchCryptoIntradayBars(
+  ticker: string,
+  lookbackMinutes: number = 35,
+  creds?: AlpacaCredentials,
+): Promise<IntradayBar[]> {
+  const apiKey = creds?.apiKey ?? process.env.ALPACA_API_KEY ?? "";
+  const secretKey = creds?.secretKey ?? process.env.ALPACA_SECRET_KEY ?? "";
+  if (!apiKey || !secretKey) {
+    console.error("fetchCryptoIntradayBars: missing credentials");
+    return [];
+  }
+
+  const end = new Date();
+  const start = new Date(end.getTime() - lookbackMinutes * 60 * 1000);
+  const params = new URLSearchParams({
+    symbols: ticker.toUpperCase(),
+    timeframe: "1Min",
+    start: start.toISOString(),
+    end: end.toISOString(),
+    limit: "1000",
+  });
+
+  try {
+    const res = await fetch(
+      `https://data.alpaca.markets/v1beta3/crypto/us/bars?${params}`,
+      {
+        headers: {
+          "APCA-API-KEY-ID": apiKey,
+          "APCA-API-SECRET-KEY": secretKey,
+        },
+      },
+    );
+    if (!res.ok) {
+      console.error(
+        `fetchCryptoIntradayBars HTTP ${res.status} for ${ticker}: ${await res.text()}`,
+      );
+      return [];
+    }
+    const json = (await res.json()) as {
+      bars?: Record<string, Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>>;
+    };
+    const symKey = ticker.toUpperCase();
+    const raw = json.bars?.[symKey] ?? [];
+    return raw.map((b) => ({
+      timestamp: b.t,
+      open: b.o,
+      high: b.h,
+      low: b.l,
+      close: b.c,
+      volume: b.v,
+    }));
+  } catch (err) {
+    console.error(`fetchCryptoIntradayBars failed for ${ticker}:`, err);
+    return [];
+  }
 }
 
 export async function fetchNews(

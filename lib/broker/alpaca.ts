@@ -73,16 +73,22 @@ export class AlpacaAdapter implements BrokerAdapter {
 
   /**
    * Place a notional market order.
+   *
+   * Crypto pairs (containing "/") MUST use time_in_force="gtc" — Alpaca
+   * rejects "day" TIF on crypto. Callers should pass timeInForce explicitly
+   * for crypto; equities default to "day".
    */
   async submitOrder(request: OrderRequest): Promise<Order> {
     try {
+      const symbol = request.ticker.toUpperCase();
+      const tif = request.timeInForce ?? (symbol.includes("/") ? "gtc" : "day");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw: any = await this.client.createOrder({
-        symbol: request.ticker.toUpperCase(),
+        symbol,
         notional: String(Math.round(request.notional * 100) / 100),
         side: request.action.toLowerCase(),
         type: "market",
-        time_in_force: "day",
+        time_in_force: tif,
       });
       return normaliseOrder(raw);
     } catch (err) {
