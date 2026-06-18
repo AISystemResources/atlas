@@ -38,13 +38,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, data: [] as Quote[], error: null });
   }
 
+  // Crypto symbols: Alpaca uses "BTC/USD"; Yahoo Finance uses "BTC-USD".
+  // Translate forward for the API call, keep the original symbol in the response
+  // so callers can match on what they passed in.
+  const toYahoo = (s: string) => s.replace("/", "-");
+  const fromYahoo = (s: string) => s.replace("-", "/");
+  const yahooSymbols = symbols.map(toYahoo);
+
   try {
-    const yfResult = await yf.quote(symbols);
+    const yfResult = await yf.quote(yahooSymbols);
     const list = Array.isArray(yfResult) ? yfResult : [yfResult];
 
     const quotes: Quote[] = symbols.map((symbol) => {
+      const yahooSym = toYahoo(symbol);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const q = list.find((row: any) => String(row?.symbol ?? "").toUpperCase() === symbol);
+      const q = list.find((row: any) => {
+        const rowSym = String(row?.symbol ?? "").toUpperCase();
+        return rowSym === yahooSym || fromYahoo(rowSym) === symbol;
+      });
       if (!q) {
         return { symbol, price: null, change: null, changePercent: null, name: null };
       }
