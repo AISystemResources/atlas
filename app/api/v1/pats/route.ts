@@ -51,18 +51,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const sb = getServiceClient();
 
-  // Sprint 058: one active token per user. Any previously-issued token (OAuth
-  // or directly-created PAT) is invalidated on new issuance.
-  const { error: clearErr } = await sb
-    .from("user_pats")
-    .delete()
-    .eq("user_id", user.userId);
-  if (clearErr) {
-    return Response.json(
-      { error: `failed to clear prior tokens: ${clearErr.message}` },
-      { status: 500 },
-    );
-  }
+  // Directly-created PATs (this endpoint) intentionally coexist — they're a
+  // developer/script escape hatch with user-chosen names. Only OAuth-issued
+  // tokens enforce single-row-per-(user, client_id) — see app/oauth/token.
 
   const { data, error } = await sb
     .from("user_pats")

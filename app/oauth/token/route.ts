@@ -94,23 +94,26 @@ export async function POST(req: NextRequest) {
 
   const sb = getServiceClient();
 
-  // Sprint 058: one active token per user. Any previously-issued token (OAuth
-  // or directly-created PAT) is invalidated on new issuance. The new row is
-  // the only valid credential for this user from this moment forward.
+  // Sprint 058: one active token per (user, client_id) pair. Re-authorizing
+  // the SAME OAuth client (e.g. Claude.ai) invalidates that client's prior
+  // token. Different clients (Claude.ai vs Claude Code) coexist because they
+  // present different client_ids.
   const { error: clearErr } = await sb
     .from("user_pats")
     .delete()
-    .eq("user_id", verification.userId);
+    .eq("user_id", verification.userId)
+    .eq("client_id", clientId);
   if (clearErr) {
     return tokenError(
       "server_error",
-      `failed to clear prior tokens: ${clearErr.message}`,
+      `failed to clear prior token for client: ${clearErr.message}`,
       500,
     );
   }
 
   const { error } = await sb.from("user_pats").insert({
     user_id: verification.userId,
+    client_id: clientId,
     name: patName,
     token_hash: tokenHash,
     scope: "read_write",
