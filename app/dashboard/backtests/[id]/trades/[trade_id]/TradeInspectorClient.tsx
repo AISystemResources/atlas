@@ -23,6 +23,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { chartTokens } from "@/app/dashboard/backtests/chart-tokens";
 
 ChartJS.register(
   CategoryScale,
@@ -155,9 +156,10 @@ export function TradeInspectorClient({
   }
 
   const bars = trade.bars_around_entry ?? [];
+  const tokens = useMemo(() => chartTokens(), []);
   const pnl = trade.pnl_dollars ?? 0;
   const pnlColor =
-    pnl > 0 ? "text-green-400" : pnl < 0 ? "text-red-400" : "text-gray-300";
+    pnl > 0 ? "text-[var(--bull)]" : pnl < 0 ? "text-[var(--bear)]" : "text-[var(--ink)]";
 
   // bars_around_entry was sliced [max(0, entry-50), exit+6] in run.ts. So the
   // slice's first bar's GLOBAL index = max(0, entry_bar_index - 50). Local
@@ -191,8 +193,8 @@ export function TradeInspectorClient({
         {
           label: "Close",
           data: closes,
-          borderColor: "#cbd5e1",
-          backgroundColor: "rgba(203, 213, 225, 0.05)",
+          borderColor: tokens.ink,
+          backgroundColor: "transparent",
           borderWidth: 1.5,
           tension: 0.1,
           pointRadius: 0,
@@ -201,7 +203,7 @@ export function TradeInspectorClient({
         {
           label: "Take profit",
           data: tpLine,
-          borderColor: "#16a34a",
+          borderColor: tokens.bull,
           borderDash: [4, 4],
           borderWidth: 1,
           pointRadius: 0,
@@ -210,7 +212,7 @@ export function TradeInspectorClient({
         {
           label: "Stop loss",
           data: slLine,
-          borderColor: "#dc2626",
+          borderColor: tokens.bear,
           borderDash: [4, 4],
           borderWidth: 1,
           pointRadius: 0,
@@ -220,7 +222,7 @@ export function TradeInspectorClient({
           label: "Entry",
           data: entryMarker,
           borderColor: "rgba(0,0,0,0)",
-          backgroundColor: "#3b82f6",
+          backgroundColor: tokens.brand,
           pointRadius: 7,
           pointHoverRadius: 9,
           pointStyle: "triangle" as const,
@@ -232,10 +234,10 @@ export function TradeInspectorClient({
           borderColor: "rgba(0,0,0,0)",
           backgroundColor:
             trade.exit_reason === "tp_hit"
-              ? "#16a34a"
+              ? tokens.bull
               : trade.exit_reason === "sl_hit"
-                ? "#dc2626"
-                : "#94a3b8",
+                ? tokens.bear
+                : tokens.ghost,
           pointRadius: 7,
           pointHoverRadius: 9,
           pointStyle: "rectRot" as const,
@@ -243,7 +245,7 @@ export function TradeInspectorClient({
         },
       ],
     };
-  }, [bars, entryLocalIdx, exitLocalIdx, trade]);
+  }, [bars, entryLocalIdx, exitLocalIdx, trade, tokens]);
 
   const chartOptions = useMemo(
     () => ({
@@ -256,51 +258,53 @@ export function TradeInspectorClient({
       plugins: {
         legend: {
           display: true,
-          labels: { color: "#9ca3af", font: { size: 11 }, boxWidth: 12 },
+          labels: { color: tokens.dim, font: { size: 11 }, boxWidth: 12 },
         },
         tooltip: {
-          backgroundColor: "rgba(15, 23, 42, 0.92)",
+          backgroundColor: tokens.ink,
+          titleColor: tokens.surface,
+          bodyColor: tokens.surface,
           padding: 8,
         },
       },
       scales: {
         x: {
           ticks: {
-            color: "#9ca3af",
+            color: tokens.ghost,
             font: { size: 9 },
             autoSkip: false,
             maxRotation: 0,
           },
-          grid: { color: "rgba(148, 163, 184, 0.06)" },
+          grid: { color: tokens.line },
         },
         y: {
           ticks: {
-            color: "#9ca3af",
+            color: tokens.ghost,
             font: { size: 10 },
             callback: (v: unknown) => Number(v).toFixed(2),
           },
-          grid: { color: "rgba(148, 163, 184, 0.08)" },
+          grid: { color: tokens.line },
         },
       },
     }),
-    [],
+    [tokens],
   );
 
   const exitChipColor =
     trade.exit_reason === "tp_hit"
-      ? "bg-green-500/15 text-green-300 ring-green-500/30"
+      ? "bg-[var(--bull-bg)] text-[var(--bull)] ring-[var(--bull)]/30"
       : trade.exit_reason === "sl_hit"
-        ? "bg-red-500/15 text-red-300 ring-red-500/30"
-        : "bg-slate-500/15 text-slate-300 ring-slate-500/30";
+        ? "bg-[var(--bear-bg)] text-[var(--bear)] ring-[var(--bear)]/30"
+        : "bg-[var(--elevated)] text-[var(--dim)] ring-[var(--line)]";
 
   const indicatorEntries = Object.entries(trade.indicator_snapshot ?? {});
 
   return (
-    <div className="mx-auto p-6 text-gray-100" style={{ maxWidth: 1100 }}>
+    <div className="mx-auto p-6 text-[var(--ink)]" style={{ maxWidth: 1100 }}>
       <div className="mb-4">
         <Link
           href={`/dashboard/backtests/${backtest.id}`}
-          className="text-xs text-gray-500 hover:text-gray-300"
+          className="text-xs text-[var(--ghost)] hover:text-[var(--ink)]"
         >
           ← Back to backtest
         </Link>
@@ -310,7 +314,7 @@ export function TradeInspectorClient({
       <div className="flex items-baseline gap-3 mb-1">
         <h1 className="text-xl font-bold">
           {backtest.ticker}{" "}
-          <span className="text-sm font-mono text-gray-400">
+          <span className="text-sm font-mono text-[var(--dim)]">
             {backtest.logic_name}
             {backtest.logic_version ? ` v${backtest.logic_version}` : ""}
           </span>
@@ -321,7 +325,7 @@ export function TradeInspectorClient({
           {trade.exit_reason ?? "open"}
         </span>
       </div>
-      <p className="text-sm text-gray-400 mb-6">
+      <p className="text-sm text-[var(--dim)] mb-6">
         Entry {fmtTs(trade.entry_ts)} → Exit {fmtTs(trade.exit_ts)} ·{" "}
         <span className={pnlColor}>${pnl.toFixed(2)}</span>{" "}
         {trade.pnl_pct != null && (
@@ -331,8 +335,8 @@ export function TradeInspectorClient({
 
       <div className="grid md:grid-cols-3 gap-6">
         {/* Chart */}
-        <div className="md:col-span-2 bg-slate-900/60 border border-slate-800 rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-gray-300 mb-3">
+        <div className="md:col-span-2 bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4">
+          <h2 className="text-sm font-semibold text-[var(--ink)] mb-3">
             Close price · {bars.length} bars around entry
           </h2>
           {bars.length > 0 ? (
@@ -340,7 +344,7 @@ export function TradeInspectorClient({
               <Line data={chartData} options={chartOptions} />
             </div>
           ) : (
-            <div className="text-center text-sm text-gray-500 py-10">
+            <div className="text-center text-sm text-[var(--ghost)] py-10">
               No bar data for this trade.
             </div>
           )}
@@ -349,18 +353,18 @@ export function TradeInspectorClient({
         {/* Side panel */}
         <div className="md:col-span-1 space-y-4">
           {/* Prices */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4">
-            <h3 className="text-xs uppercase text-gray-500 mb-3">Trade</h3>
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4">
+            <h3 className="text-xs uppercase text-[var(--ghost)] mb-3">Trade</h3>
             <KV label="Entry" value={`$${trade.entry_price.toFixed(2)}`} />
             <KV
               label="Take profit"
               value={`$${trade.take_profit_price.toFixed(2)}`}
-              valueClass="text-green-400/80"
+              valueClass="text-[var(--bull)]/80"
             />
             <KV
               label="Stop loss"
               value={`$${trade.stop_loss_price.toFixed(2)}`}
-              valueClass="text-red-400/80"
+              valueClass="text-[var(--bear)]/80"
             />
             <KV
               label="Exit"
@@ -374,12 +378,12 @@ export function TradeInspectorClient({
           </div>
 
           {/* Indicator snapshot */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4">
-            <h3 className="text-xs uppercase text-gray-500 mb-3">
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4">
+            <h3 className="text-xs uppercase text-[var(--ghost)] mb-3">
               Indicators at entry
             </h3>
             {indicatorEntries.length === 0 ? (
-              <p className="text-xs text-gray-500">No indicator data.</p>
+              <p className="text-xs text-[var(--ghost)]">No indicator data.</p>
             ) : (
               <div className="space-y-1">
                 {indicatorEntries.map(([k, v]) => (
@@ -403,9 +407,9 @@ export function TradeInspectorClient({
 
 function SkillChip({ kind }: { kind: "skill" | "luck" | "mixed" }) {
   const styles = {
-    skill: "bg-green-500/15 text-green-300 ring-green-500/30",
-    luck:  "bg-yellow-500/15 text-yellow-300 ring-yellow-500/30",
-    mixed: "bg-blue-500/15 text-blue-300 ring-blue-500/30",
+    skill: "bg-[var(--bull-bg)] text-[var(--bull)] ring-[var(--bull)]/30",
+    luck:  "bg-[var(--hold-bg)] text-[var(--hold)] ring-[var(--hold)]/30",
+    mixed: "bg-[var(--brand)]/10 text-[var(--brand)] ring-[var(--brand)]/30",
   } as const;
   return (
     <span
@@ -429,15 +433,15 @@ function AIReviewPanel({
 }) {
   if (review) {
     return (
-      <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4">
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs uppercase text-gray-500">AI Review</h3>
+          <h3 className="text-xs uppercase text-[var(--ghost)]">AI Review</h3>
           <div className="flex items-center gap-2">
             <SkillChip kind={review.skill_or_luck} />
             <button
               onClick={onRun}
               disabled={running}
-              className="text-[10px] text-gray-400 hover:text-gray-200 underline disabled:opacity-40"
+              className="text-[10px] text-[var(--dim)] hover:text-[var(--ink)] underline disabled:opacity-40"
             >
               {running ? "Re-running…" : "Re-run"}
             </button>
@@ -445,30 +449,30 @@ function AIReviewPanel({
         </div>
 
         <div className="mb-3">
-          <div className="text-[10px] text-gray-500 mb-1">
+          <div className="text-[10px] text-[var(--ghost)] mb-1">
             Confidence ·{" "}
-            <span className="text-gray-300">
+            <span className="text-[var(--ink)]">
               {(review.confidence * 100).toFixed(0)}%
             </span>
           </div>
-          <div className="h-1 bg-slate-800 rounded overflow-hidden">
+          <div className="h-1 bg-[var(--elevated)] rounded overflow-hidden">
             <div
-              className="h-full bg-blue-500"
+              className="h-full bg-[var(--brand)]"
               style={{ width: `${review.confidence * 100}%` }}
             />
           </div>
         </div>
 
-        <p className="text-xs text-gray-300 leading-relaxed mb-3">
+        <p className="text-xs text-[var(--ink)] leading-relaxed mb-3">
           {review.rationale}
         </p>
 
         {review.what_worked.length > 0 && (
           <div className="mb-2">
-            <div className="text-[10px] uppercase text-green-400/70 mb-1">
+            <div className="text-[10px] uppercase text-[var(--bull)]/70 mb-1">
               What worked
             </div>
-            <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
+            <ul className="text-xs text-[var(--ink)] space-y-1 list-disc list-inside">
               {review.what_worked.map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
@@ -478,10 +482,10 @@ function AIReviewPanel({
 
         {review.what_didnt.length > 0 && (
           <div className="mb-3">
-            <div className="text-[10px] uppercase text-red-400/70 mb-1">
+            <div className="text-[10px] uppercase text-[var(--bear)]/70 mb-1">
               What didn&apos;t
             </div>
-            <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
+            <ul className="text-xs text-[var(--ink)] space-y-1 list-disc list-inside">
               {review.what_didnt.map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
@@ -490,27 +494,27 @@ function AIReviewPanel({
         )}
 
         {review.suggested_adjustment && (
-          <div className="mt-3 p-2 bg-slate-950/50 border border-slate-800 rounded">
-            <div className="text-[10px] uppercase text-blue-400 mb-1">
+          <div className="mt-3 p-2 bg-[var(--bg)] border border-[var(--line)] rounded">
+            <div className="text-[10px] uppercase text-[var(--brand)] mb-1">
               Suggested adjustment
             </div>
-            <div className="text-xs font-mono text-gray-200 mb-1">
+            <div className="text-xs font-mono text-[var(--ink)] mb-1">
               {review.suggested_adjustment.parameter}:{" "}
-              <span className="text-gray-400">
+              <span className="text-[var(--dim)]">
                 {review.suggested_adjustment.current_value}
               </span>{" "}
               →{" "}
-              <span className="text-green-400">
+              <span className="text-[var(--bull)]">
                 {review.suggested_adjustment.proposed_value}
               </span>
             </div>
-            <p className="text-[11px] text-gray-400">
+            <p className="text-[11px] text-[var(--dim)]">
               {review.suggested_adjustment.reason}
             </p>
           </div>
         )}
 
-        <div className="mt-3 text-[10px] text-gray-500">
+        <div className="mt-3 text-[10px] text-[var(--ghost)]">
           {review.model}
         </div>
       </div>
@@ -518,21 +522,21 @@ function AIReviewPanel({
   }
 
   return (
-    <div className="bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4">
-      <h3 className="text-xs uppercase text-gray-500 mb-2">AI Review</h3>
-      <p className="text-xs text-gray-500 mb-3">
+    <div className="bg-[var(--elevated)] border border-dashed border-[var(--line)] rounded-lg p-4">
+      <h3 className="text-xs uppercase text-[var(--ghost)] mb-2">AI Review</h3>
+      <p className="text-xs text-[var(--ghost)] mb-3">
         Not yet reviewed. Tag this trade as skill vs. luck and get a parameter
         adjustment suggestion.
       </p>
       <button
         onClick={onRun}
         disabled={running}
-        className="w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+        className="w-full px-3 py-1.5 text-xs bg-[var(--brand)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded font-medium"
       >
         {running ? "Reviewing…" : "Run AI review"}
       </button>
       {error && (
-        <p className="mt-2 text-[11px] text-red-400">{error}</p>
+        <p className="mt-2 text-[11px] text-[var(--bear)]">{error}</p>
       )}
     </div>
   );
@@ -551,7 +555,7 @@ function KV({
 }) {
   return (
     <div className="flex items-baseline justify-between py-0.5 text-xs">
-      <span className="text-gray-400">{label}</span>
+      <span className="text-[var(--dim)]">{label}</span>
       <span className={`${mono ? "font-mono" : ""} ${valueClass}`}>{value}</span>
     </div>
   );

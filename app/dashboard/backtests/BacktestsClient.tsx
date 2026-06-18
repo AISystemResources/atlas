@@ -97,9 +97,9 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
   }
 
   return (
-    <div className="mx-auto p-6 text-gray-100" style={{ maxWidth: 1100 }}>
+    <div className="mx-auto p-6" style={{ maxWidth: 1100, color: "var(--ink)" }}>
       <h1 className="text-2xl font-bold mb-2">Ticket Logic Backtests</h1>
-      <p className="text-sm text-gray-400 mb-6">
+      <p className="text-sm text-[var(--dim)] mb-6">
         Replay a strategy over historical bars. Bars are pulled from Yahoo Finance.
         Index tickers (e.g. <code>^DJI</code>) and ETFs both supported.
       </p>
@@ -107,56 +107,56 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
       {/* Run-new form */}
       <form
         onSubmit={onSubmit}
-        className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 mb-8 grid gap-3 md:grid-cols-6"
+        className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4 mb-8 grid gap-3 md:grid-cols-6"
       >
         <label className="flex flex-col text-xs md:col-span-2">
-          <span className="text-gray-400 mb-1">Ticket Logic</span>
+          <span className="text-[var(--dim)] mb-1">Ticket Logic</span>
           <input
             type="text"
             value={logicName}
             onChange={(e) => setLogicName(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
             placeholder="sandy-s1-long"
             required
           />
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Ticker</span>
+          <span className="text-[var(--dim)] mb-1">Ticker</span>
           <input
             type="text"
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
             placeholder="^DJI"
             required
           />
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Start</span>
+          <span className="text-[var(--dim)] mb-1">Start</span>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
             required
           />
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">End</span>
+          <span className="text-[var(--dim)] mb-1">End</span>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
             required
           />
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Timeframe</span>
+          <span className="text-[var(--dim)] mb-1">Timeframe</span>
           <select
             value={timeframe}
             onChange={(e) => setTimeframe(e.target.value as (typeof TIMEFRAMES)[number])}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
           >
             {TIMEFRAMES.map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -164,23 +164,23 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
           </select>
         </label>
         <label className="flex flex-col text-xs">
-          <span className="text-gray-400 mb-1">Notional / trade ($)</span>
+          <span className="text-[var(--dim)] mb-1">Notional / trade ($)</span>
           <input
             type="number"
             min="1"
             value={notional}
             onChange={(e) => setNotional(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm"
+            className="bg-[var(--bg)] border border-[var(--line)] rounded px-2 py-1.5 text-sm"
           />
         </label>
         <div className="md:col-span-6 flex items-center justify-between">
           {error && (
-            <span className="text-xs text-red-400">{error}</span>
+            <span className="text-xs text-[var(--bear)]">{error}</span>
           )}
           <button
             type="submit"
             disabled={submitting}
-            className="ml-auto px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+            className="ml-auto px-4 py-1.5 text-sm bg-[var(--brand)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded font-medium"
           >
             {submitting ? "Running…" : "Run backtest"}
           </button>
@@ -194,20 +194,20 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
           <button
             onClick={openCompare}
             disabled={selected.size < 2}
-            className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-gray-600 rounded font-medium"
+            className="px-3 py-1.5 text-xs bg-[var(--elevated)] border border-[var(--line)] hover:bg-[var(--surface)] disabled:opacity-50 rounded font-medium"
           >
             Compare {selected.size > 0 ? `(${selected.size})` : ""}
           </button>
         )}
       </div>
       {initialRows.length === 0 ? (
-        <div className="text-sm text-gray-500 p-6 border border-slate-800 rounded-lg text-center">
+        <div className="text-sm text-[var(--ghost)] p-6 border border-[var(--line)] rounded-lg text-center">
           No backtests yet. Run one with the form above.
         </div>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-500 border-b border-slate-800">
+            <tr className="text-left text-xs uppercase text-[var(--ghost)] border-b border-[var(--line)]">
               <th className="py-2 pr-2 w-6"></th>
               <th className="py-2 pr-2">Logic</th>
               <th className="py-2 pr-2">Ticker</th>
@@ -227,7 +227,7 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
               return (
                 <tr
                   key={row.id}
-                  className="border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer"
+                  className="border-b border-[var(--line)] hover:bg-[var(--elevated)] cursor-pointer"
                   onClick={() => router.push(`/dashboard/backtests/${row.id}`)}
                 >
                   <td
@@ -242,20 +242,20 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
                       checked={isSelected}
                       onChange={() => toggle(row.id)}
                       onClick={(e) => e.stopPropagation()}
-                      className="accent-blue-500"
+                      className="accent-[var(--brand)]"
                     />
                   </td>
                   <td className="py-2 pr-2 font-mono text-xs">
                     {row.ticket_logics?.name ?? "—"}
                     {row.ticket_logics ? (
-                      <span className="text-gray-500"> v{row.ticket_logics.version}</span>
+                      <span className="text-[var(--ghost)]"> v{row.ticket_logics.version}</span>
                     ) : null}
                   </td>
                   <td className="py-2 pr-2 font-mono">{row.ticker}</td>
-                  <td className="py-2 pr-2 text-xs text-gray-400">
+                  <td className="py-2 pr-2 text-xs text-[var(--dim)]">
                     {row.start_date} → {row.end_date}
                   </td>
-                  <td className="py-2 pr-2 text-xs text-gray-400">{row.timeframe}</td>
+                  <td className="py-2 pr-2 text-xs text-[var(--dim)]">{row.timeframe}</td>
                   <td className="py-2 pr-2 text-right">{row.total_trades}</td>
                   <td className="py-2 pr-2 text-right">
                     {row.win_rate != null
@@ -264,15 +264,15 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
                   </td>
                   <td
                     className={`py-2 pr-2 text-right font-mono ${
-                      pnl > 0 ? "text-green-400" : pnl < 0 ? "text-red-400" : ""
+                      pnl > 0 ? "text-[var(--bull)]" : pnl < 0 ? "text-[var(--bear)]" : ""
                     }`}
                   >
                     ${pnl.toFixed(2)}
                   </td>
-                  <td className="py-2 pr-2 text-right font-mono text-gray-400">
+                  <td className="py-2 pr-2 text-right font-mono text-[var(--dim)]">
                     ${(row.max_drawdown_dollars ?? 0).toFixed(2)}
                   </td>
-                  <td className="py-2 pr-2 text-xs text-gray-500">
+                  <td className="py-2 pr-2 text-xs text-[var(--ghost)]">
                     {new Date(row.created_at).toLocaleString()}
                   </td>
                 </tr>
@@ -282,8 +282,8 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
         </table>
       )}
 
-      <div className="mt-8 text-xs text-gray-500">
-        <Link href="/dashboard" className="hover:text-gray-300">
+      <div className="mt-8 text-xs text-[var(--ghost)]">
+        <Link href="/dashboard" className="hover:text-[var(--ink)]">
           ← Back to dashboard
         </Link>
       </div>
