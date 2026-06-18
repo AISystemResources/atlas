@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -34,7 +36,12 @@ const TICKER_DATA = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Signed-in users land directly on the portfolio dashboard.
+  // The public marketing page is for anonymous visitors only.
+  const { userId } = await auth();
+  if (userId) redirect("/dashboard/portfolio");
+
   return (
     <>
       <style>{`
