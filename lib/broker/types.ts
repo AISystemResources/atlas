@@ -52,6 +52,12 @@ export interface Order {
   notional: number | null;
   /** Share quantity — may be null for notional-based orders */
   qty: number | null;
+  /** Filled share quantity — populated by Alpaca as the order fills */
+  filledQty?: number | null;
+  /** Average fill price across all fills */
+  filledAvgPrice?: number | null;
+  /** ISO timestamp the order most recently filled */
+  filledAt?: string | null;
   createdAt?: string;
 }
 

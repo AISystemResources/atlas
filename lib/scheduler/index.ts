@@ -20,4 +20,6 @@ export { intradayCron } from "./intraday-cron"
 
 export { dailyDistillationCron } from "./daily-distillation-cron"
 
+export { orderReconcilerCron } from "./order-reconciler-cron"
+
 export type { ScheduleWindow, UserSchedule, PipelineEvent, DispatchResult } from "./types"
