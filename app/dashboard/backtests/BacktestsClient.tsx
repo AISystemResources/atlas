@@ -50,6 +50,22 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
   const [notional, setNotional] = useState("200");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function openCompare() {
+    if (selected.size < 2) return;
+    const ids = [...selected].join(",");
+    router.push(`/dashboard/backtests/compare?ids=${ids}`);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -172,7 +188,18 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
       </form>
 
       {/* Existing runs */}
-      <h2 className="text-lg font-semibold mb-3">Recent runs</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">Recent runs</h2>
+        {initialRows.length > 0 && (
+          <button
+            onClick={openCompare}
+            disabled={selected.size < 2}
+            className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-gray-600 rounded font-medium"
+          >
+            Compare {selected.size > 0 ? `(${selected.size})` : ""}
+          </button>
+        )}
+      </div>
       {initialRows.length === 0 ? (
         <div className="text-sm text-gray-500 p-6 border border-slate-800 rounded-lg text-center">
           No backtests yet. Run one with the form above.
@@ -181,6 +208,7 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-gray-500 border-b border-slate-800">
+              <th className="py-2 pr-2 w-6"></th>
               <th className="py-2 pr-2">Logic</th>
               <th className="py-2 pr-2">Ticker</th>
               <th className="py-2 pr-2">Range</th>
@@ -195,12 +223,28 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
           <tbody>
             {initialRows.map((row) => {
               const pnl = row.total_pnl_dollars ?? 0;
+              const isSelected = selected.has(row.id);
               return (
                 <tr
                   key={row.id}
                   className="border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer"
                   onClick={() => router.push(`/dashboard/backtests/${row.id}`)}
                 >
+                  <td
+                    className="py-2 pr-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggle(row.id);
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggle(row.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="accent-blue-500"
+                    />
+                  </td>
                   <td className="py-2 pr-2 font-mono text-xs">
                     {row.ticket_logics?.name ?? "—"}
                     {row.ticket_logics ? (
