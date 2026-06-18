@@ -1,33 +1,40 @@
 /**
- * Intraday scalper — Sprint 049 (Ticket Logic).
+ * Intraday scalper — Sprint 050a (crypto support added on top of Sprint 049).
  *
- * Architecture: signal → ticket → bracket order.
+ * Two execution paths in one function:
  *
- * Key changes from Sprint 040/043:
- *   1. **DJIA-30 hardcode is gone.** Scalper universe is now: tickers in the
- *      user's watchlist where `scalper_enabled = true`. Explicit opt-in.
- *   2. **No polling exit logic.** Bracket orders submitted at entry carry
- *      their own take-profit and stop-loss; Alpaca's matching engine handles
- *      the exits. Atlas does NOT poll for exit conditions every minute.
- *   3. **EOD force-close** stays as a paranoia safety net (in case TIF=day
- *      bracket didn't cancel for some reason). Should never fire in practice.
+ *   1. **Equity path** (Sprint 049, unchanged):
+ *      - Gated on US market hours (09:31–15:50 ET, Mon-Fri)
+ *      - Uses Alpaca BRACKET orders — entry + take-profit + stop-loss atomic
+ *      - Exits managed by Alpaca's matching engine, no polling required
  *
- * The user opts each ticker into scalping via `watchlist.scalper_enabled`.
- * For the Dow Jones index, the recommended choice is DIA (the ETF), NOT
- * the 30 constituent stocks.
+ *   2. **Crypto path** (new):
+ *      - 24/7 — runs every minute regardless of equity market hours
+ *      - Alpaca does NOT support bracket orders for crypto, so we fall back
+ *        to polling exit: simple market BUY at entry, then per-minute checks
+ *        for RSI/ATR exit conditions
+ *      - Weaker safety guarantee than equity brackets, but functional and
+ *        gives Edmund the 24/7 feedback loop he wanted
+ *
+ * Scalper universe = watchlist rows where scalper_enabled=true. Equity and
+ * crypto tickers can both be flagged; they route to the right path automatically.
  */
 
 import { createClient } from "@supabase/supabase-js";
 import { AlpacaAdapter } from "@/lib/broker";
 import { getBrokerCredentials } from "@/lib/broker/credentials";
-import { fetchIntradayBars } from "@/lib/market/alpaca";
+import { fetchIntradayBars, isCryptoSymbol } from "@/lib/market/alpaca";
 import { computeIndicators, detectS1Signal } from "@/lib/indicators";
 import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
 import { buildS1LongTicket } from "@/lib/signals/types";
 
-const SCALP_NOTIONAL = 200;              // $200 per scalper entry (target — actual qty is whole shares)
-const COOLDOWN_MS    = 10 * 60 * 1000;  // 10-min cooldown after any BUY
-const LOOKBACK_H     = 8;               // hours to scan for recent scalper trades
+const SCALP_NOTIONAL = 200;
+const COOLDOWN_MS    = 10 * 60 * 1000;
+const LOOKBACK_H     = 8;
+
+// Crypto polling-exit thresholds (Alpaca crypto has no bracket orders)
+const CRYPTO_RSI_EXIT  = 55;
+const CRYPTO_STOP_MULT = 1.5;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY =
@@ -36,8 +43,8 @@ const SUPABASE_KEY =
 export interface ScalperResult {
   user_id: string;
   entries: number;
-  exits: number;       // always 0 in the Ticket Logic era (Alpaca handles exits)
-  eod_closes: number;  // paranoia safety net — should always be 0 if brackets fire
+  exits: number;
+  eod_closes: number;
   skipped: number;
   errors: string[];
 }
@@ -65,6 +72,11 @@ export function isEodWindow(): boolean {
   return getEtMinute() >= 15 * 60 + 50;
 }
 
+function isWeekday(): boolean {
+  const day = new Date().getUTCDay();
+  return day !== 0 && day !== 6;
+}
+
 // ── Signal parameters lookup ──────────────────────────────────────────────────
 
 interface ScalperParams {
@@ -87,7 +99,6 @@ async function loadScalperParams(
   userId: string,
   ticker: string,
 ): Promise<ScalperParams> {
-  // Pull all user × scalper rows (global + this-ticker), apply ticker-specific over global.
   const { data } = await sb
     .from("signal_parameters")
     .select("ticker, parameter_key, current_value")
@@ -101,7 +112,6 @@ async function loadScalperParams(
     current_value: number;
   }>;
 
-  // Two-pass merge: globals first, then per-ticker overrides.
   const merged: Record<string, number> = {};
   for (const r of rows.filter((r) => r.ticker === null)) {
     merged[r.parameter_key] = Number(r.current_value);
@@ -162,40 +172,49 @@ async function runUserScalper(
 
   const broker = new AlpacaAdapter(creds.apiKey, creds.secretKey, creds.paper);
 
-  // Scalper universe = watchlist rows where scalper_enabled=true. Explicit opt-in.
   const { data: wlRows } = await sb
     .from("watchlist")
     .select("ticker, scalper_enabled")
     .eq("user_id", userId)
     .eq("scalper_enabled", true);
-  const candidates = ((wlRows ?? []) as Array<{ ticker: string }>).map((r) => r.ticker);
+  const allCandidates = ((wlRows ?? []) as Array<{ ticker: string }>).map((r) => r.ticker);
 
-  if (candidates.length === 0) {
-    // No tickers opted in — nothing to do. Common case for users who haven't
-    // configured scalping yet. Not an error.
-    return result;
-  }
+  if (allCandidates.length === 0) return result;
+
+  // Split universe by instrument type so the right execution path runs.
+  const cryptoCandidates = allCandidates.filter(isCryptoSymbol);
+  const equityCandidates = allCandidates.filter((t) => !isCryptoSymbol(t));
+
+  // Equity path is gated on US market hours (Mon-Fri 09:31-15:50 ET).
+  const equityOpen = isWeekday() && isMarketHours();
+  const equityEod = isWeekday() && isEodWindow();
 
   // Recent scalper BUYs for cooldown bookkeeping.
   const since = new Date(Date.now() - LOOKBACK_H * 60 * 60 * 1000).toISOString();
   const { data: recentBuys } = await sb
     .from("trades")
-    .select("ticker, executed_at, created_at")
+    .select("ticker, executed_at, created_at, price")
     .eq("user_id", userId)
     .eq("action", "BUY")
     .eq("strategy", "scalper")
     .gte("created_at", since);
 
   const scalperBuyAt = new Map<string, number>();
-  for (const row of (recentBuys ?? []) as Array<{ ticker: string; executed_at: string | null; created_at: string }>) {
+  const scalperBuyPrice = new Map<string, number>();
+  for (const row of (recentBuys ?? []) as Array<{
+    ticker: string;
+    executed_at: string | null;
+    created_at: string;
+    price: number | string;
+  }>) {
     const tstr = row.executed_at ?? row.created_at;
     const t = new Date(tstr).getTime();
     if (t > (scalperBuyAt.get(row.ticker) ?? 0)) {
       scalperBuyAt.set(row.ticker, t);
+      scalperBuyPrice.set(row.ticker, Number(row.price));
     }
   }
 
-  // Current Alpaca positions
   let positions: Awaited<ReturnType<typeof broker.getPositions>>;
   try {
     positions = await broker.getPositions();
@@ -205,10 +224,9 @@ async function runUserScalper(
   }
   const posMap = new Map(positions.map((p) => [p.ticker, p]));
 
-  // ── EOD safety-net: any scalper position still open after 15:50 ET? ──────
-  // With bracket TIF=day this should never fire in practice. Belt-and-braces.
-  if (isEodWindow()) {
-    for (const ticker of candidates) {
+  // ── Equity EOD safety net (Mon-Fri 15:50 ET only) ────────────────────────
+  if (equityEod) {
+    for (const ticker of equityCandidates) {
       const pos = posMap.get(ticker);
       if (!pos) continue;
       if (!scalperBuyAt.has(ticker)) continue;
@@ -216,7 +234,7 @@ async function runUserScalper(
         await broker.submitOrder({ ticker, action: "SELL", notional: pos.marketValue });
         result.eod_closes++;
         console.warn(
-          `[scalper] EOD-safety-net force-closed ${ticker} marketValue=$${pos.marketValue.toFixed(2)} — investigate why bracket didn't fire.`,
+          `[scalper] EOD-safety force-closed ${ticker} mv=$${pos.marketValue.toFixed(2)} — investigate why bracket didn't fire.`,
         );
       } catch (err) {
         result.errors.push(
@@ -224,12 +242,18 @@ async function runUserScalper(
         );
       }
     }
-    return result;
   }
 
-  // ── Entry scan ───────────────────────────────────────────────────────────
+  // Combine candidates that we still want to scan for entries/exits.
+  const scanCandidates = [
+    ...cryptoCandidates,                            // crypto runs 24/7
+    ...(equityOpen ? equityCandidates : []),        // equities only during market hours
+  ];
+
+  if (scanCandidates.length === 0) return result;
+
   const barResults = await Promise.allSettled(
-    candidates.map((ticker) =>
+    scanCandidates.map((ticker) =>
       fetchIntradayBars(ticker, 35, creds).then((bars) => ({ ticker, bars })),
     ),
   );
@@ -237,32 +261,115 @@ async function runUserScalper(
   for (const br of barResults) {
     if (br.status === "rejected") continue;
     const { ticker, bars } = br.value;
+    const isCrypto = isCryptoSymbol(ticker);
 
-    // ATR(14) for ticket math
     const ind = computeIndicators(bars, 14);
     if (!ind) {
       result.skipped++;
       continue;
     }
-    const { atr, lastClose } = ind;
+    const { atr, lastClose, rsi } = ind;
 
     const hasPosition = posMap.has(ticker);
     const buyAt = scalperBuyAt.get(ticker);
 
-    if (hasPosition) continue;  // Position already open → bracket is managing exits.
+    if (hasPosition) {
+      // Equity positions are managed by their bracket order; skip them.
+      // Crypto positions need our polling-exit because Alpaca has no crypto brackets.
+      if (!isCrypto) continue;
+
+      const pos = posMap.get(ticker)!;
+      const entryPrice = scalperBuyPrice.get(ticker) ?? pos.avgCost;
+      const stopPrice = entryPrice - CRYPTO_STOP_MULT * atr;
+      const shouldExit = lastClose < stopPrice || rsi > CRYPTO_RSI_EXIT;
+
+      if (shouldExit) {
+        try {
+          const order = await broker.submitOrder({
+            ticker,
+            action: "SELL",
+            notional: pos.marketValue,
+            timeInForce: "gtc",
+          });
+
+          await sb.from("trades").insert({
+            portfolio_id: portfolioId,
+            user_id: userId,
+            ticker,
+            action: "SELL",
+            shares: 0,
+            price: lastClose,
+            status: order.status === "filled" ? "filled" : "pending",
+            boundary_mode: "autonomous",
+            signal_id: null,
+            order_id: order.orderId,
+            executed_at: order.status === "filled" ? new Date().toISOString() : null,
+            strategy: "scalper",
+            closed_by: "ai",
+          });
+
+          result.exits++;
+          const reason = lastClose < stopPrice ? `stop ${lastClose.toFixed(2)}<${stopPrice.toFixed(2)}` : `rsi=${rsi.toFixed(1)}>55`;
+          console.info(`[scalper] CRYPTO-SELL ${ticker} (${reason})`);
+        } catch (err) {
+          result.errors.push(
+            `crypto-sell ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      continue;
+    }
+
+    // Entry path
     if (buyAt != null && Date.now() - buyAt < COOLDOWN_MS) continue;
 
-    // detectS1Signal encapsulates RSI(21) regime + KC band-touch + bullish candle
     const s1 = detectS1Signal(bars);
     if (!s1) continue;
 
-    // Per-user parameters override the Sandy S1 defaults
     const params = await loadScalperParams(sb, userId, ticker);
-
     const signalBar = bars[bars.length - 1];
     const scaledNotional =
       Math.round(params.notional_dollars * ebcGate.notionalMultiplier * 100) / 100;
 
+    if (isCrypto) {
+      // Crypto: simple market BUY with GTC. Exits managed by per-minute polling above.
+      try {
+        const order = await broker.submitOrder({
+          ticker,
+          action: "BUY",
+          notional: scaledNotional,
+          timeInForce: "gtc",
+        });
+
+        await sb.from("trades").insert({
+          portfolio_id: portfolioId,
+          user_id: userId,
+          ticker,
+          action: "BUY",
+          shares: 0,
+          price: lastClose,
+          status: order.status === "filled" ? "filled" : "pending",
+          boundary_mode: "autonomous",
+          signal_id: null,
+          order_id: order.orderId,
+          executed_at: order.status === "filled" ? new Date().toISOString() : null,
+          strategy: "scalper",
+          opened_by: "ai",
+        });
+
+        result.entries++;
+        console.info(
+          `[scalper] CRYPTO-BUY ${ticker} notional≈$${scaledNotional} (rsi21=${s1.rsi21.toFixed(1)} atr=${atr.toFixed(4)})`,
+        );
+      } catch (err) {
+        result.errors.push(
+          `crypto-buy ${ticker}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      continue;
+    }
+
+    // Equity: bracket order (Sprint 049 path).
     const ticket = buildS1LongTicket({
       ticker,
       signal_bar_high: signalBar.high,
@@ -274,7 +381,6 @@ async function runUserScalper(
       target_atr_multiple: params.target_atr_multiple,
       entry_buffer_pct: params.entry_buffer_pct,
     });
-
     if (!ticket) {
       result.skipped++;
       continue;
@@ -289,8 +395,6 @@ async function runUserScalper(
         time_in_force: ticket.time_in_force,
       });
 
-      // Record entry trade — closed_by stays null (the bracket will fill the SELL
-      // separately; the webhook reconciler updates that row with closed_by='ai').
       await sb.from("trades").insert({
         portfolio_id: portfolioId,
         user_id: userId,
