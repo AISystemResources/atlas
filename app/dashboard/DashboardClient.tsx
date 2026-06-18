@@ -558,32 +558,6 @@ export function SignalCard({
 
 // ─── Tab: Portfolio ───────────────────────────────────────────────────────────
 
-function AIModeStrip({ philosophy, positionCount, boundaryMode }: { philosophy: string; positionCount: number; boundaryMode: string }) {
-  return (
-    <div style={{
-      background: "var(--elevated)", border: "1px solid var(--line)",
-      borderRadius: 8, padding: "9px 14px",
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      marginBottom: 12,
-    }}>
-      <div className="flex items-center gap-2">
-        <span className="live-dot" />
-        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", letterSpacing: "0.06em" }}>
-          {fmtMode(boundaryMode)}
-        </span>
-      </div>
-      <div className="flex items-center gap-3">
-        <span style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-          {philosophy.charAt(0).toUpperCase() + philosophy.slice(1)}
-        </span>
-        <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-          {positionCount} active
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export function PortfolioTab({
   portfolio,
   tier,
@@ -727,11 +701,6 @@ export function PortfolioTab({
 
       {/* Autonomy posture indicator — shows current 4-cell state, click to edit */}
       <AutonomyBadge />
-
-      {/* AI Mode Strip — Pro/Max only */}
-      {(tier === "pro" || tier === "max") && portfolio && (
-        <AIModeStrip philosophy={philosophy} positionCount={portfolio.positions?.length ?? 0} boundaryMode={boundaryMode} />
-      )}
 
       {/* Watchlist strip — curated tickers + DJI anchor */}
       <WatchlistStrip />

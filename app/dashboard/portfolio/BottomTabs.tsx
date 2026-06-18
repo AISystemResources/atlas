@@ -245,99 +245,137 @@ function PositionsTabContent({
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {portfolio.positions.map((pos) => {
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
+          borderRadius: 10,
+          overflow: "hidden",
+          boxShadow: "var(--card-shadow)",
+        }}
+      >
+        {/* Column header — desktop only */}
+        <div
+          className="hidden md:grid"
+          style={{
+            gridTemplateColumns: "minmax(110px, 1.2fr) 1fr 1fr 1.2fr 1.2fr auto",
+            gap: 12,
+            padding: "8px 16px",
+            borderBottom: "1px solid var(--line)",
+            background: "var(--elevated)",
+            fontSize: 9,
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.08em",
+            color: "var(--ghost)",
+            textTransform: "uppercase",
+          }}
+        >
+          <span>Ticker</span>
+          <span style={{ textAlign: "right" }}>Shares</span>
+          <span style={{ textAlign: "right" }}>Avg</span>
+          <span style={{ textAlign: "right" }}>Now</span>
+          <span style={{ textAlign: "right" }}>P&amp;L</span>
+          <span style={{ width: 110, textAlign: "right" }}>Actions</span>
+        </div>
+
+        {portfolio.positions.map((pos, idx) => {
           const livePrice = liveQuotes[pos.ticker] ?? pos.current_price;
           const livePnl = (livePrice - pos.avg_cost) * pos.shares;
           const livePnlPos = livePnl >= 0;
           const isLive = liveQuotes[pos.ticker] != null;
+          const isLast = idx === portfolio.positions!.length - 1;
 
           return (
             <div
               key={pos.ticker}
+              className="grid items-center"
               style={{
-                background: "var(--surface)",
-                border: "1px solid var(--line)",
-                borderRadius: 10,
-                padding: "14px 16px",
-                boxShadow: "var(--card-shadow)",
+                gridTemplateColumns: "minmax(110px, 1.2fr) 1fr 1fr 1.2fr 1.2fr auto",
+                gap: 12,
+                padding: "12px 16px",
+                borderBottom: isLast ? "none" : "1px solid var(--line)",
               }}
             >
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>
-                    {pos.ticker}
-                  </span>
-                  <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>
-                    {pos.shares} sh
-                  </span>
-                  {isLive && (
-                    <span
-                      className="ml-2 inline-flex items-center gap-1"
-                      style={{
-                        fontSize: 9,
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--bull)",
-                        letterSpacing: "0.08em",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 5,
-                          height: 5,
-                          borderRadius: "50%",
-                          background: "var(--bull)",
-                        }}
-                      />
-                      LIVE
-                    </span>
-                  )}
-                </div>
-                <div
-                  className="num text-right"
-                  style={{
-                    color: livePnlPos ? "var(--bull)" : "var(--bear)",
-                    fontSize: 14,
-                    fontWeight: 700,
-                  }}
-                >
-                  {livePnlPos ? "+" : ""}{fmt(livePnl)}
-                </div>
-              </div>
-
-              <div
-                className="flex items-center justify-between"
-                style={{ marginBottom: 10 }}
-              >
+              <div className="flex items-center gap-2 min-w-0">
                 <span
-                  style={{
-                    color: "var(--ghost)",
-                    fontSize: 11,
-                    fontFamily: "var(--font-jb)",
-                  }}
+                  className="font-display font-bold"
+                  style={{ fontSize: 14, color: "var(--ink)", letterSpacing: "0.01em" }}
                 >
-                  avg {fmt(pos.avg_cost)} · now {fmt(livePrice)}
+                  {pos.ticker}
                 </span>
+                {isLive && (
+                  <span
+                    aria-hidden
+                    style={{
+                      display: "inline-block",
+                      width: 5,
+                      height: 5,
+                      borderRadius: "50%",
+                      background: "var(--bull)",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
               </div>
-
-              <div className="flex items-center justify-between gap-2">
+              <span
+                className="num text-right"
+                style={{
+                  fontSize: 12,
+                  fontFamily: "var(--font-jb)",
+                  color: "var(--ghost)",
+                }}
+              >
+                {pos.shares}
+              </span>
+              <span
+                className="num text-right"
+                style={{
+                  fontSize: 12,
+                  fontFamily: "var(--font-jb)",
+                  color: "var(--ghost)",
+                }}
+              >
+                {fmt(pos.avg_cost)}
+              </span>
+              <span
+                className="num text-right"
+                style={{
+                  fontSize: 12,
+                  fontFamily: "var(--font-jb)",
+                  color: "var(--ink)",
+                  fontWeight: 600,
+                }}
+              >
+                {fmt(livePrice)}
+              </span>
+              <span
+                className="num text-right"
+                style={{
+                  fontSize: 13,
+                  fontFamily: "var(--font-jb)",
+                  color: livePnlPos ? "var(--bull)" : "var(--bear)",
+                  fontWeight: 700,
+                }}
+              >
+                {livePnlPos ? "+" : ""}{fmt(livePnl)}
+              </span>
+              <div className="flex items-center gap-1" style={{ width: 110, justifyContent: "flex-end" }}>
                 <button
                   onClick={() => onPositionClick(pos.ticker)}
+                  title="View AI decision log"
                   style={{
-                    flex: 1,
-                    background: "var(--elevated)",
+                    background: "transparent",
                     border: "1px solid var(--line)",
                     color: "var(--ghost)",
-                    fontSize: 11,
+                    fontSize: 10,
                     fontFamily: "var(--font-jb)",
-                    padding: "7px 10px",
-                    borderRadius: 6,
+                    padding: "5px 9px",
+                    borderRadius: 5,
                     cursor: "pointer",
                     letterSpacing: "0.04em",
                   }}
                 >
-                  AI LOG →
+                  LOG
                 </button>
                 <button
                   onClick={() =>
@@ -348,15 +386,15 @@ function PositionsTabContent({
                       shares: pos.shares,
                     })
                   }
+                  title="Close position manually"
                   style={{
-                    flex: 1,
-                    background: "var(--surface)",
-                    border: `1px solid ${livePnlPos ? "var(--bull)" : "var(--bear)"}40`,
+                    background: "transparent",
+                    border: `1px solid ${livePnlPos ? "var(--bull)" : "var(--bear)"}50`,
                     color: livePnlPos ? "var(--bull)" : "var(--bear)",
-                    fontSize: 11,
+                    fontSize: 10,
                     fontFamily: "var(--font-jb)",
-                    padding: "7px 10px",
-                    borderRadius: 6,
+                    padding: "5px 9px",
+                    borderRadius: 5,
                     cursor: "pointer",
                     letterSpacing: "0.04em",
                     fontWeight: 600,
