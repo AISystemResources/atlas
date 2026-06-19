@@ -13,7 +13,8 @@
 import { evaluate } from "@/lib/strategies/evaluate";
 import { loadTicketLogic } from "@/lib/strategies/loader";
 import { getServiceClient } from "@/lib/supabase-server";
-import { fetchHistoricalBars, type BacktestTimeframe } from "./fetch-bars";
+import { type BacktestTimeframe } from "./fetch-bars";
+import { fetchHistoricalBarsCached } from "./fetch-bars-cached";
 import { simulateExit } from "./simulate-exit";
 
 const BARS_AROUND_ENTRY = 50;
@@ -59,7 +60,7 @@ export async function backtestTicketLogic(
   const startDate = new Date(`${input.start_date}T00:00:00Z`);
   const endDate = new Date(`${input.end_date}T23:59:59Z`);
 
-  const bars = await fetchHistoricalBars(
+  const bars = await fetchHistoricalBarsCached(
     input.ticker,
     startDate,
     endDate,
