@@ -26,6 +26,7 @@ import { getBrokerCredentials } from "@/lib/broker/credentials";
 import { fetchIntradayBars, isCryptoSymbol } from "@/lib/market/alpaca";
 import { computeIndicators } from "@/lib/indicators";
 import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
+import { getAutonomyMatrix, scalperParticipates, type AutonomyMatrix } from "@/lib/boundary/autonomy";
 import {
   detectStrategySignal,
   loadStrategyById,
@@ -105,6 +106,14 @@ async function runUserScalper(
   const ebcGate = await getEffectiveGate(userId);
   if (!ebcGate.canExecute) {
     result.errors.push(`ebc ${ebcGate.state} blocks execution`);
+    return result;
+  }
+
+  // Sprint 070: 4-cell autonomy matrix. The scalper participates only when
+  // at least one cell is AI-owned; ai_intervenes_open gates BUY orders and
+  // ai_intervenes_close gates SELL orders (crypto polling exit + EOD safety).
+  const autonomy = await getAutonomyMatrix(userId);
+  if (!scalperParticipates(autonomy)) {
     return result;
   }
 
@@ -203,7 +212,10 @@ async function runUserScalper(
   const posMap = new Map(positions.map((p) => [p.ticker, p]));
 
   // ── Equity EOD safety net (Mon-Fri 15:50 ET only) ────────────────────────
-  if (equityEod) {
+  // Sprint 070: respects ai_intervenes_close — when false, the human is
+  // expected to close their own positions and the EOD safety net would be
+  // an unwanted override.
+  if (equityEod && autonomy.ai_intervenes_close) {
     for (const ticker of equityCandidates) {
       const pos = posMap.get(ticker);
       if (!pos) continue;
@@ -256,6 +268,10 @@ async function runUserScalper(
       // Crypto positions need our polling-exit because Alpaca has no crypto brackets.
       if (!isCrypto) continue;
 
+      // Sprint 070: ai_intervenes_close gates the crypto polling exit.
+      // When false, the human owns crypto closes — we don't sell.
+      if (!autonomy.ai_intervenes_close) continue;
+
       const pos = posMap.get(ticker)!;
       const entryPrice = scalperBuyPrice.get(ticker) ?? pos.avgCost;
       const stopPrice = entryPrice - CRYPTO_STOP_MULT * atr;
@@ -299,6 +315,9 @@ async function runUserScalper(
     }
 
     // Entry path
+    // Sprint 070: ai_intervenes_open gates BUY orders. When false, the
+    // human opens trades — we evaluate nothing else for this ticker.
+    if (!autonomy.ai_intervenes_open) continue;
     if (buyAt != null && Date.now() - buyAt < COOLDOWN_MS) continue;
 
     // Sprint 068: resolve the strategy for this specific (user, ticker).
@@ -489,15 +508,14 @@ async function runUserScalper(
 export async function runIntradayScalper(): Promise<ScalperResult[]> {
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 
-  // Sprint 068: strategy is no longer per-user; each (user, ticker) pair on
-  // the watchlist names its own strategy via watchlist.strategy_id. The
-  // per-user loadStrategyForUser path is gone. Users still need
-  // scalper_enabled=true and boundary_mode='autonomous' to participate.
+  // Sprint 070: enrolment gates on scalper_enabled only. The 4-cell
+  // autonomy matrix (ai_intervenes_open, ai_intervenes_close) is checked
+  // per-user inside runUserScalper. boundary_mode is left for the legacy
+  // multi-agent pipeline and is no longer consulted here.
 
   const { data: users, error } = await sb
     .from("profiles")
     .select("id")
-    .eq("boundary_mode", "autonomous")
     .eq("scalper_enabled", true);
 
   if (error) {
