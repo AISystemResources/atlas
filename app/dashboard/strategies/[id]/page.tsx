@@ -30,6 +30,8 @@ interface StrategyRow {
   visibility: "private" | "unlisted" | "public";
   created_by_user_id: string | null;
   created_at: string;
+  ticker: string | null;
+  tags: string[] | null;
 }
 
 export default async function StrategyDetailPage({
@@ -46,7 +48,7 @@ export default async function StrategyDetailPage({
   const { data: rowData } = await sb
     .from("ticket_logics")
     .select(
-      "id, name, version, parent_version_id, forked_from_id, description, body, status, visibility, created_by_user_id, created_at",
+      "id, name, version, parent_version_id, forked_from_id, description, body, status, visibility, created_by_user_id, created_at, ticker, tags",
     )
     .eq("id", id)
     .maybeSingle();
@@ -149,6 +151,8 @@ export default async function StrategyDetailPage({
     tunable_parameters: body.tunable_parameters ?? [],
     timeframe: body.timeframe,
     direction: body.direction,
+    ticker: row.ticker ?? null,
+    tags: row.tags ?? [],
   };
 
   return (

@@ -28,7 +28,7 @@ import { computeIndicators } from "@/lib/indicators";
 import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
 import {
   detectStrategySignal,
-  loadStrategyForUser,
+  loadStrategyById,
   type ActiveStrategy,
 } from "./ticket-adapter";
 
@@ -92,7 +92,6 @@ async function runUserScalper(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any,
   userId: string,
-  strategy: ActiveStrategy,
 ): Promise<ScalperResult> {
   const result: ScalperResult = {
     user_id: userId,
@@ -130,14 +129,35 @@ async function runUserScalper(
 
   const broker = new AlpacaAdapter(creds.apiKey, creds.secretKey, creds.paper);
 
+  // Sprint 068: each watchlist row pairs a ticker with a specific strategy
+  // (one strategy per ticker, per the post-pivot framing). If a row has no
+  // strategy_id, the scalper skips that ticker — the user hasn't picked
+  // what to run for it yet.
   const { data: wlRows } = await sb
     .from("watchlist")
-    .select("ticker, scalper_enabled")
+    .select("ticker, scalper_enabled, strategy_id")
     .eq("user_id", userId)
     .eq("scalper_enabled", true);
-  const allCandidates = ((wlRows ?? []) as Array<{ ticker: string }>).map((r) => r.ticker);
+  const wlRowsTyped = (wlRows ?? []) as Array<{
+    ticker: string;
+    strategy_id: string | null;
+  }>;
+  const allCandidates = wlRowsTyped.map((r) => r.ticker);
+  const strategyIdByTicker = new Map<string, string>();
+  for (const row of wlRowsTyped) {
+    if (row.strategy_id) strategyIdByTicker.set(row.ticker, row.strategy_id);
+  }
 
   if (allCandidates.length === 0) return result;
+
+  // Pre-load the strategies referenced by this user's watchlist so the
+  // ticker loop hits an in-memory map instead of N DB queries.
+  const uniqueStrategyIds = [...new Set(strategyIdByTicker.values())];
+  const strategyById = new Map<string, ActiveStrategy>();
+  for (const sid of uniqueStrategyIds) {
+    const loaded = await loadStrategyById(sid);
+    if (loaded) strategyById.set(sid, loaded);
+  }
 
   // Split universe by instrument type so the right execution path runs.
   const cryptoCandidates = allCandidates.filter(isCryptoSymbol);
@@ -281,12 +301,20 @@ async function runUserScalper(
     // Entry path
     if (buyAt != null && Date.now() - buyAt < COOLDOWN_MS) continue;
 
-    // Sprint 054: the signal is now produced by the ticket_logics evaluator,
-    // not the hardcoded detectS1Signal. The strategy was loaded once at the
-    // top of runIntradayScalper and threaded through. There is intentionally
-    // NO hardcoded fallback — if the strategy can't be loaded, the scalper
-    // run aborts at the entry-point so production execution always follows
-    // the human+AI-ratified ticket_logics record.
+    // Sprint 068: resolve the strategy for this specific (user, ticker).
+    // No watchlist.strategy_id → skip; ticker not yet paired with a strategy.
+    // No loaded strategy → skip; the row pointed at a deleted strategy.
+    const sidForTicker = strategyIdByTicker.get(ticker);
+    if (!sidForTicker) {
+      result.skipped++;
+      continue;
+    }
+    const strategy = strategyById.get(sidForTicker);
+    if (!strategy) {
+      result.errors.push(`${ticker}: strategy_id=${sidForTicker} could not be loaded`);
+      result.skipped++;
+      continue;
+    }
     const signal = detectStrategySignal(strategy, bars);
     if (!signal) continue;
 
@@ -461,10 +489,10 @@ async function runUserScalper(
 export async function runIntradayScalper(): Promise<ScalperResult[]> {
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 
-  // Sprint 060C: load each user's chosen strategy from profiles.scalper_strategy_id.
-  // No hardcoded fallback. Users without a configured strategy produce no
-  // entries (fail-closed). The strategy row itself is the source of truth for
-  // what each user's scalper trades.
+  // Sprint 068: strategy is no longer per-user; each (user, ticker) pair on
+  // the watchlist names its own strategy via watchlist.strategy_id. The
+  // per-user loadStrategyForUser path is gone. Users still need
+  // scalper_enabled=true and boundary_mode='autonomous' to participate.
 
   const { data: users, error } = await sb
     .from("profiles")
@@ -479,21 +507,6 @@ export async function runIntradayScalper(): Promise<ScalperResult[]> {
   if (!users || users.length === 0) return [];
 
   return Promise.all(
-    (users as Array<{ id: string }>).map(async (u) => {
-      const strategy = await loadStrategyForUser(u.id);
-      if (!strategy) {
-        return {
-          user_id: u.id,
-          entries: 0,
-          exits: 0,
-          eod_closes: 0,
-          skipped: 0,
-          errors: [
-            "no scalper_strategy_id configured for user — visit Strategy Library to opt in",
-          ],
-        };
-      }
-      return runUserScalper(sb, u.id, strategy);
-    }),
+    (users as Array<{ id: string }>).map((u) => runUserScalper(sb, u.id)),
   );
 }

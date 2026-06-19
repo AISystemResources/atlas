@@ -24,6 +24,8 @@ export interface StrategyCard {
   backtest_count: number;
   is_my_scalper: boolean;
   created_at: string;
+  ticker: string | null;
+  tags: string[];
 }
 
 type Tab = "mine" | "public";
@@ -66,12 +68,52 @@ export function StrategiesClient({ cards }: { cards: StrategyCard[] }) {
       {visible.length === 0 ? (
         <EmptyState tab={tab} />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {visible.map((c) => (
-            <StrategyCardView key={c.id} card={c} />
-          ))}
-        </div>
+        <TickerGroupedGrid cards={visible} />
       )}
+    </div>
+  );
+}
+
+function TickerGroupedGrid({ cards }: { cards: StrategyCard[] }) {
+  // Sprint 068: strategies are now ticker-locked. Group by ticker so the
+  // library reads as "what's available for ^DJI" rather than a flat list.
+  const groups = useMemo(() => {
+    const m = new Map<string, StrategyCard[]>();
+    for (const c of cards) {
+      const key = c.ticker ?? "—";
+      const arr = m.get(key) ?? [];
+      arr.push(c);
+      m.set(key, arr);
+    }
+    return [...m.entries()].sort(([a], [b]) => {
+      if (a === "—") return 1;
+      if (b === "—") return -1;
+      return a.localeCompare(b);
+    });
+  }, [cards]);
+
+  return (
+    <div className="space-y-8">
+      {groups.map(([ticker, group]) => (
+        <section key={ticker}>
+          <div className="flex items-baseline gap-2 mb-3">
+            <h2
+              className="text-lg font-semibold font-mono"
+              style={{ color: "var(--ink)" }}
+            >
+              {ticker === "—" ? "Unassigned" : ticker}
+            </h2>
+            <span className="text-xs" style={{ color: "var(--ghost)" }}>
+              {group.length} strategy{group.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {group.map((c) => (
+              <StrategyCardView key={c.id} card={c} />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -167,6 +209,23 @@ function StrategyCardView({ card }: { card: StrategyCard }) {
           </span>
         )}
       </p>
+
+      {card.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {card.tags.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded"
+              style={{
+                background: "var(--elevated)",
+                color: "var(--dim)",
+              }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
     </Link>
   );
 }
