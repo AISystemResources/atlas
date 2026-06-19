@@ -111,6 +111,7 @@ const READ_TOOL_NAMES = new Set([
   "get_profile",
   "health_check",
   "get_ticker_info",
+  "get_ticker_metadata",
   "get_trades",
   "get_tournament",
   "get_signal",

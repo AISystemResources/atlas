@@ -82,6 +82,20 @@ export const READ_TOOL_DEFS = [
     },
   },
   {
+    name: "get_ticker_metadata",
+    description:
+      "Get the Atlas metadata for a ticker — kind (equity / etf / index / crypto), display name, " +
+      "and which kinds of analysis are honestly available (technical / fundamentals / sentiment). " +
+      "Use this before recommending a strategy, so you don't propose fundamentals-based logic for an index.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticker: { type: "string", description: "Ticker symbol (e.g. AAPL, ^DJI, BTC/USD)." },
+      },
+      required: ["ticker"],
+    },
+  },
+  {
     name: "get_trades",
     description: "List the user's executed trade history, most recent first.",
     inputSchema: {
@@ -450,6 +464,37 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         const { fetchTickerInfoCached } = await import("@/lib/market/fundamentals");
         const info = await fetchTickerInfoCached(symbol);
         return textContent({ symbol, ...info });
+      }
+
+      case "get_ticker_metadata": {
+        const ticker = String(args.ticker ?? "").trim().toUpperCase();
+        if (!ticker) return toolError("ticker is required", "invalid_input");
+        const { getTickerMetadata, describeCapabilities, kindLabel } = await import(
+          "@/lib/market/ticker-metadata"
+        );
+        const meta = await getTickerMetadata(ticker);
+        if (!meta) {
+          return textContent({
+            ticker,
+            found: false,
+            note:
+              "No Atlas metadata row for this ticker. Atlas doesn't yet declare what analyses are honest for it.",
+          });
+        }
+        return textContent({
+          ticker: meta.ticker,
+          found: true,
+          kind: meta.kind,
+          kind_label: kindLabel(meta.kind),
+          display_name: meta.display_name,
+          capabilities: describeCapabilities(meta),
+          has_fundamental_data: meta.has_fundamental_data,
+          has_sentiment_data: meta.has_sentiment_data,
+          has_technical_data: meta.has_technical_data,
+          exchange: meta.exchange,
+          currency: meta.currency,
+          description: meta.description,
+        });
       }
 
       case "get_trades": {

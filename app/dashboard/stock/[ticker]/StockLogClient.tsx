@@ -43,12 +43,30 @@ const EXECUTED_COLOR = {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
+export interface StockMetadataView {
+  kind: "equity" | "etf" | "index" | "crypto";
+  display_name: string;
+  has_fundamental_data: boolean;
+  has_sentiment_data: boolean;
+  has_technical_data: boolean;
+  exchange: string | null;
+  description: string | null;
+}
+
 interface StockLogClientProps {
   ticker: string;
   entries: DecisionLogEntry[];
+  metadata: StockMetadataView | null;
 }
 
-export function StockLogClient({ ticker, entries }: StockLogClientProps) {
+const KIND_LABEL: Record<StockMetadataView["kind"], string> = {
+  equity: "Equity",
+  etf: "ETF",
+  index: "Index",
+  crypto: "Crypto",
+};
+
+export function StockLogClient({ ticker, entries, metadata }: StockLogClientProps) {
   const router = useRouter();
   const [showAll, setShowAll] = useState(false);
   const scrollRestoredRef = useRef(false);
@@ -96,6 +114,7 @@ export function StockLogClient({ ticker, entries }: StockLogClientProps) {
       </header>
 
       <main style={{ padding: "16px 20px" }}>
+        {metadata && <TickerMetadataStrip metadata={metadata} />}
         <PriceChart ticker={ticker} />
 
         <div
@@ -253,6 +272,80 @@ export function StockLogClient({ ticker, entries }: StockLogClientProps) {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+function TickerMetadataStrip({ metadata }: { metadata: StockMetadataView }) {
+  const capabilities: string[] = [];
+  if (metadata.has_technical_data) capabilities.push("Technical");
+  if (metadata.has_fundamental_data) capabilities.push("Fundamentals");
+  if (metadata.has_sentiment_data) capabilities.push("Sentiment");
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 10,
+        padding: "12px 14px",
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+        <span
+          className="font-display font-bold"
+          style={{ fontSize: 14, color: "var(--ink)" }}
+        >
+          {metadata.display_name}
+        </span>
+        <span
+          style={{
+            fontSize: 10,
+            fontFamily: "var(--font-jb)",
+            color: "var(--ghost)",
+            textTransform: "uppercase" as const,
+            letterSpacing: "0.06em",
+          }}
+        >
+          {KIND_LABEL[metadata.kind]}
+          {metadata.exchange ? ` · ${metadata.exchange}` : ""}
+        </span>
+      </div>
+
+      {capabilities.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: metadata.description ? 8 : 0 }}>
+          {capabilities.map((c) => (
+            <span
+              key={c}
+              style={{
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                padding: "2px 8px",
+                borderRadius: 999,
+                background: "var(--elevated)",
+                color: "var(--ink)",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {metadata.description && (
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--dim)",
+            lineHeight: 1.5,
+            margin: 0,
+          }}
+        >
+          {metadata.description}
+        </p>
+      )}
     </div>
   );
 }
