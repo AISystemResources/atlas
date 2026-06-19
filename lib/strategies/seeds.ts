@@ -134,4 +134,29 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
     },
     time_stop: "eod",
   },
+  tunable_parameters: [
+    {
+      name: "entry_buffer_points",
+      path: ["computed", "entry_price", "right", "value"],
+      description:
+        "Absolute points added to signal_bar.high for the entry trigger. Sandy's Dow convention is 3.",
+      min: 1,
+      max: 100,
+    },
+    {
+      name: "stop_buffer_points",
+      path: ["exit", "stop_loss", "right", "value"],
+      description:
+        "Absolute points subtracted from signal_bar.low for the stop loss. Default 3.",
+      min: 1,
+      max: 100,
+    },
+    {
+      name: "notional_per_trade",
+      path: ["entry", "sizing", "value"],
+      description: "Position size in dollars per trade. Default 200.",
+      min: 50,
+      max: 10_000,
+    },
+  ],
 };

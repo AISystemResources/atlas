@@ -59,6 +59,25 @@ export async function loadTicketLogic(
   return hydrate(data as TicketLogicRow);
 }
 
+/**
+ * Load a specific ticket_logics row by id. Used by the per-user scalper
+ * path (Sprint 060C) where each profile points at a specific strategy id.
+ */
+export async function loadTicketLogicById(
+  id: string,
+): Promise<TicketLogic | null> {
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from("ticket_logics")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`loadTicketLogicById ${id}: ${error.message}`);
+  if (!data) return null;
+  return hydrate(data as TicketLogicRow);
+}
+
 function hydrate(row: TicketLogicRow): TicketLogic {
   const body = parseTicketLogicBody(row.body);
   return {

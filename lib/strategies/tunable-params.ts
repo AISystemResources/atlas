@@ -1,63 +1,22 @@
 /**
- * Tunable parameter registry — Sprint 053e.
+ * Tunable parameter helpers — Sprint 060B.
  *
- * Maps a strategy name to the list of parameters the aggregate reviewer
- * may propose changes to, along with their JSON paths into the
- * TicketLogicBody. The path is an array of keys; numeric indices for
- * arrays would be represented as strings (e.g. ["indicators", "0", "params"]).
+ * As of Sprint 060, tunables live inside `TicketLogicBody.tunable_parameters`
+ * (each strategy declares its own). This file used to host a hardcoded
+ * registry keyed by strategy name; that registry was the wrong shape for
+ * multi-tenant infrastructure where any user can create any strategy.
  *
- * Why a per-strategy registry rather than schema-embedded metadata?
- * Embedding would expand the migration scope across all seed bodies. Keeping
- * the registry here lets 053e land as a closed-loop demo for Sandy S1
- * without touching the existing schema. Future sprints can move this into
- * the TicketLogicBody as a `tunable_parameters` field.
+ * The path-traversal helpers (readByPath, setByPath, applyParameterChanges)
+ * remain here because they're generic to the body shape.
  */
 
-export interface TunableParameter {
-  /** Human-readable name shown to the LLM and rendered in the UI */
-  name: string;
-  /** Dot-path into TicketLogicBody, as an array of keys */
-  path: string[];
-  /** What this parameter controls — sent to the LLM */
-  description: string;
-  /** Optional soft bounds. The reviewer should respect these, but we don't enforce. */
-  min?: number;
-  max?: number;
-}
+import type { TicketLogicBody, TunableParameter } from "./types";
 
-export const STRATEGY_TUNABLES: Record<string, TunableParameter[]> = {
-  // Sandy S1 long — v2 schema (Sprint 059). v1 was archived; the AI reviewer
-  // and promote endpoint only operate on the active version, so this registry
-  // tracks the latest schema only.
-  "sandy-s1-long": [
-    {
-      name: "entry_buffer_points",
-      path: ["computed", "entry_price", "right", "value"],
-      description:
-        "Absolute points added to signal_bar.high for the entry trigger. Sandy's Dow convention is 3. Tune up for higher-priced tickers, down for crypto.",
-      min: 1,
-      max: 100,
-    },
-    {
-      name: "stop_buffer_points",
-      path: ["exit", "stop_loss", "right", "value"],
-      description:
-        "Absolute points subtracted from signal_bar.low for the stop loss. Default 3 (Dow convention).",
-      min: 1,
-      max: 100,
-    },
-    {
-      name: "notional_per_trade",
-      path: ["entry", "sizing", "value"],
-      description: "Position size in dollars per trade. Default 200.",
-      min: 50,
-      max: 10_000,
-    },
-  ],
-};
+export type { TunableParameter } from "./types";
 
-export function getTunablesForStrategy(name: string): TunableParameter[] {
-  return STRATEGY_TUNABLES[name] ?? [];
+/** Return the tunables declared by a body, or [] if the body has none. */
+export function getTunables(body: TicketLogicBody): TunableParameter[] {
+  return body.tunable_parameters ?? [];
 }
 
 /**
@@ -100,22 +59,29 @@ export function setByPath(
  * Deep-clones `body` and applies the proposed parameter changes. Returns the
  * new body. Throws if any change references an unknown tunable name OR if the
  * path can't be navigated in the current body.
+ *
+ * The tunable lookup is done against the body's own declared
+ * `tunable_parameters`, NOT a global registry. This means each strategy is
+ * self-describing — adding a new strategy never requires a code change here.
  */
-export function applyParameterChanges<T extends Record<string, unknown>>(
+export function applyParameterChanges<T extends TicketLogicBody>(
   body: T,
   changes: Array<{ name: string; proposed_value: number }>,
-  strategyName: string,
 ): T {
-  const tunables = getTunablesForStrategy(strategyName);
+  const tunables = getTunables(body);
   const cloned = JSON.parse(JSON.stringify(body)) as T;
   for (const change of changes) {
     const tunable = tunables.find((t) => t.name === change.name);
     if (!tunable) {
       throw new Error(
-        `applyParameterChanges: unknown tunable '${change.name}' for strategy '${strategyName}'`,
+        `applyParameterChanges: unknown tunable '${change.name}' (body declares: ${tunables.map((t) => t.name).join(", ") || "none"})`,
       );
     }
-    setByPath(cloned, tunable.path, change.proposed_value);
+    setByPath(
+      cloned as unknown as Record<string, unknown>,
+      tunable.path,
+      change.proposed_value,
+    );
   }
   return cloned;
 }

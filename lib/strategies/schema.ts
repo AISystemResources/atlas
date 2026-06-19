@@ -61,6 +61,14 @@ const timeStopSchema = z.union([
   z.object({ bars: z.number().int().positive() }),
 ]);
 
+const tunableParameterSchema = z.object({
+  name: z.string().min(1),
+  path: z.array(z.string().min(1)).min(1),
+  description: z.string().min(1),
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+
 export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
   universe: z.object({
     asset_class: z.enum(["equity", "crypto", "any"]),
@@ -80,6 +88,7 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
     stop_loss: expressionSchema,
     time_stop: timeStopSchema.optional(),
   }),
+  tunable_parameters: z.array(tunableParameterSchema).optional(),
 });
 
 /** Throws ZodError if body is malformed; returns the parsed body otherwise. */

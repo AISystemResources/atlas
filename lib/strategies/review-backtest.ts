@@ -14,7 +14,7 @@ import { z } from "zod";
 import { getLlm } from "@/lib/agents/llm";
 import { getServiceClient } from "@/lib/supabase-server";
 import {
-  getTunablesForStrategy,
+  getTunables,
   readByPath,
   type TunableParameter,
 } from "./tunable-params";
@@ -118,7 +118,7 @@ function summarizeTrades(trades: ReviewBacktestInput["trades"]): string {
 }
 
 function buildPrompt(input: ReviewBacktestInput): string {
-  const tunables = getTunablesForStrategy(input.strategy.name);
+  const tunables = getTunables(input.strategy.body);
   const perf = input.performance;
 
   return `You are an experienced systematic trader reviewing a complete backtest.
@@ -189,7 +189,7 @@ export async function reviewBacktest(
 
   // Validate proposed_changes reference real tunables. If the LLM hallucinated
   // a name, drop the offending change rather than failing the whole review.
-  const tunables = getTunablesForStrategy(input.strategy.name);
+  const tunables = getTunables(input.strategy.body);
   insight.proposed_changes = insight.proposed_changes.filter((c) =>
     tunables.some((t) => t.name === c.name),
   );

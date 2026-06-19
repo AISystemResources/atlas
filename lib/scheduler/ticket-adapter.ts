@@ -18,7 +18,8 @@
 
 import { evaluate } from "@/lib/strategies/evaluate";
 import type { Bar } from "@/lib/strategies/indicators";
-import { loadTicketLogic } from "@/lib/strategies/loader";
+import { loadTicketLogic, loadTicketLogicById } from "@/lib/strategies/loader";
+import { getServiceClient } from "@/lib/supabase-server";
 import type { TicketLogic } from "@/lib/strategies/types";
 
 export interface ActiveStrategy {
@@ -42,13 +43,40 @@ export interface StrategySignal {
 }
 
 /**
- * Load the active version of a strategy from ticket_logics. Returns null
- * when no active row exists — the scalper should fail closed in that case.
+ * Load the active version of a strategy from ticket_logics by name.
+ * Returns null when no active row exists. Retained for tests and legacy
+ * callers; production runUserScalper uses loadStrategyForUser instead
+ * (Sprint 060C).
  */
 export async function loadActiveStrategy(
   strategyName = "sandy-s1-long",
 ): Promise<ActiveStrategy | null> {
   const logic = await loadTicketLogic(strategyName);
+  if (!logic) return null;
+  return { logic };
+}
+
+/**
+ * Sprint 060C: load the strategy this specific user has configured for the
+ * scalper. Reads profiles.scalper_strategy_id, then loads that exact
+ * ticket_logics row by id. Returns null when the user hasn't configured a
+ * strategy — the scalper produces no entries for that user (fail-closed).
+ */
+export async function loadStrategyForUser(
+  userId: string,
+): Promise<ActiveStrategy | null> {
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from("profiles")
+    .select("scalper_strategy_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const strategyId = (data as { scalper_strategy_id: string | null })
+    .scalper_strategy_id;
+  if (!strategyId) return null;
+
+  const logic = await loadTicketLogicById(strategyId);
   if (!logic) return null;
   return { logic };
 }
