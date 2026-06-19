@@ -19,17 +19,6 @@ function getMongoCollection() {
 
 export const READ_TOOL_DEFS = [
   {
-    name: "get_signals",
-    description: "List recent trading signals for the authenticated user.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "integer", minimum: 1, maximum: 50, default: 10 },
-        ticker: { type: "string", description: "Filter to a specific ticker symbol (optional)." },
-      },
-    },
-  },
-  {
     name: "get_portfolio",
     description: "Get the user's full portfolio summary from Alpaca (total value, cash, P&L, positions).",
     inputSchema: { type: "object", properties: {} },
@@ -37,27 +26,6 @@ export const READ_TOOL_DEFS = [
   {
     name: "get_positions",
     description: "Get only the user's open positions and current cash balance.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "get_backtest",
-    description: "Get a single backtest job by its job_id.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        job_id: { type: "string", description: "The backtest job UUID." },
-      },
-      required: ["job_id"],
-    },
-  },
-  {
-    name: "list_backtests",
-    description: "List all backtest jobs for the authenticated user, most recent first.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "get_scheduler_status",
-    description: "Get the user's pipeline schedule windows and their enabled/disabled status.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -103,28 +71,6 @@ export const READ_TOOL_DEFS = [
       properties: {
         limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
       },
-    },
-  },
-  {
-    name: "get_tournament",
-    description: "Get the status and results of a tournament job by its ID.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "Tournament job UUID." },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "get_signal",
-    description: "Get full details of a specific signal by ID, including the complete pipeline reasoning trace.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        signal_id: { type: "string", description: "The MongoDB ObjectId of the signal." },
-      },
-      required: ["signal_id"],
     },
   },
   {
@@ -320,71 +266,6 @@ async function fetchPortfolio(userId: string) {
 export async function handleReadTool(name: string, args: Record<string, unknown>, userId: string) {
   try {
     switch (name) {
-      case "get_signals": {
-        const limit = Math.min(typeof args.limit === "number" ? args.limit : 10, 50);
-        const ticker = typeof args.ticker === "string" ? args.ticker.trim().toUpperCase() : null;
-
-        const col = getMongoCollection();
-        const filter: Record<string, unknown> = { user_id: userId };
-        if (ticker) filter["ticker"] = ticker;
-
-        const traces = await col
-          .find(filter, {
-            projection: {
-              _id: 1,
-              "pipeline_run.final_decision": 1,
-              "pipeline_run.risk": 1,
-              "pipeline_run.boundary_mode": 1,
-              "execution.executed": 1,
-              "execution.shares": 1,
-              "execution.price": 1,
-              created_at: 1,
-              ticker: 1,
-            },
-          })
-          .sort({ created_at: -1 })
-          .limit(limit)
-          .toArray();
-
-        const signals = traces.map((trace) => {
-          const pipelineRun = (trace["pipeline_run"] as Record<string, unknown>) ?? {};
-          const decision = (pipelineRun["final_decision"] as Record<string, unknown>) ?? {};
-          const risk = (pipelineRun["risk"] as Record<string, unknown>) ?? {};
-          const execution = (trace["execution"] as Record<string, unknown>) ?? {};
-
-          const createdAt = trace["created_at"];
-          const createdStr =
-            createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? "");
-
-          const id =
-            trace["_id"] instanceof ObjectId
-              ? trace["_id"].toHexString()
-              : String(trace["_id"] ?? "");
-
-          return {
-            id,
-            ticker: String(trace["ticker"] ?? ""),
-            action: String(decision["action"] ?? "HOLD"),
-            confidence: Number(decision["confidence"] ?? 0),
-            reasoning: String(decision["reasoning"] ?? ""),
-            boundary_mode: String(pipelineRun["boundary_mode"] ?? "advisory"),
-            status: execution["status"] ?? "signal",
-            risk: {
-              stop_loss: Number(risk["stop_loss"] ?? 0),
-              take_profit: Number(risk["take_profit"] ?? 0),
-              position_size: Number(risk["position_size"] ?? 0),
-              risk_reward_ratio: Number(risk["risk_reward_ratio"] ?? 0),
-            },
-            created_at: createdStr,
-            execution: execution ?? null,
-            shares: Number(execution["shares"] ?? 0) || null,
-            price: Number(execution["price"] ?? 0) || null,
-          };
-        });
-
-        return textContent(signals);
-      }
-
       case "get_portfolio": {
         const portfolio = await fetchPortfolio(userId);
         return textContent(portfolio);
@@ -393,48 +274,6 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
       case "get_positions": {
         const portfolio = await fetchPortfolio(userId);
         return textContent({ positions: portfolio.positions, cash: portfolio.cash });
-      }
-
-      case "get_backtest": {
-        const jobId = String(args.job_id ?? "");
-        if (!jobId) return toolError("job_id is required", "invalid_input");
-
-        const sb = getServiceClient();
-        const { data, error } = await sb
-          .from("backtest_jobs")
-          .select("*")
-          .eq("id", jobId)
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        if (error) return toolError(error.message);
-        if (!data) return toolError("Job not found", "not_found");
-
-        return textContent(data);
-      }
-
-      case "list_backtests": {
-        const sb = getServiceClient();
-        const { data, error } = await sb
-          .from("backtest_jobs")
-          .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
-
-        if (error) return toolError(error.message);
-        return textContent(data ?? []);
-      }
-
-      case "get_scheduler_status": {
-        const sb = getServiceClient();
-        const { data, error } = await sb
-          .from("user_schedules")
-          .select("window, enabled")
-          .eq("user_id", userId)
-          .order("window", { ascending: true });
-
-        if (error) return toolError(error.message);
-        return textContent(data ?? []);
       }
 
       case "get_profile": {
@@ -508,44 +347,6 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
           .limit(limit);
         if (error) return toolError(error.message);
         return textContent(data ?? []);
-      }
-
-      case "get_tournament": {
-        const id = String(args.id ?? "").trim();
-        if (!id) return toolError("id is required", "invalid_input");
-        const sb = getServiceClient();
-        const { data, error } = await sb
-          .from("tournament_jobs")
-          .select("*")
-          .eq("id", id)
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (error) return toolError(error.message);
-        if (!data) return toolError("Tournament not found", "not_found");
-        return textContent(data);
-      }
-
-      case "get_signal": {
-        const signalId = String(args.signal_id ?? "").trim();
-        if (!signalId) return toolError("signal_id is required", "invalid_input");
-
-        let oid: ObjectId;
-        try {
-          oid = new ObjectId(signalId);
-        } catch {
-          return toolError("Invalid signal_id — must be a MongoDB ObjectId", "invalid_input");
-        }
-
-        const col = getMongoCollection();
-        const trace = (await col.findOne({ _id: oid, user_id: userId })) as Record<string, unknown> | null;
-        if (!trace) return toolError("Signal not found", "not_found");
-
-        const id =
-          trace["_id"] instanceof ObjectId
-            ? trace["_id"].toHexString()
-            : String(trace["_id"] ?? "");
-
-        return textContent({ ...trace, _id: id });
       }
 
       case "get_watchlist": {

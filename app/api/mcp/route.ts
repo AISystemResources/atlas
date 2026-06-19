@@ -101,23 +101,21 @@ async function buildToolsList(ctx: AuthContext) {
 
 // ─── Tool call dispatch ───────────────────────────────────────────────────────
 
+// Sprint 073: trimmed to the post-pivot workflow — create / improve /
+// backtest / read results / distill. Legacy multi-agent pipeline tools
+// (run_pipeline, get_signals, approve_signal, tournaments, schedule
+// windows, the old backtest_jobs surface) were removed.
 const READ_TOOL_NAMES = new Set([
-  "get_signals",
   "get_portfolio",
   "get_positions",
-  "get_backtest",
-  "list_backtests",
-  "get_scheduler_status",
   "get_profile",
   "health_check",
   "get_ticker_info",
   "get_ticker_metadata",
   "get_trades",
-  "get_tournament",
-  "get_signal",
   "get_watchlist",
   "get_daily_distillation_context",
-  // Sprint 066: Ticket Logic read tools
+  // Ticket Logic read tools (Sprint 066)
   "list_ticket_logics",
   "get_ticket_logic",
   "list_ticket_backtests",
@@ -125,20 +123,15 @@ const READ_TOOL_NAMES = new Set([
 ]);
 
 const WRITE_TOOL_NAMES = new Set([
-  "run_pipeline",
-  "create_backtest",
-  "approve_signal",
-  "reject_signal",
   "update_settings",
-  "run_tournament",
   "update_watchlist",
-  "update_schedules",
   "submit_daily_learning",
-  // Sprint 066: Ticket Logic write tools
+  // Ticket Logic write tools (Sprint 066) + create (Sprint 073)
   "run_ticket_backtest",
   "run_distillation",
   "promote_ticket_logic_version",
   "fork_ticket_logic",
+  "create_ticket_logic",
 ]);
 
 const ADMIN_TOOL_NAMES = new Set(["get_admin_stats", "list_users"]);

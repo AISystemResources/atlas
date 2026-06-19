@@ -1,8 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { MongoClient, ObjectId } from "mongodb";
-import { randomUUID } from "crypto";
-import { inngest } from "@/lib/inngest";
-import { AlpacaAdapter } from "@/lib/broker/alpaca";
 
 import { getNyTradingDayBounds } from "../utils";
 
@@ -12,128 +8,7 @@ function getServiceClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-const MONGO_URI = process.env.MONGODB_URI!;
-const MONGO_DB = process.env.MONGODB_DB_NAME ?? "atlas";
-const NOTIONAL_USD = 1000.0;
-
 export const WRITE_TOOL_DEFS = [
-  {
-    name: "run_pipeline",
-    description:
-      "Trigger an AI pipeline run for a ticker. Queues a signal generation job; the result appears in get_signals when complete. Requires confirmation.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        ticker: { type: "string", description: "Stock ticker symbol (e.g. AAPL)." },
-        philosophy: {
-          type: "string",
-          enum: ["balanced", "buffett", "soros", "lynch"],
-          description: "Investment philosophy override. Defaults to user profile setting.",
-        },
-        confirmed: { type: "boolean", default: false },
-      },
-      required: ["ticker"],
-    },
-  },
-  {
-    name: "create_backtest",
-    description:
-      "Create a new backtest job. Runs historical simulation using Atlas AI pipeline. Requires confirmation.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        tickers: {
-          type: "array",
-          items: { type: "string" },
-          minItems: 1,
-          maxItems: 10,
-          description: "Ticker symbols to backtest.",
-        },
-        start_date: { type: "string", description: "Start date in YYYY-MM-DD format." },
-        end_date: { type: "string", description: "End date in YYYY-MM-DD format." },
-        philosophy: {
-          type: "string",
-          enum: ["balanced", "buffett", "soros", "lynch"],
-          description: "Investment philosophy mode.",
-        },
-        confirmed: { type: "boolean", default: false },
-      },
-      required: ["tickers", "start_date", "end_date"],
-    },
-  },
-  {
-    name: "approve_signal",
-    description:
-      "Approve a trading signal — places a paper order on Alpaca. Requires confirmation.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        signal_id: { type: "string", description: "The MongoDB ObjectId of the signal." },
-        confirmed: { type: "boolean", default: false },
-      },
-      required: ["signal_id"],
-    },
-  },
-  {
-    name: "reject_signal",
-    description: "Reject a trading signal. Requires confirmation.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        signal_id: { type: "string", description: "The MongoDB ObjectId of the signal." },
-        confirmed: { type: "boolean", default: false },
-      },
-      required: ["signal_id"],
-    },
-  },
-  {
-    name: "run_tournament",
-    description:
-      "Run a cross-model LLM tournament: multiple philosophy×mode variants compete across one or more LLM provider rounds, ranked by Sharpe / CAGR / Calmar. Requires confirmation.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        tickers: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 10 },
-        start_date: { type: "string", description: "YYYY-MM-DD" },
-        end_date: { type: "string", description: "YYYY-MM-DD" },
-        variants: {
-          type: "array",
-          description: "Philosophy × mode combinations to test.",
-          items: {
-            type: "object",
-            properties: {
-              philosophy: { type: "string", enum: ["growth", "value", "momentum", "balanced"] },
-              mode: { type: "string", enum: ["advisory", "autonomous"] },
-              label: { type: "string" },
-            },
-            required: ["philosophy", "mode", "label"],
-          },
-        },
-        rounds: {
-          type: "array",
-          description: "LLM provider rounds (e.g. groq round 1, gemini round 2).",
-          items: {
-            type: "object",
-            properties: {
-              provider: {
-                type: "object",
-                properties: {
-                  provider: { type: "string", enum: ["gemini", "groq", "ollama", "openai-compatible"] },
-                  model: { type: "string" },
-                },
-                required: ["provider", "model"],
-              },
-              top_n: { type: "integer", minimum: 1, maximum: 4 },
-            },
-            required: ["provider", "top_n"],
-          },
-        },
-        rank_by: { type: "string", enum: ["sharpe", "cagr", "calmar"], default: "sharpe" },
-        confirmed: { type: "boolean", default: false },
-      },
-      required: ["tickers", "start_date", "end_date", "variants", "rounds"],
-    },
-  },
   {
     name: "update_settings",
     description:
@@ -175,30 +50,6 @@ export const WRITE_TOOL_DEFS = [
         confirmed: { type: "boolean", default: false },
       },
       required: ["entries"],
-    },
-  },
-  {
-    name: "update_schedules",
-    description:
-      "Enable or disable pipeline schedule windows (premarket, open, midmorning, midday, afternoon, close). Requires confirmation.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        schedules: {
-          type: "array",
-          description: "Schedule windows to update.",
-          items: {
-            type: "object",
-            properties: {
-              window: { type: "string", description: "Schedule window name (e.g. premarket, open, midmorning, midday, afternoon, close)." },
-              enabled: { type: "boolean" },
-            },
-            required: ["window", "enabled"],
-          },
-        },
-        confirmed: { type: "boolean", default: false },
-      },
-      required: ["schedules"],
     },
   },
   {
@@ -316,6 +167,46 @@ export const WRITE_TOOL_DEFS = [
       required: ["source_logic_id"],
     },
   },
+  {
+    name: "create_ticket_logic",
+    description:
+      "Create a brand-new Ticket Logic strategy from scratch as v1 under the caller's ownership. The body is a full TicketLogicBody JSON — Atlas validates it via the same schema the rest of the system uses. Use this when iterating on a new idea in chat (the typical loop: create → run_ticket_backtest → get_ticket_backtest → reason over trades → either promote_ticket_logic_version or create_ticket_logic again with a new variant). Strategy is locked to one ticker per Sprint 068.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          minLength: 1,
+          maxLength: 64,
+          description: "Short identifier for the strategy family (e.g. 'sandy-s1-long', 'tsla-momentum-15m'). Cannot collide with the caller's existing v1 of the same name.",
+        },
+        ticker: {
+          type: "string",
+          description: "The ticker this strategy is calibrated for (e.g. ^DJI, TSLA, BTC/USD). Strategies are locked to one ticker — see Sprint 068.",
+        },
+        body: {
+          type: "object",
+          description: "Full TicketLogicBody JSON: universe, timeframe, direction, indicators, entry, exit, etc. See get_ticket_logic on an existing strategy for the shape.",
+        },
+        description: {
+          type: "string",
+          maxLength: 2000,
+          description: "Optional human-readable description. If omitted, Atlas auto-generates one via Groq.",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional cross-cutting tags for organising the library ('mean-reversion', '5m', 'morning-window').",
+        },
+        visibility: {
+          type: "string",
+          enum: ["private", "unlisted", "public"],
+          description: "Defaults to 'private'. Public strategies are forkable by other Atlas users.",
+        },
+      },
+      required: ["name", "ticker", "body"],
+    },
+  },
 ] as const;
 
 function textContent(payload: unknown) {
@@ -336,359 +227,9 @@ function toolError(message: string, code = "internal_error") {
   };
 }
 
-function tradingDaysBetween(startDate: string, endDate: string): number {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  let count = 0;
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const day = cursor.getDay();
-    if (day !== 0 && day !== 6) count++;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return count;
-}
-
 export async function handleWriteTool(name: string, args: Record<string, unknown>, userId: string) {
   try {
     switch (name) {
-      case "run_pipeline": {
-        const ticker = String(args.ticker ?? "").trim().toUpperCase();
-        if (!ticker) return toolError("ticker is required", "invalid_input");
-
-        const philosophy = typeof args.philosophy === "string" ? args.philosophy : null;
-        const confirmed = args.confirmed === true;
-
-        if (!confirmed) {
-          return textContent({
-            confirmation_required: true,
-            description: `Run AI pipeline for ${ticker}`,
-            details: {
-              ticker,
-              philosophy: philosophy ?? "(user profile default)",
-              note: "The pipeline will generate a signal using the current EBC boundary mode from your profile. The signal will appear in get_signals when complete.",
-            },
-          });
-        }
-
-        const sb = getServiceClient();
-        let resolvedPhilosophy = philosophy ?? "balanced";
-        if (!philosophy) {
-          try {
-            const { data } = await sb
-              .from("profiles")
-              .select("investment_philosophy, boundary_mode")
-              .eq("id", userId)
-              .maybeSingle();
-            const row = data as Record<string, unknown> | null;
-            if (row?.["investment_philosophy"]) {
-              resolvedPhilosophy = String(row["investment_philosophy"]);
-            }
-          } catch {
-            // fall back to balanced
-          }
-        }
-
-        await inngest.send({
-          name: "app/pipeline.triggered",
-          data: {
-            userId,
-            ticker,
-            mode: "advisory",
-            philosophy: resolvedPhilosophy,
-            asOfDate: null,
-          },
-        });
-
-        return textContent({
-          status: "queued",
-          ticker,
-          philosophy_mode: resolvedPhilosophy,
-          message: "Pipeline run queued. Signal will appear in get_signals when complete.",
-        });
-      }
-
-      case "create_backtest": {
-        const rawTickers = args.tickers;
-        if (!Array.isArray(rawTickers) || rawTickers.length === 0) {
-          return toolError("tickers must be a non-empty array", "invalid_input");
-        }
-        const tickers = rawTickers.map((t) => String(t).trim().toUpperCase());
-
-        const startDate = String(args.start_date ?? "");
-        const endDate = String(args.end_date ?? "");
-        const philosophy = typeof args.philosophy === "string" ? args.philosophy : "balanced";
-        const confirmed = args.confirmed === true;
-
-        if (!startDate.match(/^\d{4}-\d{2}-\d{2}$/) || !endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          return toolError("start_date and end_date must be in YYYY-MM-DD format", "invalid_input");
-        }
-
-        if (!confirmed) {
-          const tradingDays = tradingDaysBetween(startDate, endDate);
-          const estimatedAiCalls = tickers.length * tradingDays * 3;
-          return textContent({
-            confirmation_required: true,
-            description: `Run backtest for ${tickers.join(", ")} from ${startDate} to ${endDate}`,
-            details: {
-              tickers,
-              start_date: startDate,
-              end_date: endDate,
-              philosophy,
-              estimated_trading_days: tradingDays,
-              estimated_ai_calls: estimatedAiCalls,
-              note: "This will consume Gemini API quota proportional to tickers × trading days × ~3 calls.",
-            },
-          });
-        }
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const twoDaysAgo = new Date(today);
-        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-        const endDateObj = new Date(endDate);
-        const startDateObj = new Date(startDate);
-
-        if (endDateObj > twoDaysAgo) {
-          return toolError("end_date must be at least 2 days in the past", "invalid_input");
-        }
-        if (endDateObj <= startDateObj) {
-          return toolError("end_date must be after start_date", "invalid_input");
-        }
-        const daysDiff = (endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24);
-        if (daysDiff > 90) {
-          return toolError("Date range cannot exceed 90 days", "invalid_input");
-        }
-
-        const sb = getServiceClient();
-
-        const { data: jobs } = await sb
-          .from("backtest_jobs")
-          .select("status")
-          .eq("user_id", userId);
-
-        const runningCount = (jobs ?? []).filter(
-          (j) => (j as Record<string, unknown>)["status"] === "running",
-        ).length;
-
-        if (runningCount >= 1) {
-          return toolError("Maximum 1 concurrent backtest reached for your plan.", "rate_limited");
-        }
-
-        const jobId = randomUUID();
-        const { error: insertError } = await sb.from("backtest_jobs").insert({
-          id: jobId,
-          user_id: userId,
-          tickers,
-          start_date: startDate,
-          end_date: endDate,
-          ebc_mode: "advisory",
-          philosophy_mode: philosophy,
-          confidence_threshold: null,
-          initial_capital: 100_000.0,
-          status: "queued",
-          created_at: new Date().toISOString(),
-        });
-
-        if (insertError) return toolError(insertError.message);
-
-        await inngest.send({
-          name: "atlas/backtest.run",
-          data: {
-            job_id: jobId,
-            user_id: userId,
-            tickers,
-            start_date: startDate,
-            end_date: endDate,
-            ebc_mode: "advisory",
-            philosophy_mode: philosophy,
-            confidence_threshold: null,
-            initial_capital: 100_000.0,
-          },
-        });
-
-        return textContent({ job_id: jobId, status: "queued" });
-      }
-
-      case "approve_signal": {
-        const signalId = String(args.signal_id ?? "");
-        if (!signalId) return toolError("signal_id is required", "invalid_input");
-        const confirmed = args.confirmed === true;
-
-        if (!confirmed) {
-          return textContent({
-            confirmation_required: true,
-            description: `Approve signal ${signalId}`,
-            details: {
-              signal_id: signalId,
-              note: `This will place a paper order on Alpaca for $${NOTIONAL_USD} notional. Ensure your Alpaca account is connected.`,
-            },
-          });
-        }
-
-        let oid: ObjectId;
-        try {
-          oid = new ObjectId(signalId);
-        } catch {
-          return toolError("Invalid signal_id format — must be a MongoDB ObjectId", "invalid_input");
-        }
-
-        const mongo = new MongoClient(MONGO_URI);
-        try {
-          await mongo.connect();
-          const col = mongo.db(MONGO_DB).collection("reasoning_traces");
-
-          const trace = (await col.findOne({ _id: oid })) as Record<string, unknown> | null;
-          if (!trace) return toolError("Signal not found", "not_found");
-          if (trace["user_id"] !== userId) return toolError("Signal not found", "not_found");
-
-          const execution = (trace["execution"] ?? {}) as Record<string, unknown>;
-          if (execution["executed"]) {
-            return toolError("Signal has already been executed.", "conflict");
-          }
-
-          const pipelineRun = (trace["pipeline_run"] ?? {}) as Record<string, unknown>;
-          const decision = (pipelineRun["final_decision"] ?? {}) as Record<string, unknown>;
-          const ticker = String(trace["ticker"] ?? "");
-          const action = String(decision["action"] ?? "HOLD");
-          const boundaryMode = String(trace["boundary_mode"] ?? "advisory");
-
-          if (action === "HOLD") {
-            return textContent({ status: "skipped", message: "HOLD signal — no order placed." });
-          }
-
-          const sb = getServiceClient();
-          const { data: conn } = await sb
-            .from("broker_connections")
-            .select("api_key, api_secret, environment")
-            .eq("user_id", userId)
-            .eq("broker", "alpaca")
-            .eq("active", true)
-            .maybeSingle();
-
-          if (!conn) {
-            return toolError(
-              "No broker connected. Connect your Alpaca account in Settings before approving signals.",
-              "precondition_failed",
-            );
-          }
-
-          const connRow = conn as Record<string, unknown>;
-          const adapter = new AlpacaAdapter(
-            String(connRow["api_key"]),
-            String(connRow["api_secret"]),
-            connRow["environment"] === "paper",
-          );
-
-          const order = await adapter.submitOrder({
-            ticker,
-            action: action as "BUY" | "SELL",
-            notional: NOTIONAL_USD,
-          });
-
-          let supabaseSync = true;
-          try {
-            const { data: portfolio } = await sb
-              .from("portfolios")
-              .select("id")
-              .eq("user_id", userId)
-              .maybeSingle();
-
-            const portfolioId = (portfolio as Record<string, unknown> | null)?.["id"] as
-              | string
-              | undefined;
-
-            await sb.from("trades").insert({
-              user_id: userId,
-              portfolio_id: portfolioId ?? null,
-              ticker,
-              action,
-              shares: order.qty ?? 0,
-              price: 0,
-              status: "filled",
-              boundary_mode: boundaryMode,
-              signal_id: signalId,
-              order_id: order.orderId,
-              executed_at: new Date().toISOString(),
-            });
-          } catch {
-            supabaseSync = false;
-          }
-
-          await col.updateOne(
-            { _id: oid },
-            { $set: { execution: { executed: true, order_id: order.orderId, status: "filled" } } },
-          );
-
-          return textContent({
-            status: "executed",
-            order_id: order.orderId,
-            ticker,
-            action,
-            message: `Order placed: ${action} $${NOTIONAL_USD} of ${ticker}.`,
-            supabase_sync: supabaseSync,
-          });
-        } finally {
-          await mongo.close();
-        }
-      }
-
-      case "reject_signal": {
-        const signalId = String(args.signal_id ?? "");
-        if (!signalId) return toolError("signal_id is required", "invalid_input");
-        const confirmed = args.confirmed === true;
-
-        if (!confirmed) {
-          return textContent({
-            confirmation_required: true,
-            description: `Reject signal ${signalId}`,
-            details: { signal_id: signalId },
-          });
-        }
-
-        let oid: ObjectId;
-        try {
-          oid = new ObjectId(signalId);
-        } catch {
-          return toolError("Invalid signal_id format — must be a MongoDB ObjectId", "invalid_input");
-        }
-
-        const mongo = new MongoClient(MONGO_URI);
-        try {
-          await mongo.connect();
-          const col = mongo.db(MONGO_DB).collection("reasoning_traces");
-
-          const trace = (await col.findOne({ _id: oid, user_id: userId })) as Record<
-            string,
-            unknown
-          > | null;
-          if (!trace) return toolError("Signal not found", "not_found");
-
-          const execution = (trace["execution"] ?? {}) as Record<string, unknown>;
-          if (execution["executed"]) {
-            return toolError("Signal has already been executed", "conflict");
-          }
-          if (execution["rejected"]) {
-            return textContent({ signal_id: signalId, status: "rejected", message: "Signal already rejected" });
-          }
-
-          await col.updateOne(
-            { _id: oid },
-            {
-              $set: {
-                "execution.rejected": true,
-                "execution.rejected_at": new Date().toISOString(),
-                "execution.status": "rejected",
-              },
-            },
-          );
-
-          return textContent({ signal_id: signalId, status: "rejected", message: "Signal rejected and logged" });
-        } finally {
-          await mongo.close();
-        }
-      }
-
       case "update_settings": {
         const boundaryMode = typeof args.boundary_mode === "string" ? args.boundary_mode : undefined;
         const investmentPhilosophy =
@@ -753,47 +294,6 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         return textContent(data);
       }
 
-      case "run_tournament": {
-        const confirmed = args.confirmed === true;
-        const tickers = (Array.isArray(args.tickers) ? args.tickers : []).map((t) =>
-          String(t).trim().toUpperCase(),
-        );
-        const startDate = String(args.start_date ?? "");
-        const endDate = String(args.end_date ?? "");
-        const variants = Array.isArray(args.variants) ? args.variants : [];
-        const rounds = Array.isArray(args.rounds) ? args.rounds : [];
-        const rankBy = typeof args.rank_by === "string" ? args.rank_by : "sharpe";
-
-        if (!tickers.length) return toolError("tickers required", "invalid_input");
-        if (!variants.length) return toolError("variants required", "invalid_input");
-        if (!rounds.length) return toolError("rounds required", "invalid_input");
-
-        if (!confirmed) {
-          return textContent({
-            confirmation_required: true,
-            description: `Run tournament: ${variants.length} variants × ${rounds.length} rounds on ${tickers.join(", ")}`,
-            details: { tickers, start_date: startDate, end_date: endDate, variants, rounds, rank_by: rankBy },
-          });
-        }
-
-        const id = randomUUID();
-        const sb = getServiceClient();
-        const { error: insertErr } = await sb.from("tournament_jobs").insert({
-          id,
-          user_id: userId,
-          status: "pending",
-          config: { id, user_id: userId, tickers, start_date: startDate, end_date: endDate, variants, rounds, rank_by: rankBy },
-          current_round: 0,
-          total_rounds: rounds.length,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-        if (insertErr) return toolError(insertErr.message);
-
-        await inngest.send({ name: "atlas/tournament.requested", data: { tournament_id: id, user_id: userId } });
-        return textContent({ id, status: "pending", message: "Tournament queued. Poll get_tournament for results." });
-      }
-
       case "update_watchlist": {
         const entries = Array.isArray(args.entries) ? args.entries : [];
         const confirmed = args.confirmed === true;
@@ -852,40 +352,6 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           .order("created_at");
 
         if (error) return toolError(error.message);
-        return textContent(data ?? []);
-      }
-
-      case "update_schedules": {
-        const rawSchedules = Array.isArray(args.schedules) ? args.schedules : [];
-        const confirmed = args.confirmed === true;
-
-        const VALID_WINDOWS = ["premarket", "open", "midmorning", "midday", "afternoon", "close"];
-        const parsed = rawSchedules.map((s) => {
-          const row = s as Record<string, unknown>;
-          return { window: String(row["window"] ?? ""), enabled: Boolean(row["enabled"]) };
-        });
-
-        for (const s of parsed) {
-          if (!VALID_WINDOWS.includes(s.window)) {
-            return toolError(`Invalid window '${s.window}' — must be one of: ${VALID_WINDOWS.join(", ")}`, "invalid_input");
-          }
-        }
-
-        if (!confirmed) {
-          return textContent({
-            confirmation_required: true,
-            description: "Update pipeline schedule windows",
-            details: { schedules: parsed },
-          });
-        }
-
-        const sb = getServiceClient();
-        await sb.from("user_schedules").delete().eq("user_id", userId);
-
-        const rows = parsed.map((s) => ({ user_id: userId, window: s.window, enabled: s.enabled }));
-        const { data, error } = await sb.from("user_schedules").insert(rows).select("window, enabled");
-        if (error) return toolError(error.message);
-
         return textContent(data ?? []);
       }
 
@@ -1343,6 +809,106 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           name: (inserted as { name: string }).name,
           version: (inserted as { version: number }).version,
           forked_from_id: source.id,
+        });
+      }
+
+      case "create_ticket_logic": {
+        // Sprint 073: AI authors a brand-new strategy from scratch (the
+        // typical Chat loop: idea → create → backtest → reason → iterate).
+        const name = typeof args.name === "string" ? args.name.trim() : "";
+        const ticker = typeof args.ticker === "string" ? args.ticker.trim() : "";
+        const visibility =
+          args.visibility === "public" || args.visibility === "unlisted"
+            ? args.visibility
+            : "private";
+        const tags = Array.isArray(args.tags)
+          ? args.tags.filter((t): t is string => typeof t === "string")
+          : [];
+        const userDescription =
+          typeof args.description === "string" ? args.description.trim() : "";
+
+        if (!name) return toolError("name is required", "invalid_request");
+        if (!ticker) return toolError("ticker is required", "invalid_request");
+        if (typeof args.body !== "object" || args.body === null) {
+          return toolError("body must be an object", "invalid_request");
+        }
+
+        // Validate the body via the same schema the rest of the system uses.
+        let parsedBody;
+        try {
+          const { parseTicketLogicBody } = await import("@/lib/strategies/schema");
+          parsedBody = parseTicketLogicBody(args.body);
+        } catch (err) {
+          return toolError(
+            `body validation failed: ${err instanceof Error ? err.message : String(err)}`,
+            "invalid_request",
+          );
+        }
+
+        const sb = getServiceClient();
+
+        // Collision check: caller can't have a v1 with this name already.
+        // Fork has a "-fork-XXXX" suffix on collision; for create the right
+        // behaviour is to reject and let the AI pick a fresh name.
+        const { data: existing } = await sb
+          .from("ticket_logics")
+          .select("id")
+          .eq("created_by_user_id", userId)
+          .eq("name", name)
+          .eq("version", 1)
+          .maybeSingle();
+        if (existing) {
+          return toolError(
+            `you already have a v1 strategy named '${name}' — pick a different name or fork the existing one`,
+            "conflict",
+          );
+        }
+
+        // Auto-generate a description if the caller didn't provide one.
+        let description = userDescription;
+        if (!description) {
+          try {
+            const { describeStrategy } = await import("@/lib/strategies/describe-strategy");
+            const aiDesc = await describeStrategy({
+              action: "fork",
+              body: parsedBody,
+              parent: { name, version: 1, author_label: "you" },
+            });
+            if (aiDesc) description = aiDesc;
+          } catch {
+            description = `Created via Chat. ${name} v1 on ${ticker.toUpperCase()}.`;
+          }
+        }
+
+        const { data: inserted, error: insErr } = await sb
+          .from("ticket_logics")
+          .insert({
+            name,
+            version: 1,
+            parent_version_id: null,
+            forked_from_id: null,
+            description,
+            body: parsedBody,
+            status: "active",
+            visibility,
+            created_by: "claude_chat",
+            created_by_user_id: userId,
+            ticker: ticker.toUpperCase(),
+            tags,
+          })
+          .select("id, name, version, ticker, visibility")
+          .single();
+
+        if (insErr || !inserted) {
+          return toolError(`create failed: ${insErr?.message ?? "no row"}`);
+        }
+
+        return textContent({
+          id: (inserted as { id: string }).id,
+          name: (inserted as { name: string }).name,
+          version: (inserted as { version: number }).version,
+          ticker: (inserted as { ticker: string }).ticker,
+          visibility: (inserted as { visibility: string }).visibility,
         });
       }
 
