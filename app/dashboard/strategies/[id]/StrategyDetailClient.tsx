@@ -58,6 +58,8 @@ export interface StrategyDetail {
   tunable_parameters: TunableParameter[];
   timeframe: string;
   direction: string;
+  ticker: string | null;
+  tags: string[];
 }
 
 export function StrategyDetailClient({
@@ -134,6 +136,14 @@ export function StrategyDetailClient({
         <div>
           <div className="flex items-center gap-3 flex-wrap mb-1">
             <h1 className="text-2xl font-mono font-bold">{detail.name}</h1>
+            {detail.ticker && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 text-sm font-mono font-semibold rounded"
+                style={{ background: "var(--elevated)", color: "var(--brand)" }}
+              >
+                {detail.ticker}
+              </span>
+            )}
             <VersionNav
               prev={prev}
               next={next}
@@ -195,11 +205,25 @@ export function StrategyDetailClient({
       {/* Description */}
       {detail.description && (
         <p
-          className="text-sm leading-relaxed mb-6"
+          className="text-sm leading-relaxed mb-3"
           style={{ color: "var(--dim)" }}
         >
           {detail.description}
         </p>
+      )}
+
+      {detail.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-6">
+          {detail.tags.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center px-2 py-0.5 text-[11px] font-mono rounded"
+              style={{ background: "var(--elevated)", color: "var(--dim)" }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
       )}
 
       {/* Structured rule blocks */}

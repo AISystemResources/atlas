@@ -32,6 +32,8 @@ interface SourceRow {
   body: unknown;
   visibility: "private" | "unlisted" | "public";
   created_by_user_id: string | null;
+  ticker: string | null;
+  tags: string[] | null;
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -57,7 +59,7 @@ export async function POST(req: Request): Promise<Response> {
   const { data: srcData, error: srcErr } = await sb
     .from("ticket_logics")
     .select(
-      "id, name, description, body, visibility, created_by_user_id",
+      "id, name, description, body, visibility, created_by_user_id, ticker, tags",
     )
     .eq("id", parsed.data.source_logic_id)
     .maybeSingle();
@@ -126,6 +128,12 @@ export async function POST(req: Request): Promise<Response> {
       visibility: "private",
       created_by: "user",
       created_by_user_id: user.userId,
+      // Sprint 068: forks inherit the ticker + tags from their source.
+      // The strategy → ticker pairing only travels with the artifact, not
+      // with the user, so a fork into a different library still points at
+      // the ticker it was calibrated on.
+      ticker: source.ticker,
+      tags: source.tags ?? [],
     })
     .select("id, name, version")
     .single();

@@ -110,7 +110,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const { data: parentData } = await sb
     .from("ticket_logics")
-    .select("id, name, version, body, created_by_user_id")
+    .select("id, name, version, body, created_by_user_id, ticker, tags")
     .eq("id", parent_logic_id)
     .maybeSingle();
   if (!parentData) {
@@ -118,6 +118,8 @@ export async function POST(req: Request): Promise<Response> {
   }
   const parent = parentData as ParentLogicRow & {
     created_by_user_id: string | null;
+    ticker: string | null;
+    tags: string[] | null;
   };
 
   // Sprint 060D: promote creates a new version chained off the parent.
@@ -207,6 +209,11 @@ export async function POST(req: Request): Promise<Response> {
       // public strategy's evolution stays public unless the owner changes it.
       created_by_user_id: user.userId,
       visibility: "private", // promoted versions are private drafts by default
+      // Sprint 068: promoted versions inherit ticker + tags from the parent.
+      // A v2 of "sandy-s1-long" is still calibrated for ^DJI; the artifact
+      // metadata travels with the version chain.
+      ticker: parent.ticker,
+      tags: parent.tags ?? [],
     })
     .select("id, name, version")
     .single();

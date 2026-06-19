@@ -84,14 +84,42 @@ export async function PUT(req: Request): Promise<Response> {
 
   const sb = getServiceClient();
 
+  // Sprint 068: PUT does a wipe-and-recreate, but scalper_enabled and
+  // strategy_id are per-(user, ticker) pairings that this caller does not
+  // send. Pull them off the existing rows first so we can re-stamp them on
+  // any ticker that survives the save.
+  const { data: prev } = await sb
+    .from("watchlist")
+    .select("ticker, scalper_enabled, strategy_id")
+    .eq("user_id", user.userId);
+  const prevByTicker = new Map<
+    string,
+    { scalper_enabled: boolean; strategy_id: string | null }
+  >();
+  for (const r of (prev ?? []) as Array<{
+    ticker: string;
+    scalper_enabled: boolean | null;
+    strategy_id: string | null;
+  }>) {
+    prevByTicker.set(r.ticker, {
+      scalper_enabled: Boolean(r.scalper_enabled),
+      strategy_id: r.strategy_id,
+    });
+  }
+
   await sb.from("watchlist").delete().eq("user_id", user.userId);
 
   if (parsed.data.entries.length > 0) {
-    const rows = parsed.data.entries.map((e) => ({
-      user_id: user.userId,
-      ticker: e.ticker,
-      schedule: e.schedule,
-    }));
+    const rows = parsed.data.entries.map((e) => {
+      const carried = prevByTicker.get(e.ticker);
+      return {
+        user_id: user.userId,
+        ticker: e.ticker,
+        schedule: e.schedule,
+        scalper_enabled: carried?.scalper_enabled ?? false,
+        strategy_id: carried?.strategy_id ?? null,
+      };
+    });
     const { error } = await sb.from("watchlist").insert(rows);
     if (error) return Response.json({ error: error.message }, { status: 500 });
   }

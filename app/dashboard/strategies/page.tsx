@@ -22,6 +22,8 @@ interface StrategyRow {
   visibility: "private" | "unlisted" | "public";
   created_by_user_id: string | null;
   created_at: string;
+  ticker: string | null;
+  tags: string[] | null;
 }
 
 export default async function StrategiesPage() {
@@ -34,7 +36,7 @@ export default async function StrategiesPage() {
   const { data: rows } = await sb
     .from("ticket_logics")
     .select(
-      "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_at",
+      "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_at, ticker, tags",
     )
     .or(`created_by_user_id.eq.${userId},visibility.eq.public`)
     .neq("status", "archived")
@@ -89,6 +91,8 @@ export default async function StrategiesPage() {
     backtest_count: backtestCounts.get(s.id) ?? 0,
     is_my_scalper: s.id === myScalperId,
     created_at: s.created_at,
+    ticker: s.ticker ?? null,
+    tags: s.tags ?? [],
   }));
 
   return <StrategiesClient cards={cards} />;

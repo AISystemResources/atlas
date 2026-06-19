@@ -82,6 +82,20 @@ export async function loadStrategyForUser(
 }
 
 /**
+ * Sprint 068: load a strategy by id, for the per-(user, ticker) pairing.
+ * Each watchlist row references the strategy chosen for that ticker; the
+ * scalper pre-loads the unique strategy ids referenced by the user's
+ * watchlist and uses this helper for each one.
+ */
+export async function loadStrategyById(
+  strategyId: string,
+): Promise<ActiveStrategy | null> {
+  const logic = await loadTicketLogicById(strategyId);
+  if (!logic) return null;
+  return { logic };
+}
+
+/**
  * Detect a strategy signal at the LATEST bar in `bars`. Pure function —
  * no DB I/O. Returns null when no entry fires on the latest bar.
  */
