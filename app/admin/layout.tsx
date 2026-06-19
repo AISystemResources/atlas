@@ -14,6 +14,7 @@ import { AdminContext } from "./admin-context";
 const NAV_ITEMS = [
   { path: "/admin",                 label: "Overview",       short: "OV" },
   { path: "/admin/users",           label: "Users",          short: "US" },
+  { path: "/admin/invites",         label: "Invites",        short: "IV" },
   { path: "/admin/system-status",   label: "System Status",  short: "SS" },
   { path: "/admin/roles",           label: "Roles",          short: "RL" },
   // Archived legacy surfaces — superadmin access only
