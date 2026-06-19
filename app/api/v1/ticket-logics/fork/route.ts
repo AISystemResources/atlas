@@ -19,6 +19,7 @@ import { getUserFromRequest } from "@/lib/auth/context";
 import { getServiceClient } from "@/lib/supabase-server";
 import { describeStrategy } from "@/lib/strategies/describe-strategy";
 import { parseTicketLogicBody } from "@/lib/strategies/schema";
+import { buildAccessContext, canRead } from "@/lib/strategies/access";
 
 const BodySchema = z.object({
   source_logic_id: z.string().uuid(),
@@ -68,10 +69,9 @@ export async function POST(req: Request): Promise<Response> {
   if (!srcData) return Response.json({ error: "source not found" }, { status: 404 });
   const source = srcData as unknown as SourceRow;
 
-  const isOwner = source.created_by_user_id === user.userId;
-  const isForkable =
-    source.visibility === "public" || source.visibility === "unlisted";
-  if (!isOwner && !isForkable) {
+  // Sprint 075a: access also granted via strategy_shares (per-email).
+  const access = await buildAccessContext(user.userId);
+  if (!canRead(source, access)) {
     return Response.json(
       { error: "source strategy is private — cannot fork" },
       { status: 403 },

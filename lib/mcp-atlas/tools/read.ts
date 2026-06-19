@@ -438,17 +438,29 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         const status = typeof args.status === "string" ? args.status : null;
         const limit = Math.min(typeof args.limit === "number" ? args.limit : 50, 200);
 
+        // Sprint 075a: include strategies shared with the caller by email.
+        const { buildAccessContext } = await import("@/lib/strategies/access");
+        const access = await buildAccessContext(userId);
+        const sharedIds = [...access.sharedStrategyIds];
+
         const sb = getServiceClient();
         let q = sb
           .from("ticket_logics")
           .select(
-            "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_at",
+            "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_at, ticker, tags",
           )
           .order("created_at", { ascending: false })
           .limit(limit);
         if (scope === "mine") q = q.eq("created_by_user_id", userId);
         else if (scope === "public") q = q.eq("visibility", "public");
-        else q = q.or(`created_by_user_id.eq.${userId},visibility.eq.public`);
+        else {
+          const clauses = [
+            `created_by_user_id.eq.${userId}`,
+            `visibility.eq.public`,
+            ...(sharedIds.length > 0 ? [`id.in.(${sharedIds.join(",")})`] : []),
+          ];
+          q = q.or(clauses.join(","));
+        }
         if (status) q = q.eq("status", status);
 
         const { data, error } = await q;
@@ -464,19 +476,26 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         const { data, error } = await sb
           .from("ticket_logics")
           .select(
-            "id, name, version, parent_version_id, forked_from_id, description, body, status, visibility, created_by_user_id, created_at",
+            "id, name, version, parent_version_id, forked_from_id, description, body, status, visibility, created_by_user_id, created_at, ticker, tags",
           )
           .eq("id", id)
           .maybeSingle();
         if (error) return toolError(error.message);
         if (!data) return toolError("not found", "not_found");
 
+        // Sprint 075a: access also via strategy_shares.
+        const { buildAccessContext, canRead } = await import("@/lib/strategies/access");
+        const access = await buildAccessContext(userId);
         const row = data as Record<string, unknown>;
-        const ownerId = row.created_by_user_id as string | null;
-        const vis = row.visibility as string;
-        const isOwner = ownerId === userId;
-        const isReadable = vis === "public" || vis === "unlisted";
-        if (!isOwner && !isReadable) return toolError("not found", "not_found");
+        const visible = canRead(
+          {
+            id: row.id as string,
+            created_by_user_id: row.created_by_user_id as string | null,
+            visibility: row.visibility as "private" | "unlisted" | "public",
+          },
+          access,
+        );
+        if (!visible) return toolError("not found", "not_found");
 
         // Render rules to plain English for the consumer.
         const { parseTicketLogicBody } = await import("@/lib/strategies/schema");

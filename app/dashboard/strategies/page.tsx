@@ -9,6 +9,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
+import { buildAccessContext } from "@/lib/strategies/access";
 import { StrategiesClient, type StrategyCard } from "./StrategiesClient";
 
 interface StrategyRow {
@@ -31,14 +32,25 @@ export default async function StrategiesPage() {
   if (!userId) redirect("/login");
 
   const sb = getServiceClient();
+  const access = await buildAccessContext(userId);
 
-  // Pull everything the user can see in one round trip, then bucket client-side.
+  // Pull everything the user can see in one round trip:
+  //   - their own strategies (any visibility)
+  //   - public strategies
+  //   - strategies shared with their email (Sprint 075a)
+  // Bucket client-side.
+  const sharedIds = [...access.sharedStrategyIds];
+  const orClauses = [
+    `created_by_user_id.eq.${userId}`,
+    `visibility.eq.public`,
+    ...(sharedIds.length > 0 ? [`id.in.(${sharedIds.join(",")})`] : []),
+  ];
   const { data: rows } = await sb
     .from("ticket_logics")
     .select(
       "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_at, ticker, tags",
     )
-    .or(`created_by_user_id.eq.${userId},visibility.eq.public`)
+    .or(orClauses.join(","))
     .neq("status", "archived")
     .order("created_at", { ascending: false });
 
