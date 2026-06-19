@@ -12,15 +12,11 @@ export function PortfolioPageClient({
   tier,
   philosophy,
   boundaryMode,
-  hasPendingConditional,
-  pendingTicker,
   needsScalperStrategy = false,
 }: {
   tier: "free" | "pro" | "max";
   philosophy: string;
   boundaryMode: string;
-  hasPendingConditional: boolean;
-  pendingTicker: string | null;
   needsScalperStrategy?: boolean;
 }) {
   const router = useRouter();
@@ -80,28 +76,10 @@ export function PortfolioPageClient({
         </div>
       )}
 
-      {hasPendingConditional && pendingTicker && (
-        <div
-          className="rounded-lg px-4 py-2.5 flex items-center justify-between"
-          style={{ background: "var(--hold-bg)", border: "1px solid var(--hold)30" }}
-        >
-          <div className="flex items-center gap-2">
-            <span style={{ color: "var(--hold)", fontSize: 13, fontFamily: "var(--font-jb)" }}>!</span>
-            <span style={{ color: "var(--hold)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>
-              {pendingTicker} signal awaiting your approval
-            </span>
-          </div>
-          <button
-            onClick={() => router.push("/dashboard/agents")}
-            style={{
-              color: "var(--hold)", fontSize: 11, fontFamily: "var(--font-jb)",
-              background: "transparent", border: "none", cursor: "pointer", textDecoration: "underline",
-            }}
-          >
-            Review →
-          </button>
-        </div>
-      )}
+      {/* Sprint 074: "pending signal awaiting approval" banner removed.
+          It linked to /dashboard/agents (now admin-only) and surfaced the
+          archived multi-agent pipeline's approval flow. Approval UX is
+          superseded by the 4-cell autonomy matrix from Sprint 070. */}
 
       <PortfolioTab
         portfolio={portfolio}

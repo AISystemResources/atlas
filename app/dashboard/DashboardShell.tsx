@@ -6,19 +6,14 @@ import { AccountDropdown } from "@/components/AccountDropdown";
 import type { UserRole } from "@/lib/api";
 import type { ReactNode } from "react";
 
-// Sprint 067: three-tab nav for public users. Superadmin sees the legacy
-// surfaces (Agents, Backtests, Insights) for academic / debugging access —
-// the routes themselves are still gated at the page level.
+// Sprint 074: the user nav is always three tabs — Dashboard / Strategy /
+// Settings — regardless of role. Legacy surfaces (Agents, Backtests,
+// Insights) moved to the admin sidebar (app/admin/layout.tsx) so the
+// user view stays clean even when a superadmin is signed in.
 const PUBLIC_TABS = [
   { id: "portfolio",  label: "Dashboard", icon: "◈", href: "/dashboard/portfolio" },
   { id: "strategies", label: "Strategy",  icon: "✧", href: "/dashboard/strategies" },
   { id: "settings",   label: "Settings",  icon: "⊙", href: "/dashboard/settings" },
-];
-
-const SUPERADMIN_EXTRA_TABS = [
-  { id: "agents",     label: "Agents",    icon: "◉", href: "/dashboard/agents" },
-  { id: "backtests",  label: "Backtests", icon: "▥", href: "/dashboard/backtests" },
-  { id: "insights",   label: "Insights",  icon: "✦", href: "/dashboard/insights" },
 ];
 
 export function DashboardShell({
@@ -30,10 +25,7 @@ export function DashboardShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const tabs =
-    role === "superadmin"
-      ? [...PUBLIC_TABS, ...SUPERADMIN_EXTRA_TABS]
-      : PUBLIC_TABS;
+  const tabs = PUBLIC_TABS;
 
   return (
     <div

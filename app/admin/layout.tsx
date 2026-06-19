@@ -6,12 +6,21 @@ import { fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
 import { AdminContext } from "./admin-context";
 
+// Sprint 074: legacy user-facing surfaces moved to the admin sidebar so
+// the user view stays clean. "Backtesting 1" is the philosophy/threshold
+// experiments page (the older multi-agent backtest UI). "Backtesting 2" is
+// the Ticket Logic backtest list — still hosted under /dashboard/backtests
+// to avoid breaking deep links, but only entered from here now.
 const NAV_ITEMS = [
-  { path: "/admin",               label: "Overview",      short: "OV" },
-  { path: "/admin/users",         label: "Users",         short: "US" },
-  { path: "/admin/backtesting",   label: "Backtesting",   short: "BT" },
-  { path: "/admin/system-status", label: "System Status", short: "SS" },
-  { path: "/admin/roles",         label: "Roles",         short: "RL" },
+  { path: "/admin",                 label: "Overview",       short: "OV" },
+  { path: "/admin/users",           label: "Users",          short: "US" },
+  { path: "/admin/system-status",   label: "System Status",  short: "SS" },
+  { path: "/admin/roles",           label: "Roles",          short: "RL" },
+  // Archived legacy surfaces — superadmin access only
+  { path: "/admin/backtesting",     label: "Backtesting 1",  short: "B1" },
+  { path: "/dashboard/backtests",   label: "Backtesting 2",  short: "B2" },
+  { path: "/dashboard/agents",      label: "Pipeline Agents", short: "PA" },
+  { path: "/dashboard/insights",    label: "Insights",       short: "IN" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
