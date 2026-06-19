@@ -11,7 +11,7 @@ export default async function PortfolioPage() {
   const sb = getServiceClient();
   const { data: profile } = await sb
     .from("profiles")
-    .select("tier, investment_philosophy, boundary_mode")
+    .select("tier, investment_philosophy, boundary_mode, scalper_strategy_id")
     .eq("id", userId)
     .maybeSingle();
 
@@ -21,6 +21,10 @@ export default async function PortfolioPage() {
   const tier = (VALID_TIERS.includes(rawTier as typeof VALID_TIERS[number]) ? rawTier : "free") as "free" | "pro" | "max";
   const philosophy = String(p?.["investment_philosophy"] ?? "balanced");
   const boundaryMode = String(p?.["boundary_mode"] ?? "advisory");
+  // Sprint 065: first-run prompt — banner shown when user hasn't selected a
+  // strategy for the scalper to run. Without it, the scalper sits idle and
+  // the user has no idea why.
+  const needsScalperStrategy = p?.["scalper_strategy_id"] == null;
 
   // Light signals check for pending-approval banner only
   const { hasPending, pendingTicker } = await checkPendingSignals(userId);
@@ -32,6 +36,7 @@ export default async function PortfolioPage() {
       boundaryMode={boundaryMode}
       hasPendingConditional={hasPending}
       pendingTicker={pendingTicker}
+      needsScalperStrategy={needsScalperStrategy}
     />
   );
 }
