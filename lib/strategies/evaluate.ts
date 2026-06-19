@@ -15,6 +15,7 @@
  */
 
 import { computeAllIndicators, type Bar, type IndicatorArrays } from "./indicators";
+import { isBarInSession } from "./time-filter";
 import type {
   Condition,
   Expression,
@@ -63,6 +64,10 @@ function evaluateAtBar(
   indicators: IndicatorArrays,
   barIdx: number,
 ): EntrySignal | null {
+  // Sprint 069: session-window + weekday filter runs before any condition
+  // evaluation. Cheap reject path.
+  if (!isBarInSession(bars[barIdx], logic)) return null;
+
   // Resolve computed values FIRST so entry conditions can reference them
   // (e.g. "entry_price < ema_13" — the mean-reversion guard in Sandy S1 v2).
   // Computed entries are evaluated in declaration order and cannot reference

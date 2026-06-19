@@ -24,6 +24,7 @@ import type {
   IndicatorSpec,
   TicketLogicBody,
 } from "./types";
+import { describeSessionWindow, describeWeekdays } from "./time-filter";
 
 // ── Expression rendering ─────────────────────────────────────────────────────
 
@@ -166,6 +167,8 @@ export interface RenderedSections {
   takeProfit: string;
   timeStop: string | null;
   indicators: Array<{ id: string; label: string }>;
+  /** Sprint 069: optional when-it-can-fire summary */
+  whenItFires: string | null;
 }
 
 export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
@@ -219,5 +222,13 @@ export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
     label: indicatorLabel(i.id, body.indicators),
   }));
 
-  return { signalBar, entry: entryLines, stopLoss, takeProfit, timeStop, indicators };
+  // Sprint 069: "When it fires" combines session window + valid weekdays
+  // into a single line. Renders nothing when both are omitted.
+  let whenItFires: string | null = null;
+  const parts: string[] = [];
+  if (body.session_window) parts.push(describeSessionWindow(body.session_window));
+  if (body.valid_weekdays) parts.push(describeWeekdays(body.valid_weekdays));
+  if (parts.length > 0) whenItFires = parts.join(" · ");
+
+  return { signalBar, entry: entryLines, stopLoss, takeProfit, timeStop, indicators, whenItFires };
 }

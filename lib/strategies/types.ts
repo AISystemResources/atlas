@@ -81,6 +81,28 @@ export interface TunableParameter {
   max?: number;
 }
 
+// ── Session window + weekday filter — Sprint 069 ─────────────────────────────
+
+/**
+ * Intraday session window. Strategy only fires on bars whose timestamp
+ * falls inside [start, end) in the named IANA timezone.
+ *
+ * Sandy S1 was calibrated for the 09:31–11:00 ET morning window — applying
+ * it to bars outside that window changes the strategy in practice. By
+ * making the window a first-class field we stop pretending it doesn't
+ * matter and let the live scalper enforce what the backtest assumed.
+ *
+ * Crypto strategies that should run 24/7 simply omit this field.
+ */
+export interface SessionWindow {
+  /** 24-hour "HH:MM" — inclusive */
+  start: string;
+  /** 24-hour "HH:MM" — exclusive */
+  end: string;
+  /** IANA timezone, e.g. "America/New_York", "UTC", "Asia/Singapore" */
+  timezone: string;
+}
+
 // ── Top-level TicketLogic ────────────────────────────────────────────────────
 
 export interface TicketLogicBody {
@@ -112,6 +134,18 @@ export interface TicketLogicBody {
    * when new strategies are created.
    */
   tunable_parameters?: TunableParameter[];
+  /**
+   * Sprint 069: intraday window the strategy is allowed to fire in. Bars
+   * outside the window produce no entry, even when conditions hold.
+   * Omit for 24/7 strategies (crypto).
+   */
+  session_window?: SessionWindow;
+  /**
+   * Sprint 069: weekdays the strategy is allowed to fire on. Uses ISO
+   * weekday numbers: 1 = Monday … 7 = Sunday. Omit to allow every day
+   * the calendar admits.
+   */
+  valid_weekdays?: number[];
 }
 
 /** The full database row including metadata */
