@@ -37,6 +37,15 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    title: "AI Strategy Authoring",
+    features: [
+      { name: "View and fork shared strategies", desc: "Use strategies your friends shared with you",                            free: "✓", pro: "✓" },
+      { name: "Author strategies via AI",         desc: "Connect Claude Desktop / ChatGPT to spawn fresh strategies from chat",   free: "—", pro: "✓" },
+      { name: "AI Distillation reviews",          desc: "Post-backtest insights propose tunable changes",                        free: "—", pro: "✓" },
+      { name: "Share strategies by email",        desc: "Grant read access by email; share before recipient signs up",            free: "✓", pro: "✓" },
+    ],
+  },
+  {
     title: "Broker & Integrations",
     features: [
       { name: "Alpaca (paper & live)",         free: "✓", pro: "✓" },
