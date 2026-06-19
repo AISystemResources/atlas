@@ -184,7 +184,7 @@ export function BottomTabs({
       )}
       {active === "trades" && <TradesTabContent trades={recentTrades} />}
       {active === "insights" && (
-        <InsightsTabContent insight={todayInsight} router={router} />
+        <InsightsTabContent insight={todayInsight} />
       )}
     </div>
   );
@@ -748,10 +748,8 @@ function TradesTabContent({ trades }: { trades: TradeLite[] }) {
 
 function InsightsTabContent({
   insight,
-  router,
 }: {
   insight: InsightLite | null;
-  router: ReturnType<typeof useRouter>;
 }) {
   if (!insight) {
     return (
@@ -820,20 +818,8 @@ function InsightsTabContent({
         >
           {insight.win_count}/{insight.trade_count} wins
         </span>
-        <button
-          onClick={() => router.push("/dashboard/insights")}
-          style={{
-            color: "var(--ink)",
-            fontSize: 11,
-            fontFamily: "var(--font-jb)",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            textDecoration: "underline",
-          }}
-        >
-          All insights →
-        </button>
+        {/* Sprint 074: "All insights →" link removed — /dashboard/insights
+            is admin-only now. The single most recent insight stays inline. */}
       </div>
     </div>
   );
