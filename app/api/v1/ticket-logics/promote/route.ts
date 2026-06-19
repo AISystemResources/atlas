@@ -108,22 +108,38 @@ export async function POST(req: Request): Promise<Response> {
 
   const { data: parentData } = await sb
     .from("ticket_logics")
-    .select("id, name, version, body")
+    .select("id, name, version, body, created_by_user_id")
     .eq("id", parent_logic_id)
     .maybeSingle();
   if (!parentData) {
     return Response.json({ error: "parent ticket_logic not found" }, { status: 404 });
   }
-  const parent = parentData as ParentLogicRow;
+  const parent = parentData as ParentLogicRow & {
+    created_by_user_id: string | null;
+  };
+
+  // Sprint 060D: promote creates a new version chained off the parent.
+  // Only the parent's owner can promote. Forking is the right verb for
+  // non-owners who want to evolve someone else's strategy.
+  if (parent.created_by_user_id !== user.userId) {
+    return Response.json(
+      {
+        error:
+          "promote is owner-only; fork this strategy first to evolve it under your account",
+      },
+      { status: 403 },
+    );
+  }
 
   // Apply parameter changes to parent body to produce v(N+1) body.
+  // The new applyParameterChanges reads tunables from body.tunable_parameters
+  // (Sprint 060B), so the strategy is self-describing and no per-strategy
+  // code wiring is needed.
   let newBody;
   try {
-    newBody = applyParameterChanges(
-      parent.body as Record<string, unknown>,
-      changes,
-      parent.name,
-    );
+    // Parse the parent's body first to ensure it's a valid TicketLogicBody.
+    const parentBody = ticketLogicBodySchema.parse(parent.body);
+    newBody = applyParameterChanges(parentBody, changes);
   } catch (err) {
     return Response.json(
       { error: err instanceof Error ? err.message : String(err) },
@@ -172,6 +188,10 @@ export async function POST(req: Request): Promise<Response> {
       body: newBody,
       status: "draft",
       created_by: "distillation",
+      // Sprint 060: ownership and visibility inherited from the parent so a
+      // public strategy's evolution stays public unless the owner changes it.
+      created_by_user_id: user.userId,
+      visibility: "private", // promoted versions are private drafts by default
     })
     .select("id, name, version")
     .single();

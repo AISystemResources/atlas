@@ -1,44 +1,46 @@
 /**
- * Tests for the tunable-params apply/read/set helpers — Sprint 053e + 059.
+ * Tests for the tunable-params helpers — Sprint 053e + 059 + 060B.
  *
- * These are the load-bearing deterministic pieces of the promotion flow:
- * if applyParameterChanges produces wrong bodies, the new ticket_logics rows
- * are wrong and the entire AI feedback loop is broken.
- *
- * After Sprint 059 the registry was migrated to v2 paths. The v1 body still
- * lives in seeds.ts for the evaluator parity test, but it's no longer the
- * active strategy and the tunable registry doesn't track v1 paths.
+ * Tunables now live INSIDE each TicketLogicBody (body.tunable_parameters)
+ * rather than in a hardcoded registry. These tests verify:
+ *   - readByPath / setByPath traversal correctness
+ *   - applyParameterChanges reads the body's own tunables (no global registry)
+ *   - The seed's tunables resolve to the correct values in the body
  */
 
 import {
-  STRATEGY_TUNABLES,
   applyParameterChanges,
-  getTunablesForStrategy,
+  getTunables,
   readByPath,
   setByPath,
 } from "@/lib/strategies/tunable-params";
 import { SANDY_S1_LONG_V2 } from "@/lib/strategies/seeds";
 
-describe("STRATEGY_TUNABLES — Sandy S1 v2 path correctness", () => {
-  const tunables = STRATEGY_TUNABLES["sandy-s1-long"];
+describe("getTunables reads from body.tunable_parameters", () => {
+  it("returns the embedded tunables on SANDY_S1_LONG_V2", () => {
+    const tunables = getTunables(SANDY_S1_LONG_V2);
+    const names = tunables.map((t) => t.name);
+    expect(names).toEqual([
+      "entry_buffer_points",
+      "stop_buffer_points",
+      "notional_per_trade",
+    ]);
+  });
+
+  it("returns [] when the body has no tunable_parameters field", () => {
+    const bare = { ...SANDY_S1_LONG_V2, tunable_parameters: undefined };
+    expect(getTunables(bare)).toEqual([]);
+  });
 
   it.each([
     ["entry_buffer_points", 3],
     ["stop_buffer_points", 3],
     ["notional_per_trade", 200],
-  ])("path for '%s' resolves to %s in SANDY_S1_LONG_V2", (name, expected) => {
+  ])("tunable '%s' resolves to %s via its declared path", (name, expected) => {
+    const tunables = getTunables(SANDY_S1_LONG_V2);
     const t = tunables.find((x) => x.name === name);
     expect(t).toBeDefined();
-    const actual = readByPath(SANDY_S1_LONG_V2, t!.path);
-    expect(actual).toBe(expected);
-  });
-
-  it("registry does NOT include v1-era tunables", () => {
-    const names = tunables.map((t) => t.name);
-    expect(names).not.toContain("rsi_regime_threshold");
-    expect(names).not.toContain("entry_buffer_multiplier");
-    expect(names).not.toContain("stop_loss_multiplier");
-    expect(names).not.toContain("target_atr_multiple");
+    expect(readByPath(SANDY_S1_LONG_V2, t!.path)).toBe(expected);
   });
 });
 
@@ -59,14 +61,12 @@ describe("setByPath", () => {
   });
 });
 
-describe("applyParameterChanges", () => {
+describe("applyParameterChanges (body-driven)", () => {
   it("returns a new body with one tunable updated", () => {
-    const result = applyParameterChanges(
-      SANDY_S1_LONG_V2 as unknown as Record<string, unknown>,
-      [{ name: "entry_buffer_points", proposed_value: 5 }],
-      "sandy-s1-long",
-    );
-    const tunable = getTunablesForStrategy("sandy-s1-long").find(
+    const result = applyParameterChanges(SANDY_S1_LONG_V2, [
+      { name: "entry_buffer_points", proposed_value: 5 },
+    ]);
+    const tunable = getTunables(SANDY_S1_LONG_V2).find(
       (t) => t.name === "entry_buffer_points",
     )!;
     expect(readByPath(result, tunable.path)).toBe(5);
@@ -74,24 +74,18 @@ describe("applyParameterChanges", () => {
 
   it("does not mutate the input body", () => {
     const before = JSON.stringify(SANDY_S1_LONG_V2);
-    applyParameterChanges(
-      SANDY_S1_LONG_V2 as unknown as Record<string, unknown>,
-      [{ name: "stop_buffer_points", proposed_value: 6 }],
-      "sandy-s1-long",
-    );
+    applyParameterChanges(SANDY_S1_LONG_V2, [
+      { name: "stop_buffer_points", proposed_value: 6 },
+    ]);
     expect(JSON.stringify(SANDY_S1_LONG_V2)).toBe(before);
   });
 
   it("applies multiple changes simultaneously", () => {
-    const result = applyParameterChanges(
-      SANDY_S1_LONG_V2 as unknown as Record<string, unknown>,
-      [
-        { name: "entry_buffer_points", proposed_value: 4 },
-        { name: "notional_per_trade", proposed_value: 500 },
-      ],
-      "sandy-s1-long",
-    );
-    const tunables = getTunablesForStrategy("sandy-s1-long");
+    const result = applyParameterChanges(SANDY_S1_LONG_V2, [
+      { name: "entry_buffer_points", proposed_value: 4 },
+      { name: "notional_per_trade", proposed_value: 500 },
+    ]);
+    const tunables = getTunables(SANDY_S1_LONG_V2);
     expect(
       readByPath(result, tunables.find((t) => t.name === "entry_buffer_points")!.path),
     ).toBe(4);
@@ -100,23 +94,28 @@ describe("applyParameterChanges", () => {
     ).toBe(500);
   });
 
-  it("throws for an unknown tunable name", () => {
+  it("throws for an unknown tunable name (not declared in body)", () => {
     expect(() =>
-      applyParameterChanges(
-        SANDY_S1_LONG_V2 as unknown as Record<string, unknown>,
-        [{ name: "made_up_param", proposed_value: 99 }],
-        "sandy-s1-long",
-      ),
+      applyParameterChanges(SANDY_S1_LONG_V2, [
+        { name: "made_up_param", proposed_value: 99 },
+      ]),
     ).toThrow(/unknown tunable/);
   });
 
-  it("throws for an unknown strategy", () => {
-    expect(() =>
-      applyParameterChanges(
-        SANDY_S1_LONG_V2 as unknown as Record<string, unknown>,
-        [{ name: "entry_buffer_points", proposed_value: 5 }],
-        "no-such-strategy",
-      ),
-    ).toThrow(/unknown tunable/);
+  it("works on a strategy whose body declares custom tunables (no global registry)", () => {
+    const customStrategy = {
+      ...SANDY_S1_LONG_V2,
+      tunable_parameters: [
+        {
+          name: "my_custom_thing",
+          path: ["entry", "sizing", "value"],
+          description: "Custom tunable",
+        },
+      ],
+    };
+    const result = applyParameterChanges(customStrategy, [
+      { name: "my_custom_thing", proposed_value: 999 },
+    ]);
+    expect(readByPath(result, ["entry", "sizing", "value"])).toBe(999);
   });
 });

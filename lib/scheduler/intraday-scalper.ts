@@ -28,7 +28,7 @@ import { computeIndicators } from "@/lib/indicators";
 import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
 import {
   detectStrategySignal,
-  loadActiveStrategy,
+  loadStrategyForUser,
   type ActiveStrategy,
 } from "./ticket-adapter";
 
@@ -461,17 +461,10 @@ async function runUserScalper(
 export async function runIntradayScalper(): Promise<ScalperResult[]> {
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 
-  // Sprint 054: load the active ticket_logics row once per cron tick. If it
-  // can't be loaded, the run aborts — there is no hardcoded fallback. The
-  // ticket_logics row is the source of truth for what the scalper trades.
-  const strategy = await loadActiveStrategy("sandy-s1-long");
-  if (!strategy) {
-    console.error(
-      "[scalper] No active ticket_logic for 'sandy-s1-long' — aborting cycle. " +
-        "Set status='active' on a row in public.ticket_logics to resume trading.",
-    );
-    return [];
-  }
+  // Sprint 060C: load each user's chosen strategy from profiles.scalper_strategy_id.
+  // No hardcoded fallback. Users without a configured strategy produce no
+  // entries (fail-closed). The strategy row itself is the source of truth for
+  // what each user's scalper trades.
 
   const { data: users, error } = await sb
     .from("profiles")
@@ -486,6 +479,21 @@ export async function runIntradayScalper(): Promise<ScalperResult[]> {
   if (!users || users.length === 0) return [];
 
   return Promise.all(
-    (users as Array<{ id: string }>).map((u) => runUserScalper(sb, u.id, strategy)),
+    (users as Array<{ id: string }>).map(async (u) => {
+      const strategy = await loadStrategyForUser(u.id);
+      if (!strategy) {
+        return {
+          user_id: u.id,
+          entries: 0,
+          exits: 0,
+          eod_closes: 0,
+          skipped: 0,
+          errors: [
+            "no scalper_strategy_id configured for user — visit Strategy Library to opt in",
+          ],
+        };
+      }
+      return runUserScalper(sb, u.id, strategy);
+    }),
   );
 }

@@ -67,6 +67,20 @@ export interface Sizing {
 
 export type TimeStop = "eod" | { bars: number };
 
+// ── Tunable parameter (embedded in body) — Sprint 060B ───────────────────────
+
+export interface TunableParameter {
+  /** Human-readable name shown to the AI and rendered in the UI */
+  name: string;
+  /** Dot-path into TicketLogicBody, as an array of keys */
+  path: string[];
+  /** What this parameter controls — sent to the AI */
+  description: string;
+  /** Optional soft bounds. The reviewer should respect these. */
+  min?: number;
+  max?: number;
+}
+
 // ── Top-level TicketLogic ────────────────────────────────────────────────────
 
 export interface TicketLogicBody {
@@ -91,6 +105,13 @@ export interface TicketLogicBody {
     stop_loss: Expression;
     time_stop?: TimeStop;
   };
+  /**
+   * Self-describing parameters that the AI Distillation may propose changes
+   * to. Each tunable carries its own path into the body so the strategy
+   * declares everything about itself — no per-strategy code changes needed
+   * when new strategies are created.
+   */
+  tunable_parameters?: TunableParameter[];
 }
 
 /** The full database row including metadata */
