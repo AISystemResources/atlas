@@ -18,6 +18,7 @@ import { getUserFromRequest } from "@/lib/auth/context";
 import { getServiceClient } from "@/lib/supabase-server";
 import { applyParameterChanges } from "@/lib/strategies/tunable-params";
 import { ticketLogicBodySchema } from "@/lib/strategies/schema";
+import { describeStrategy } from "@/lib/strategies/describe-strategy";
 
 const BodySchema = z.object({
   parent_logic_id: z.string().uuid(),
@@ -28,6 +29,7 @@ interface InsightRow {
   id: string;
   backtest_id: string;
   recommendation: string;
+  rationale: string | null;
   proposed_changes:
     | Array<{ name: string; current_value: number; proposed_value: number; reason: string }>
     | null;
@@ -68,7 +70,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const { data: insightData } = await sb
     .from("ticket_backtest_insights")
-    .select("id, backtest_id, recommendation, proposed_changes, promoted_to_version_id")
+    .select("id, backtest_id, recommendation, rationale, proposed_changes, promoted_to_version_id")
     .eq("id", backtest_insight_id)
     .maybeSingle();
   if (!insightData) {
@@ -169,14 +171,27 @@ export async function POST(req: Request): Promise<Response> {
     .maybeSingle();
   const nextVersion = ((topRow as { version: number } | null)?.version ?? parent.version) + 1;
 
-  // Build a human description of what changed.
+  // Sprint 064: AI-authored description summarising the change. Falls back
+  // to the developer-flavored auto-text if the LLM call fails.
   const changeDescriptions = changes
     .map(
       (c) =>
         `${c.name}: ${c.current_value} → ${c.proposed_value} (${c.reason})`,
     )
     .join("; ");
-  const description = `Promoted from ${parent.name} v${parent.version} via Sprint 053e aggregate review. Changes: ${changeDescriptions}`;
+  let description = `Promoted from ${parent.name} v${parent.version} via AI Distillation. Changes: ${changeDescriptions}`;
+  try {
+    const aiDesc = await describeStrategy({
+      action: "promote",
+      body: newBody,
+      parent: { name: parent.name, version: parent.version, author_label: "you" },
+      changes,
+      promote_rationale: insight.rationale ?? undefined,
+    });
+    if (aiDesc) description = aiDesc;
+  } catch (err) {
+    console.warn("[promote] description gen failed, using fallback:", err);
+  }
 
   const { data: newRow, error: insErr } = await sb
     .from("ticket_logics")

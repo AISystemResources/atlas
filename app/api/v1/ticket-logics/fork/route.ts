@@ -17,6 +17,8 @@
 import { z } from "zod";
 import { getUserFromRequest } from "@/lib/auth/context";
 import { getServiceClient } from "@/lib/supabase-server";
+import { describeStrategy } from "@/lib/strategies/describe-strategy";
+import { parseTicketLogicBody } from "@/lib/strategies/schema";
 
 const BodySchema = z.object({
   source_logic_id: z.string().uuid(),
@@ -89,7 +91,27 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  const description = `Forked from ${source.name}. ${source.description}`;
+  // Sprint 064: try an AI-authored description. Falls back to the
+  // developer-flavored auto-text if the LLM call fails.
+  let description = `Forked from ${source.name}. ${source.description}`;
+  try {
+    const body = parseTicketLogicBody(source.body);
+    const sourceAuthorLabel = source.created_by_user_id === user.userId
+      ? "you"
+      : `@${source.created_by_user_id?.slice(5, 11) ?? "—"}`;
+    const aiDesc = await describeStrategy({
+      action: "fork",
+      body,
+      parent: {
+        name: source.name,
+        version: 1, // fork always starts a new v1 chain; the source's version is irrelevant here
+        author_label: sourceAuthorLabel,
+      },
+    });
+    if (aiDesc) description = aiDesc;
+  } catch (err) {
+    console.warn("[fork] description gen failed, using fallback:", err);
+  }
 
   const { data: inserted, error: insErr } = await sb
     .from("ticket_logics")
