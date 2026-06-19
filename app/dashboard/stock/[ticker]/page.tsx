@@ -2,7 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { MongoClient } from "mongodb";
 import { type DecisionLogEntry } from "@/lib/api";
-import { StockLogClient } from "./StockLogClient";
+import { getTickerMetadata } from "@/lib/market/ticker-metadata";
+import { StockLogClient, type StockMetadataView } from "./StockLogClient";
 
 export default async function StockLogPage({
   params,
@@ -15,9 +16,24 @@ export default async function StockLogPage({
   const { ticker: rawTicker } = await params;
   const ticker = rawTicker.toUpperCase();
 
-  const entries = await fetchDecisionLog(userId, ticker, 20);
+  const [entries, metadata] = await Promise.all([
+    fetchDecisionLog(userId, ticker, 20),
+    getTickerMetadata(ticker),
+  ]);
 
-  return <StockLogClient ticker={ticker} entries={entries} />;
+  const metaView: StockMetadataView | null = metadata
+    ? {
+        kind: metadata.kind,
+        display_name: metadata.display_name,
+        has_fundamental_data: metadata.has_fundamental_data,
+        has_sentiment_data: metadata.has_sentiment_data,
+        has_technical_data: metadata.has_technical_data,
+        exchange: metadata.exchange,
+        description: metadata.description,
+      }
+    : null;
+
+  return <StockLogClient ticker={ticker} entries={entries} metadata={metaView} />;
 }
 
 async function fetchDecisionLog(
