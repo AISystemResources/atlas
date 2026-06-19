@@ -3,6 +3,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 const isPublicRoute = createRouteMatcher([
   "/",
   "/login(.*)",
+  "/invite/(.*)",        // Sprint 075c — founder invite landing
   "/api/inngest(.*)",
   "/api/mcp(.*)",
   "/api/v1/health(.*)",
