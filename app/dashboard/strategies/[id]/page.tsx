@@ -11,6 +11,7 @@ import { notFound, redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
 import { parseTicketLogicBody } from "@/lib/strategies/schema";
 import { renderTicketLogicBody } from "@/lib/strategies/render-rules";
+import { buildAccessContext, canRead } from "@/lib/strategies/access";
 import {
   StrategyDetailClient,
   type StrategyDetail,
@@ -57,9 +58,11 @@ export default async function StrategyDetailPage({
   if (!row) notFound();
 
   const isOwner = row.created_by_user_id === userId;
-  const isReadable =
-    row.visibility === "public" || row.visibility === "unlisted";
-  if (!isOwner && !isReadable) notFound();
+
+  // Sprint 075a: access check includes per-email shares.
+  const access = await buildAccessContext(userId);
+  if (!canRead(row, access)) notFound();
+  const isSharedWithMe = !isOwner && access.sharedStrategyIds.has(row.id);
 
   // Version family: same (name, created_by_user_id) pair, ordered v1, v2, ...
   const { data: familyRows } = await sb
@@ -133,6 +136,17 @@ export default async function StrategyDetailPage({
   const body = parseTicketLogicBody(row.body);
   const rendered = renderTicketLogicBody(body);
 
+  // Sprint 075a: when the caller is the owner, surface the share list.
+  let shares: Array<{ email: string; granted_at: string }> = [];
+  if (isOwner) {
+    const { data: shareRows } = await sb
+      .from("strategy_shares")
+      .select("email, granted_at")
+      .eq("strategy_id", row.id)
+      .order("granted_at", { ascending: false });
+    shares = (shareRows ?? []) as Array<{ email: string; granted_at: string }>;
+  }
+
   const detail: StrategyDetail = {
     id: row.id,
     name: row.name,
@@ -141,6 +155,7 @@ export default async function StrategyDetailPage({
     status: row.status,
     visibility: row.visibility,
     is_mine: isOwner,
+    is_shared_with_me: isSharedWithMe,
     owner_label: isOwner ? "you" : truncateUser(row.created_by_user_id),
     forked_from_id: row.forked_from_id,
     forked_from_label: forkedFromLabel,
@@ -153,6 +168,7 @@ export default async function StrategyDetailPage({
     direction: body.direction,
     ticker: row.ticker ?? null,
     tags: row.tags ?? [],
+    shares,
   };
 
   return (

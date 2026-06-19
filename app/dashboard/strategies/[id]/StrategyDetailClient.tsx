@@ -40,6 +40,11 @@ export interface BacktestListEntry {
   created_at: string;
 }
 
+export interface StrategyShareEntry {
+  email: string;
+  granted_at: string;
+}
+
 export interface StrategyDetail {
   id: string;
   name: string;
@@ -48,6 +53,7 @@ export interface StrategyDetail {
   status: "draft" | "active" | "archived";
   visibility: "private" | "unlisted" | "public";
   is_mine: boolean;
+  is_shared_with_me: boolean;
   owner_label: string;
   forked_from_id: string | null;
   forked_from_label: string | null;
@@ -60,6 +66,7 @@ export interface StrategyDetail {
   direction: string;
   ticker: string | null;
   tags: string[];
+  shares: StrategyShareEntry[];
 }
 
 export function StrategyDetailClient({
@@ -158,6 +165,14 @@ export function StrategyDetailClient({
                 My scalper
               </span>
             )}
+            {detail.is_shared_with_me && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded uppercase"
+                style={{ background: "var(--elevated)", color: "var(--brand)" }}
+              >
+                Shared with you
+              </span>
+            )}
             <VisibilityChip vis={detail.visibility} />
             <StatusChip status={detail.status} />
           </div>
@@ -170,7 +185,7 @@ export function StrategyDetailClient({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {!detail.is_mine && detail.visibility !== "private" && (
+          {!detail.is_mine && (detail.visibility !== "private" || detail.is_shared_with_me) && (
             <button
               onClick={onFork}
               disabled={forkBusy}
@@ -294,6 +309,13 @@ export function StrategyDetailClient({
           ))}
         </div>
       </Section>
+
+      {/* Sprint 075a — share panel (owner only) */}
+      {detail.is_mine && (
+        <Section title="Share with people">
+          <SharePanel strategyId={detail.id} initialShares={detail.shares} />
+        </Section>
+      )}
 
       {/* Tunables */}
       {detail.tunable_parameters.length > 0 && (
@@ -536,5 +558,144 @@ function StatusChip({ status }: { status: "draft" | "active" | "archived" }) {
     >
       {status}
     </span>
+  );
+}
+
+// ── SharePanel — Sprint 075a ──────────────────────────────────────────────────
+
+function SharePanel({
+  strategyId,
+  initialShares,
+}: {
+  strategyId: string;
+  initialShares: StrategyShareEntry[];
+}) {
+  const [shares, setShares] = useState<StrategyShareEntry[]>(initialShares);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function onShare(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/v1/ticket-logics/${strategyId}/shares`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      if (!body.already_shared) {
+        setShares((cur) => [
+          { email: trimmed, granted_at: new Date().toISOString() },
+          ...cur.filter((s) => s.email !== trimmed),
+        ]);
+        setMsg("Shared.");
+      } else {
+        setMsg("Already shared.");
+      }
+      setEmail("");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      setTimeout(() => setMsg(null), 2400);
+    }
+  }
+
+  async function onRevoke(target: string) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(
+        `/api/v1/ticket-logics/${strategyId}/shares?email=${encodeURIComponent(target)}`,
+        { method: "DELETE" },
+      );
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setShares((cur) => cur.filter((s) => s.email !== target));
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      setTimeout(() => setMsg(null), 2400);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs" style={{ color: "var(--ghost)" }}>
+        Grant a person read access by email. They&apos;ll see this strategy in
+        their library on next login — they don&apos;t need to have signed up yet.
+      </p>
+
+      <form onSubmit={onShare} className="flex gap-2">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="friend@example.com"
+          className="flex-1 px-3 py-1.5 text-sm rounded border"
+          style={{
+            background: "var(--surface)",
+            borderColor: "var(--line)",
+            color: "var(--ink)",
+          }}
+          disabled={busy}
+        />
+        <button
+          type="submit"
+          disabled={busy || email.trim().length === 0}
+          className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50"
+          style={{ background: "var(--brand)", color: "#fff" }}
+        >
+          {busy ? "…" : "Share"}
+        </button>
+      </form>
+
+      {msg && (
+        <p className="text-xs" style={{ color: "var(--brand)" }}>
+          {msg}
+        </p>
+      )}
+
+      {shares.length === 0 ? (
+        <p className="text-xs" style={{ color: "var(--ghost)" }}>
+          No one has access yet.
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {shares.map((s) => (
+            <li
+              key={s.email}
+              className="flex items-center justify-between p-2 rounded text-sm"
+              style={{
+                background: "var(--elevated)",
+                color: "var(--ink)",
+              }}
+            >
+              <span className="font-mono text-xs">{s.email}</span>
+              <button
+                onClick={() => onRevoke(s.email)}
+                disabled={busy}
+                className="text-xs disabled:opacity-50"
+                style={{
+                  color: "var(--bear)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Revoke
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
