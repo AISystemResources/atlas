@@ -228,6 +228,14 @@ export function StrategyDetailClient({
 
       {/* Structured rule blocks */}
       <div className="space-y-3 mb-8">
+        {detail.rendered.whenItFires && (
+          <RuleBlock
+            icon="🕒"
+            title="When it fires"
+            lines={[detail.rendered.whenItFires]}
+            accent="var(--hold)"
+          />
+        )}
         <RuleBlock
           icon="📍"
           title="Signal Bar — what qualifies"

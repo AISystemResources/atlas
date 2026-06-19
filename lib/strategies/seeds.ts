@@ -159,4 +159,13 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
       max: 10_000,
     },
   ],
+  // Sprint 069: Sandy's S1 was authored as a US-equity-morning strategy.
+  // Restrict firing to weekdays 09:31–11:00 ET, matching the window the
+  // strategy was originally observed and calibrated on.
+  session_window: {
+    start: "09:31",
+    end: "11:00",
+    timezone: "America/New_York",
+  },
+  valid_weekdays: [1, 2, 3, 4, 5],
 };

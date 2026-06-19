@@ -69,6 +69,18 @@ const tunableParameterSchema = z.object({
   max: z.number().optional(),
 });
 
+// Sprint 069: session_window + valid_weekdays
+const hhmmRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+const sessionWindowSchema = z.object({
+  start: z.string().regex(hhmmRegex, "expected HH:MM 24-hour"),
+  end: z.string().regex(hhmmRegex, "expected HH:MM 24-hour"),
+  timezone: z.string().min(1, "IANA timezone required"),
+});
+const validWeekdaysSchema = z
+  .array(z.number().int().min(1).max(7))
+  .min(1)
+  .max(7);
+
 export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
   universe: z.object({
     asset_class: z.enum(["equity", "crypto", "any"]),
@@ -89,6 +101,8 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
     time_stop: timeStopSchema.optional(),
   }),
   tunable_parameters: z.array(tunableParameterSchema).optional(),
+  session_window: sessionWindowSchema.optional(),
+  valid_weekdays: validWeekdaysSchema.optional(),
 });
 
 /** Throws ZodError if body is malformed; returns the parsed body otherwise. */
