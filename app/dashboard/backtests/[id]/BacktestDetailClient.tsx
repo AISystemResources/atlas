@@ -420,6 +420,9 @@ export function BacktestDetailClient({
                 <th className="py-2 pr-2">Exit</th>
                 <th className="py-2 pr-2 text-right">Exit $</th>
                 <th className="py-2 pr-2">Reason</th>
+                <th className="py-2 pr-2 text-right" title="Raw price move in points (Exit − Entry). Multiplied by qty to give PnL $.">
+                  PnL pts
+                </th>
                 <th className="py-2 pr-2 text-right">PnL $</th>
                 <th className="py-2 pr-2 text-right">PnL %</th>
               </tr>
@@ -457,6 +460,11 @@ export function BacktestDetailClient({
                     </td>
                     <td className="py-2 pr-2">
                       <ExitChip reason={t.exit_reason} />
+                    </td>
+                    <td className="py-2 pr-2 text-right font-mono text-xs text-[var(--dim)]">
+                      {t.exit_price != null
+                        ? (t.exit_price - t.entry_price).toFixed(2)
+                        : "—"}
                     </td>
                     <td
                       className={`py-2 pr-2 text-right font-mono ${
