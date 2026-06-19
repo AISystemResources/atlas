@@ -63,24 +63,25 @@ function evaluateAtBar(
   indicators: IndicatorArrays,
   barIdx: number,
 ): EntrySignal | null {
-  if (logic.regime_filter) {
-    if (!evaluateCondition(logic.regime_filter, bars, indicators, {}, barIdx)) {
-      return null;
-    }
-  }
-
-  for (const cond of logic.entry.conditions) {
-    if (!evaluateCondition(cond, bars, indicators, {}, barIdx)) return null;
-  }
-
-  // Resolve computed values in declaration order. (No dependency resolution
-  // in v1; computed entries cannot reference each other. If two are needed,
-  // declare them in evaluation order.)
+  // Resolve computed values FIRST so entry conditions can reference them
+  // (e.g. "entry_price < ema_13" — the mean-reversion guard in Sandy S1 v2).
+  // Computed entries are evaluated in declaration order and cannot reference
+  // each other (no dependency resolution in this engine).
   const computed: Record<string, number> = {};
   if (logic.computed) {
     for (const [id, expr] of Object.entries(logic.computed)) {
       computed[id] = evaluateExpression(expr, bars, indicators, computed, barIdx);
     }
+  }
+
+  if (logic.regime_filter) {
+    if (!evaluateCondition(logic.regime_filter, bars, indicators, computed, barIdx)) {
+      return null;
+    }
+  }
+
+  for (const cond of logic.entry.conditions) {
+    if (!evaluateCondition(cond, bars, indicators, computed, barIdx)) return null;
   }
 
   const entryPrice = round4(

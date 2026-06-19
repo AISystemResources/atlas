@@ -26,38 +26,25 @@ export interface TunableParameter {
 }
 
 export const STRATEGY_TUNABLES: Record<string, TunableParameter[]> = {
+  // Sandy S1 long — v2 schema (Sprint 059). v1 was archived; the AI reviewer
+  // and promote endpoint only operate on the active version, so this registry
+  // tracks the latest schema only.
   "sandy-s1-long": [
     {
-      name: "rsi_regime_threshold",
-      path: ["regime_filter", "right", "value"],
-      description:
-        "RSI(21) threshold for bullish regime. Longs only fire above this. Default 50.",
-      min: 30,
-      max: 70,
-    },
-    {
-      name: "entry_buffer_multiplier",
+      name: "entry_buffer_points",
       path: ["computed", "entry_price", "right", "value"],
       description:
-        "Multiplier on signal-bar high for entry price. Default 1.0005 (+0.05% buffer above SB high).",
-      min: 1.0001,
-      max: 1.005,
+        "Absolute points added to signal_bar.high for the entry trigger. Sandy's Dow convention is 3. Tune up for higher-priced tickers, down for crypto.",
+      min: 1,
+      max: 100,
     },
     {
-      name: "stop_loss_multiplier",
+      name: "stop_buffer_points",
       path: ["exit", "stop_loss", "right", "value"],
       description:
-        "Multiplier on signal-bar low for stop loss. Default 0.995 (-0.5% buffer below SB low).",
-      min: 0.985,
-      max: 0.999,
-    },
-    {
-      name: "target_atr_multiple",
-      path: ["exit", "take_profit", "right", "left", "value"],
-      description:
-        "Number of ATR(14) added to entry price for take profit. Default 0.5.",
-      min: 0.2,
-      max: 2.0,
+        "Absolute points subtracted from signal_bar.low for the stop loss. Default 3 (Dow convention).",
+      min: 1,
+      max: 100,
     },
     {
       name: "notional_per_trade",
