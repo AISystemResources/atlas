@@ -234,9 +234,10 @@ export function BacktestDetailClient({
     setReviewing(true);
     setInsightError(null);
     try {
-      const res = await fetch(`/api/v1/backtest-ticket/${detail.id}/insight`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `/api/v1/backtest-ticket/${detail.id}/distillation`,
+        { method: "POST" },
+      );
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
       setInsight({
@@ -380,8 +381,8 @@ export function BacktestDetailClient({
         </p>
       </div>
 
-      {/* Aggregate insight panel (053e) */}
-      <AggregateInsightPanel
+      {/* Distillation panel (053e, renamed Sprint 062) */}
+      <DistillationPanel
         insight={insight}
         reviewing={reviewing}
         error={insightError}
@@ -552,7 +553,7 @@ function fmtTs(ts: string | null): string {
   });
 }
 
-// ── Aggregate insight panel (053e) ──────────────────────────────────────────
+// ── Distillation panel (053e, renamed Sprint 062) ───────────────────────────
 
 function RecommendationChip({
   rec,
@@ -573,7 +574,7 @@ function RecommendationChip({
   );
 }
 
-function AggregateInsightPanel({
+function DistillationPanel({
   insight,
   reviewing,
   error,
@@ -597,19 +598,19 @@ function AggregateInsightPanel({
       <div className="bg-[var(--elevated)] border border-dashed border-[var(--line)] rounded-lg p-4 mb-8">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-[var(--ink)]">
-            Aggregate AI Insight
+            Distillation
           </h2>
           <button
             onClick={onRunInsight}
             disabled={reviewing}
             className="px-3 py-1.5 text-xs bg-[var(--brand)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded font-medium"
           >
-            {reviewing ? "Analyzing…" : "Run aggregate review"}
+            {reviewing ? "Distilling…" : "Run Distillation"}
           </button>
         </div>
         <p className="text-xs text-[var(--ghost)]">
-          Have an LLM analyze all trades, identify winning/losing patterns, and
-          propose parameter changes for a new strategy version.
+          AI distills lessons from this backtest&apos;s trades: winning vs. losing
+          patterns, plus parameter changes to propose for the next version.
         </p>
         {error && <p className="mt-2 text-[11px] text-[var(--bear)]">{error}</p>}
       </div>
@@ -629,7 +630,7 @@ function AggregateInsightPanel({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-semibold text-[var(--ink)]">
-            Aggregate AI Insight
+            Distillation
           </h2>
           <RecommendationChip rec={insight.recommendation} />
         </div>
@@ -790,10 +791,15 @@ function OutOfSamplePanel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Phase the user sees in the button: idle → backtesting → distilling → done
+  const [phase, setPhase] = useState<"idle" | "backtesting" | "distilling">("idle");
+
   async function runOos() {
     setSubmitting(true);
     setError(null);
+    setPhase("backtesting");
     try {
+      // Step 1: run the OOS backtest of v(N+1).
       const res = await fetch("/api/v1/backtest-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -808,12 +814,36 @@ function OutOfSamplePanel({
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-      router.push(
-        `/dashboard/backtests/compare?ids=${originalDetail.id},${body.backtest_id}`,
-      );
+      const newBacktestId = body.backtest_id as string;
+
+      // Step 2: kick off distillation on the fresh backtest. We await it so the
+      // user lands on the new detail page with the insight already there.
+      // Non-fatal if it fails (user can manually re-run from the detail page).
+      setPhase("distilling");
+      try {
+        const distRes = await fetch(
+          `/api/v1/backtest-ticket/${newBacktestId}/distillation`,
+          { method: "POST" },
+        );
+        if (!distRes.ok) {
+          // Log and continue — landing on the page with no distillation is
+          // recoverable; landing on a 500 page is not.
+          console.warn(
+            "[chain] distillation failed:",
+            (await distRes.json()).error,
+          );
+        }
+      } catch (distErr) {
+        console.warn("[chain] distillation threw:", distErr);
+      }
+
+      // Step 3: navigate to the new backtest detail page (not compare) so the
+      // user sees the distillation result directly and can decide the next move.
+      router.push(`/dashboard/backtests/${newBacktestId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setSubmitting(false);
+      setPhase("idle");
     }
   }
 
@@ -886,7 +916,11 @@ function OutOfSamplePanel({
           disabled={submitting}
           className="px-4 py-1.5 text-sm bg-[var(--brand)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded font-medium"
         >
-          {submitting ? "Running & comparing…" : "Run OOS + open comparison"}
+          {phase === "backtesting"
+            ? "Running backtest…"
+            : phase === "distilling"
+              ? "Distilling…"
+              : "Run OOS + Distill"}
         </button>
         <span className="text-[11px] text-[var(--ghost)]">
           Original in-sample range: {originalDetail.start_date} →{" "}
