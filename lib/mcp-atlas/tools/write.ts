@@ -813,6 +813,12 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
       }
 
       case "create_ticket_logic": {
+        // Sprint 075b: gating — authoring strategies via Chat is a Pro feature.
+        // Free users get a friendly message pointing at /pricing or invites.
+        const { requireProTier } = await import("@/lib/auth/effective-tier");
+        const gate = await requireProTier(userId);
+        if (!gate.ok) return toolError(gate.reason, "forbidden");
+
         // Sprint 073: AI authors a brand-new strategy from scratch (the
         // typical Chat loop: idea → create → backtest → reason → iterate).
         const name = typeof args.name === "string" ? args.name.trim() : "";
