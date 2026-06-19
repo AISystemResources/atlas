@@ -3,14 +3,14 @@
  * Sprint 053c.
  */
 
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
+import { requireSuperadmin } from "@/lib/auth/require-superadmin";
 import { BacktestsClient, type BacktestRow } from "./BacktestsClient";
 
 export default async function BacktestsPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/login");
+  // Sprint 067: backtests live inside Strategy detail pages now. The top-level
+  // /dashboard/backtests page is academic / debug only.
+  const userId = await requireSuperadmin();
 
   const sb = getServiceClient();
   const { data } = await sb

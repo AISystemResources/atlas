@@ -1,6 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
+import { requireSuperadmin } from "@/lib/auth/require-superadmin";
 import { RunReflectionButton } from "./RunReflectionButton";
 
 interface DailyLearning {
@@ -56,8 +55,8 @@ function WinRateChip({ wins, total }: { wins: number; total: number }) {
 }
 
 export default async function InsightsPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/login");
+  // Sprint 067: legacy daily-reflection surface, hidden from public users.
+  const userId = await requireSuperadmin();
 
   const sb = getServiceClient();
   const { data: learnings, error } = await sb

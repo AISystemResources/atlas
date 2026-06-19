@@ -1,12 +1,12 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { MongoClient, ObjectId } from "mongodb";
 import { AgentsClient } from "./AgentsClient";
 import type { Signal } from "../DashboardClient";
+import { requireSuperadmin } from "@/lib/auth/require-superadmin";
 
 export default async function AgentsPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/login");
+  // Sprint 067: legacy multi-agent surface, hidden from public users.
+  // Data preserved for the academic record.
+  const userId = await requireSuperadmin();
 
   const signals = await fetchSignals(userId);
 

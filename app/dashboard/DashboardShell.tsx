@@ -6,13 +6,19 @@ import { AccountDropdown } from "@/components/AccountDropdown";
 import type { UserRole } from "@/lib/api";
 import type { ReactNode } from "react";
 
-const TABS = [
-  { id: "portfolio",  label: "Portfolio",  icon: "◈", href: "/dashboard/portfolio" },
-  { id: "strategies", label: "Strategies", icon: "✧", href: "/dashboard/strategies" },
-  { id: "agents",     label: "Agents",     icon: "◉", href: "/dashboard/agents" },
-  { id: "backtests",  label: "Backtests",  icon: "▥", href: "/dashboard/backtests" },
-  { id: "insights",   label: "Insights",   icon: "✦", href: "/dashboard/insights" },
-  { id: "settings",   label: "Settings",   icon: "⊙", href: "/dashboard/settings" },
+// Sprint 067: three-tab nav for public users. Superadmin sees the legacy
+// surfaces (Agents, Backtests, Insights) for academic / debugging access —
+// the routes themselves are still gated at the page level.
+const PUBLIC_TABS = [
+  { id: "portfolio",  label: "Dashboard", icon: "◈", href: "/dashboard/portfolio" },
+  { id: "strategies", label: "Strategy",  icon: "✧", href: "/dashboard/strategies" },
+  { id: "settings",   label: "Settings",  icon: "⊙", href: "/dashboard/settings" },
+];
+
+const SUPERADMIN_EXTRA_TABS = [
+  { id: "agents",     label: "Agents",    icon: "◉", href: "/dashboard/agents" },
+  { id: "backtests",  label: "Backtests", icon: "▥", href: "/dashboard/backtests" },
+  { id: "insights",   label: "Insights",  icon: "✦", href: "/dashboard/insights" },
 ];
 
 export function DashboardShell({
@@ -24,6 +30,10 @@ export function DashboardShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const tabs =
+    role === "superadmin"
+      ? [...PUBLIC_TABS, ...SUPERADMIN_EXTRA_TABS]
+      : PUBLIC_TABS;
 
   return (
     <div
@@ -49,7 +59,7 @@ export function DashboardShell({
 
         {/* Desktop tab navigation */}
         <div className="hidden md:flex items-center gap-1">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const active = pathname.startsWith(t.href);
             return (
               <Link
@@ -103,7 +113,7 @@ export function DashboardShell({
           paddingBottom: "env(safe-area-inset-bottom, 0px)",
         }}
       >
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const active = pathname.startsWith(t.href);
           return (
             <Link
