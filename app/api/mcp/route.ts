@@ -115,6 +115,12 @@ const READ_TOOL_NAMES = new Set([
   "get_tournament",
   "get_signal",
   "get_watchlist",
+  "get_daily_distillation_context",
+  // Sprint 066: Ticket Logic read tools
+  "list_ticket_logics",
+  "get_ticket_logic",
+  "list_ticket_backtests",
+  "get_ticket_backtest",
 ]);
 
 const WRITE_TOOL_NAMES = new Set([
@@ -126,6 +132,12 @@ const WRITE_TOOL_NAMES = new Set([
   "run_tournament",
   "update_watchlist",
   "update_schedules",
+  "submit_daily_learning",
+  // Sprint 066: Ticket Logic write tools
+  "run_ticket_backtest",
+  "run_distillation",
+  "promote_ticket_logic_version",
+  "fork_ticket_logic",
 ]);
 
 const ADMIN_TOOL_NAMES = new Set(["get_admin_stats", "list_users"]);

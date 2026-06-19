@@ -118,6 +118,69 @@ export const READ_TOOL_DEFS = [
     description: "Get the user's watchlist — tickers and their analysis schedule frequency (1x/3x/6x per day).",
     inputSchema: { type: "object", properties: {} },
   },
+  // ── Ticket Logic tools (Sprint 066) ────────────────────────────────────────
+  {
+    name: "list_ticket_logics",
+    description:
+      "List Ticket Logic strategies the caller can see — their own (any visibility) plus any strategy marked 'public'. " +
+      "Unlisted strategies are intentionally excluded (only fetchable via direct id). Each row carries name, version, " +
+      "owner, visibility, status, description, and lineage pointers (parent_version_id, forked_from_id).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["mine", "public", "all"],
+          description: "'mine' = only my strategies; 'public' = only public; 'all' = mine + public (default).",
+        },
+        status: {
+          type: "string",
+          enum: ["draft", "active", "archived"],
+          description: "Filter to a specific lifecycle status (optional).",
+        },
+        limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+      },
+    },
+  },
+  {
+    name: "get_ticket_logic",
+    description:
+      "Fetch one Ticket Logic by id. Returns the full body (rules JSON), the rendered plain-English rules, " +
+      "tunable parameters, lineage, and visibility. Enforces ownership/visibility: private strategies of others return 'not found'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The ticket_logic UUID." },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "list_ticket_backtests",
+    description:
+      "List backtests the caller owns. Optional filters: strategy_id (limit to one strategy), ticker, limit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        strategy_id: { type: "string", description: "Filter to backtests of a specific strategy (optional)." },
+        ticker: { type: "string", description: "Filter to a specific ticker (optional)." },
+        limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      },
+    },
+  },
+  {
+    name: "get_ticket_backtest",
+    description:
+      "Fetch one backtest by id. Returns summary stats, per-trade list, and the distillation insight if one exists. " +
+      "Enforces ownership: returns 'not found' for backtests the caller doesn't own.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        backtest_id: { type: "string", description: "The ticket_backtest UUID." },
+      },
+      required: ["backtest_id"],
+    },
+  },
   {
     name: "get_daily_distillation_context",
     description:
@@ -518,6 +581,129 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
           trades: tradesList,
           reasoning_traces: traces,
         });
+      }
+
+      // ── Ticket Logic read tools (Sprint 066) ───────────────────────────
+      case "list_ticket_logics": {
+        const scope =
+          typeof args.scope === "string" && ["mine", "public", "all"].includes(args.scope)
+            ? (args.scope as "mine" | "public" | "all")
+            : "all";
+        const status = typeof args.status === "string" ? args.status : null;
+        const limit = Math.min(typeof args.limit === "number" ? args.limit : 50, 200);
+
+        const sb = getServiceClient();
+        let q = sb
+          .from("ticket_logics")
+          .select(
+            "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(limit);
+        if (scope === "mine") q = q.eq("created_by_user_id", userId);
+        else if (scope === "public") q = q.eq("visibility", "public");
+        else q = q.or(`created_by_user_id.eq.${userId},visibility.eq.public`);
+        if (status) q = q.eq("status", status);
+
+        const { data, error } = await q;
+        if (error) return toolError(error.message);
+        return textContent({ strategies: data ?? [] });
+      }
+
+      case "get_ticket_logic": {
+        const id = typeof args.id === "string" ? args.id : "";
+        if (!id) return toolError("id is required", "invalid_request");
+
+        const sb = getServiceClient();
+        const { data, error } = await sb
+          .from("ticket_logics")
+          .select(
+            "id, name, version, parent_version_id, forked_from_id, description, body, status, visibility, created_by_user_id, created_at",
+          )
+          .eq("id", id)
+          .maybeSingle();
+        if (error) return toolError(error.message);
+        if (!data) return toolError("not found", "not_found");
+
+        const row = data as Record<string, unknown>;
+        const ownerId = row.created_by_user_id as string | null;
+        const vis = row.visibility as string;
+        const isOwner = ownerId === userId;
+        const isReadable = vis === "public" || vis === "unlisted";
+        if (!isOwner && !isReadable) return toolError("not found", "not_found");
+
+        // Render rules to plain English for the consumer.
+        const { parseTicketLogicBody } = await import("@/lib/strategies/schema");
+        const { renderTicketLogicBody } = await import("@/lib/strategies/render-rules");
+        let rendered: ReturnType<typeof renderTicketLogicBody> | null = null;
+        try {
+          const body = parseTicketLogicBody(row.body);
+          rendered = renderTicketLogicBody(body);
+        } catch {
+          // Body fails Zod parse — return without rendered rules
+        }
+
+        const body = row.body as { tunable_parameters?: unknown } | null;
+        return textContent({
+          ...row,
+          rendered_rules: rendered,
+          tunable_parameters: body?.tunable_parameters ?? [],
+        });
+      }
+
+      case "list_ticket_backtests": {
+        const strategyId = typeof args.strategy_id === "string" ? args.strategy_id : null;
+        const ticker = typeof args.ticker === "string" ? args.ticker : null;
+        const limit = Math.min(typeof args.limit === "number" ? args.limit : 20, 100);
+
+        const sb = getServiceClient();
+        let q = sb
+          .from("ticket_backtests")
+          .select(
+            "id, ticket_logic_id, ticker, timeframe, start_date, end_date, total_trades, win_rate, total_pnl_dollars, max_drawdown_dollars, created_at",
+          )
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+        if (strategyId) q = q.eq("ticket_logic_id", strategyId);
+        if (ticker) q = q.eq("ticker", ticker);
+
+        const { data, error } = await q;
+        if (error) return toolError(error.message);
+        return textContent({ backtests: data ?? [] });
+      }
+
+      case "get_ticket_backtest": {
+        const id = typeof args.backtest_id === "string" ? args.backtest_id : "";
+        if (!id) return toolError("backtest_id is required", "invalid_request");
+
+        const sb = getServiceClient();
+        const { data: bt, error: btErr } = await sb
+          .from("ticket_backtests")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+        if (btErr) return toolError(btErr.message);
+        if (!bt) return toolError("not found", "not_found");
+        if ((bt as { user_id: string }).user_id !== userId) {
+          return toolError("not found", "not_found");
+        }
+
+        const { data: trades } = await sb
+          .from("ticket_backtest_trades")
+          .select(
+            "id, entry_bar_index, entry_ts, entry_price, take_profit_price, stop_loss_price, exit_bar_index, exit_ts, exit_price, exit_reason, pnl_dollars, pnl_pct, qty",
+          )
+          .eq("backtest_id", id)
+          .order("entry_bar_index", { ascending: true });
+
+        const { data: insight } = await sb
+          .from("ticket_backtest_insights")
+          .select("*")
+          .eq("backtest_id", id)
+          .maybeSingle();
+
+        return textContent({ backtest: bt, trades: trades ?? [], insight });
       }
 
       default:
