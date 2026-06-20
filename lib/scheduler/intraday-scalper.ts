@@ -176,6 +176,14 @@ async function runUserScalper(
   const equityOpen = isWeekday() && isMarketHours();
   const equityEod = isWeekday() && isEodWindow();
 
+  // Sprint 076: cheap early-return before the broker calls + recent-BUYs
+  // query. If we have nothing to scan AND no equity EOD safety net to run,
+  // the rest of this function would be wasted work — bail now so the
+  // Inngest step count for this tick stays tiny.
+  const hasWork =
+    cryptoCandidates.length > 0 || equityOpen || (equityEod && equityCandidates.length > 0);
+  if (!hasWork) return result;
+
   // Recent scalper BUYs for cooldown bookkeeping.
   const since = new Date(Date.now() - LOOKBACK_H * 60 * 60 * 1000).toISOString();
   const { data: recentBuys } = await sb
