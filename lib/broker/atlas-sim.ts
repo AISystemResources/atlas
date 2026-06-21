@@ -27,8 +27,22 @@ import { getServiceClient } from "@/lib/supabase-server";
 import type { BrokerAdapter } from "./base";
 import { BrokerError } from "./base";
 import type { Account, Order, OrderFilter, OrderRequest, Position } from "./types";
+import {
+  applyFillFriction,
+  getBrokerProfile,
+  type AssetClass,
+  type BrokerProfile,
+} from "@/lib/brokers/profiles";
 
 const STARTING_CASH = 100_000.0;
+
+function inferAsset(ticker: string): AssetClass {
+  if (ticker.includes("/")) return "crypto";
+  if (ticker.startsWith("^")) return "index";
+  // ETFs / equities can't be distinguished from the ticker alone; default to equity
+  // and let the profile decide whether spread is asset-class-overridden.
+  return "equity";
+}
 
 interface SimPositionRow {
   id: string;
@@ -59,7 +73,16 @@ export interface TickBracketsResult {
 }
 
 export class AtlasSimAdapter implements BrokerAdapter {
-  constructor(private readonly userId: string) {}
+  private readonly profile: BrokerProfile;
+
+  constructor(
+    private readonly userId: string,
+    profileId: string = "pure",
+  ) {
+    // Sprint 077B: profile parameterizes spread + commission + slippage.
+    // Default 'pure' preserves frictionless v1 behavior (077A).
+    this.profile = getBrokerProfile(profileId);
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private get sb(): any {
@@ -92,8 +115,21 @@ export class AtlasSimAdapter implements BrokerAdapter {
     await this.ensurePortfolio();
 
     if (req.action === "BUY") {
+      // qty is computed BEFORE friction (notional budget intent stays intact);
+      // friction is applied to the per-share fill price + an explicit
+      // commission line item that debits cash on top of the position cost.
       const qty = req.notional / req.referencePrice;
       if (qty <= 0) throw new BrokerError("invalid qty after rounding");
+
+      const asset = inferAsset(req.ticker);
+      const { fillPrice, commission } = applyFillFriction(this.profile, {
+        action: "BUY",
+        referencePrice: req.referencePrice,
+        qty,
+        asset,
+      });
+      const positionCost = fillPrice * qty;
+      const totalDebit = positionCost + commission;
 
       // Debit cash atomically. Read-modify-write here is acceptable for a
       // single-user simulator; if multi-tab contention becomes real, this
@@ -104,8 +140,10 @@ export class AtlasSimAdapter implements BrokerAdapter {
         .eq("user_id", this.userId)
         .maybeSingle();
       const cash = Number((portfolio as { cash: number } | null)?.cash ?? 0);
-      if (cash < req.notional) {
-        throw new BrokerError(`insufficient sim cash (have ${cash.toFixed(2)}, need ${req.notional.toFixed(2)})`);
+      if (cash < totalDebit) {
+        throw new BrokerError(
+          `insufficient sim cash (have ${cash.toFixed(2)}, need ${totalDebit.toFixed(2)} = ${positionCost.toFixed(2)} position + ${commission.toFixed(2)} commission)`,
+        );
       }
 
       const { data: positionRow, error: posErr } = await this.sb
@@ -114,7 +152,7 @@ export class AtlasSimAdapter implements BrokerAdapter {
           user_id: this.userId,
           ticker: req.ticker,
           qty,
-          entry_price: req.referencePrice,
+          entry_price: fillPrice,
           status: "open",
         })
         .select("id")
@@ -130,14 +168,14 @@ export class AtlasSimAdapter implements BrokerAdapter {
         ticker: req.ticker,
         action: "BUY",
         qty,
-        price: req.referencePrice,
+        price: fillPrice,
         strategy: req.strategy ?? null,
         sim_role: "entry",
       });
 
       await this.sb
         .from("simulated_portfolios")
-        .update({ cash: cash - req.notional, updated_at: new Date().toISOString() })
+        .update({ cash: cash - totalDebit, updated_at: new Date().toISOString() })
         .eq("user_id", this.userId);
 
       return {
@@ -145,10 +183,10 @@ export class AtlasSimAdapter implements BrokerAdapter {
         ticker: req.ticker,
         action: "BUY",
         status: "filled",
-        notional: req.notional,
+        notional: positionCost,
         qty,
         filledQty: qty,
-        filledAvgPrice: req.referencePrice,
+        filledAvgPrice: fillPrice,
         filledAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
@@ -168,8 +206,15 @@ export class AtlasSimAdapter implements BrokerAdapter {
       throw new BrokerError(`no open sim position for ${req.ticker}`);
     }
 
-    const sellPrice = req.referencePrice;
-    const proceeds = Number(row.qty) * sellPrice;
+    const qty = Number(row.qty);
+    const asset = inferAsset(req.ticker);
+    const { fillPrice: sellPrice, commission } = applyFillFriction(this.profile, {
+      action: "SELL",
+      referencePrice: req.referencePrice,
+      qty,
+      asset,
+    });
+    const proceeds = qty * sellPrice - commission;
 
     await this.sb
       .from("simulated_positions")
@@ -185,7 +230,7 @@ export class AtlasSimAdapter implements BrokerAdapter {
       position_id: row.id,
       ticker: req.ticker,
       action: "SELL",
-      qty: row.qty,
+      qty,
       price: sellPrice,
       strategy: req.strategy ?? null,
       sim_role: "manual",
@@ -208,8 +253,8 @@ export class AtlasSimAdapter implements BrokerAdapter {
       action: "SELL",
       status: "filled",
       notional: proceeds,
-      qty: Number(row.qty),
-      filledQty: Number(row.qty),
+      qty,
+      filledQty: qty,
       filledAvgPrice: sellPrice,
       filledAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
@@ -279,7 +324,15 @@ export class AtlasSimAdapter implements BrokerAdapter {
     if (input.qty <= 0) throw new BrokerError("submitBracketOrder requires qty > 0");
     if (input.referencePrice <= 0) throw new BrokerError("submitBracketOrder requires referencePrice > 0");
 
-    const notional = input.qty * input.referencePrice;
+    const asset = inferAsset(input.ticker);
+    const { fillPrice, commission } = applyFillFriction(this.profile, {
+      action: "BUY",
+      referencePrice: input.referencePrice,
+      qty: input.qty,
+      asset,
+    });
+    const positionCost = fillPrice * input.qty;
+    const totalDebit = positionCost + commission;
 
     const { data: portfolio } = await this.sb
       .from("simulated_portfolios")
@@ -287,8 +340,10 @@ export class AtlasSimAdapter implements BrokerAdapter {
       .eq("user_id", this.userId)
       .maybeSingle();
     const cash = Number((portfolio as { cash: number } | null)?.cash ?? 0);
-    if (cash < notional) {
-      throw new BrokerError(`insufficient sim cash (have ${cash.toFixed(2)}, need ${notional.toFixed(2)})`);
+    if (cash < totalDebit) {
+      throw new BrokerError(
+        `insufficient sim cash (have ${cash.toFixed(2)}, need ${totalDebit.toFixed(2)} = ${positionCost.toFixed(2)} position + ${commission.toFixed(2)} commission)`,
+      );
     }
 
     const { data: positionRow, error: posErr } = await this.sb
@@ -297,7 +352,7 @@ export class AtlasSimAdapter implements BrokerAdapter {
         user_id: this.userId,
         ticker: input.ticker,
         qty: input.qty,
-        entry_price: input.referencePrice,
+        entry_price: fillPrice,
         take_profit_price: input.take_profit_price,
         stop_loss_price: input.stop_loss_price,
         status: "open",
@@ -315,14 +370,14 @@ export class AtlasSimAdapter implements BrokerAdapter {
       ticker: input.ticker,
       action: "BUY",
       qty: input.qty,
-      price: input.referencePrice,
+      price: fillPrice,
       strategy: input.strategy ?? "scalper",
       sim_role: "entry",
     });
 
     await this.sb
       .from("simulated_portfolios")
-      .update({ cash: cash - notional, updated_at: new Date().toISOString() })
+      .update({ cash: cash - totalDebit, updated_at: new Date().toISOString() })
       .eq("user_id", this.userId);
 
     return {
@@ -330,10 +385,10 @@ export class AtlasSimAdapter implements BrokerAdapter {
       ticker: input.ticker,
       action: "BUY",
       status: "filled",
-      notional,
+      notional: positionCost,
       qty: input.qty,
       filledQty: input.qty,
-      filledAvgPrice: input.referencePrice,
+      filledAvgPrice: fillPrice,
       filledAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     };
@@ -441,19 +496,45 @@ export class AtlasSimAdapter implements BrokerAdapter {
       const sl = pos.stop_loss_price == null ? null : Number(pos.stop_loss_price);
       if (tp == null && sl == null) continue;
 
-      let closeAt: number | null = null;
+      let rawCloseAt: number | null = null;
       let reason: "tp" | "sl" | null = null;
       if (tp != null && bar.high >= tp) {
-        closeAt = tp;
+        rawCloseAt = tp;
         reason = "tp";
       } else if (sl != null && bar.low <= sl) {
-        closeAt = sl;
+        rawCloseAt = sl;
         reason = "sl";
       }
-      if (closeAt == null || reason == null) continue;
+      if (rawCloseAt == null || reason == null) continue;
 
       const qty = Number(pos.qty);
-      const proceeds = qty * closeAt;
+      const asset = inferAsset(pos.ticker);
+
+      // Sprint 077B fill model for the two bracket leg types:
+      //   - TP is a limit SELL — fills at the limit price exactly (no
+      //     adverse spread; the limit only triggers when the bid reaches
+      //     it). Commission is still charged.
+      //   - SL is a stop SELL — triggers to a market SELL when the stop
+      //     price is touched, so it pays spread + slippage on top.
+      let closeAt = rawCloseAt;
+      if (reason === "sl") {
+        const { fillPrice } = applyFillFriction(this.profile, {
+          action: "SELL",
+          referencePrice: rawCloseAt,
+          qty,
+          asset,
+        });
+        closeAt = fillPrice;
+      }
+
+      // Commission charged on close regardless of leg type.
+      const { commission } = applyFillFriction(this.profile, {
+        action: "SELL",
+        referencePrice: closeAt,
+        qty,
+        asset,
+      });
+      const proceeds = qty * closeAt - commission;
       cashDelta += proceeds;
 
       await this.sb
