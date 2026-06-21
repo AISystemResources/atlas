@@ -2,17 +2,21 @@
 
 /**
  * Sprint 077A.7 — per-ticker execution mode toggle.
+ * Sprint 077A.8 — per-ticker strategy picker.
  *
- * Lists each watchlist row with its current execution_mode (sim vs alpaca)
- * and a one-click toggle. Switching to alpaca when no broker is connected
- * is allowed (the scalper just skips the row); we warn ahead so the user
- * doesn't lose entries silently.
+ * Lists each watchlist row with three controls:
+ *   - Strategy: which Ticket Logic runs on this ticker
+ *   - Mode: sim (Atlas Simulator) vs alpaca (live broker)
+ *   - Scalper enabled is implicit — toggled elsewhere
  *
- * Sim is the default for new users — the system has to work without any
- * broker connected. This section makes the per-row choice visible.
+ * Strategy picker shows all strategies the user can see (their own +
+ * public + shared), highlighting ones whose `ticker` matches the row.
+ * Mismatched strategies are still selectable — the system trusts the
+ * user, but a chip flags the mismatch so a $40k Dow strategy paired with
+ * a $400 ETF doesn't slip through unnoticed.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { fetchWithAuth } from "@/lib/api";
 
 interface WatchlistRow {
@@ -23,8 +27,19 @@ interface WatchlistRow {
   execution_mode: "sim" | "alpaca";
 }
 
+interface StrategyLite {
+  id: string;
+  name: string;
+  version: number;
+  ticker: string | null;
+  visibility: "private" | "unlisted" | "public";
+  status: "draft" | "active" | "archived";
+  created_by_user_id: string | null;
+}
+
 export function ExecutionModeSection() {
   const [rows, setRows] = useState<WatchlistRow[]>([]);
+  const [strategies, setStrategies] = useState<StrategyLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTicker, setSavingTicker] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +47,29 @@ export function ExecutionModeSection() {
 
   const load = useCallback(async () => {
     try {
-      const [wlRes, brokerRes] = await Promise.all([
+      const [wlRes, brokerRes, stratRes] = await Promise.all([
         fetchWithAuth("/api/v1/watchlist"),
         fetchWithAuth("/api/v1/broker"),
+        fetchWithAuth("/api/v1/ticket-logics?status=active&limit=200"),
       ]);
       const wlJson = (await wlRes?.json()) as WatchlistRow[] | null;
       if (Array.isArray(wlJson)) setRows(wlJson);
       const broker = (await brokerRes?.json().catch(() => null)) as { connected?: boolean } | null;
       setHasAlpacaConn(Boolean(broker?.connected));
+      const stratJson = (await stratRes?.json().catch(() => null)) as
+        | { strategies?: StrategyLite[] }
+        | StrategyLite[]
+        | null;
+      const list = Array.isArray(stratJson) ? stratJson : stratJson?.strategies ?? [];
+      // Keep only the latest active version per (created_by_user_id, name)
+      // so the dropdown doesn't list v1/v2/v3 of the same family separately.
+      const latest = new Map<string, StrategyLite>();
+      for (const s of list) {
+        const key = `${s.created_by_user_id ?? "—"}::${s.name}`;
+        const cur = latest.get(key);
+        if (!cur || s.version > cur.version) latest.set(key, s);
+      }
+      setStrategies([...latest.values()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load watchlist");
     } finally {
@@ -51,7 +81,7 @@ export function ExecutionModeSection() {
     load();
   }, [load]);
 
-  async function toggleMode(ticker: string, next: "sim" | "alpaca") {
+  async function patchRow(ticker: string, patch: Record<string, unknown>) {
     setSavingTicker(ticker);
     setError(null);
     try {
@@ -60,20 +90,24 @@ export function ExecutionModeSection() {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ execution_mode: next }),
+          body: JSON.stringify(patch),
         },
       );
       const body = await res?.json();
       if (!res?.ok) throw new Error(body?.error ?? `HTTP ${res?.status}`);
-      setRows((cur) =>
-        cur.map((r) => (r.ticker === ticker ? { ...r, execution_mode: next } : r)),
-      );
+      setRows((cur) => cur.map((r) => (r.ticker === ticker ? { ...r, ...patch } : r)));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingTicker(null);
     }
   }
+
+  const strategiesById = useMemo(() => {
+    const m = new Map<string, StrategyLite>();
+    for (const s of strategies) m.set(s.id, s);
+    return m;
+  }, [strategies]);
 
   if (loading) return null;
 
@@ -98,13 +132,13 @@ export function ExecutionModeSection() {
             marginBottom: 6,
           }}
         >
-          EXECUTION MODE
+          STRATEGY ASSIGNMENT
         </div>
         <h2
           className="font-display font-bold"
           style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em", marginBottom: 4 }}
         >
-          Where each ticker trades
+          What each ticker trades, and where
         </h2>
         <p
           style={{
@@ -112,10 +146,10 @@ export function ExecutionModeSection() {
             fontSize: 13,
             fontFamily: "var(--font-nunito)",
             lineHeight: 1.55,
-            maxWidth: 580,
+            maxWidth: 620,
           }}
         >
-          <strong>SIM</strong> is the broker-independent Atlas Simulator — orders fill against your $100K virtual cash. <strong>ALPACA</strong> sends orders to your connected Alpaca account. New tickers default to SIM so you can paper-trade without connecting any broker.
+          Pick a strategy per ticker, then choose <strong>SIM</strong> (broker-independent Atlas Simulator, $100K virtual cash) or <strong>ALPACA</strong> (live broker). Tickers with no strategy assigned are skipped by the scalper.
         </p>
       </header>
 
@@ -129,6 +163,10 @@ export function ExecutionModeSection() {
             const isSim = r.execution_mode === "sim";
             const isSaving = savingTicker === r.ticker;
             const alpacaWillIdle = r.execution_mode === "alpaca" && hasAlpacaConn === false;
+            const currentStrategy = r.strategy_id ? strategiesById.get(r.strategy_id) ?? null : null;
+            const tickerMatch = currentStrategy?.ticker
+              ? currentStrategy.ticker.toUpperCase() === r.ticker.toUpperCase()
+              : true;
             return (
               <div
                 key={r.ticker}
@@ -140,15 +178,40 @@ export function ExecutionModeSection() {
                   borderRadius: 8,
                   background: "var(--bg)",
                   border: "1px solid var(--line)",
+                  gap: 12,
+                  flexWrap: "wrap",
                 }}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0" style={{ flex: 1 }}>
                   <span
                     className="font-display font-bold font-mono"
-                    style={{ fontSize: 14, color: "var(--ink)" }}
+                    style={{ fontSize: 14, color: "var(--ink)", minWidth: 72 }}
                   >
                     {r.ticker}
                   </span>
+                  <StrategyPicker
+                    value={r.strategy_id}
+                    options={strategies}
+                    rowTicker={r.ticker}
+                    disabled={isSaving}
+                    onChange={(strategy_id) => patchRow(r.ticker, { strategy_id })}
+                  />
+                  {currentStrategy && !tickerMatch && (
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontFamily: "var(--font-jb)",
+                        color: "var(--hold)",
+                        letterSpacing: "0.04em",
+                        background: "var(--hold-bg)",
+                        padding: "2px 6px",
+                        borderRadius: 3,
+                      }}
+                      title={`This strategy was calibrated for ${currentStrategy.ticker}, but this row trades ${r.ticker}`}
+                    >
+                      ⚠ {currentStrategy.ticker}
+                    </span>
+                  )}
                   {alpacaWillIdle && (
                     <span
                       style={{
@@ -158,22 +221,25 @@ export function ExecutionModeSection() {
                         letterSpacing: "0.04em",
                       }}
                     >
-                      no broker connected — scalper will skip
+                      no broker — scalper will skip
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1" style={{ background: "var(--elevated)", borderRadius: 6, padding: 2 }}>
+                <div
+                  className="flex items-center gap-1"
+                  style={{ background: "var(--elevated)", borderRadius: 6, padding: 2 }}
+                >
                   <ModeButton
                     active={isSim}
                     disabled={isSaving}
-                    onClick={() => toggleMode(r.ticker, "sim")}
+                    onClick={() => patchRow(r.ticker, { execution_mode: "sim" })}
                   >
                     SIM
                   </ModeButton>
                   <ModeButton
                     active={!isSim}
                     disabled={isSaving}
-                    onClick={() => toggleMode(r.ticker, "alpaca")}
+                    onClick={() => patchRow(r.ticker, { execution_mode: "alpaca" })}
                   >
                     ALPACA
                   </ModeButton>
@@ -184,12 +250,93 @@ export function ExecutionModeSection() {
         </div>
       )}
 
+      {strategies.length === 0 && rows.length > 0 && (
+        <p
+          style={{
+            marginTop: 12,
+            color: "var(--hold)",
+            fontSize: 12,
+            fontFamily: "var(--font-nunito)",
+          }}
+        >
+          You don&apos;t have any strategies yet. Spark a Claude chat with the Atlas MCP and ask it to create one — or fork a public strategy from the Strategy library.
+        </p>
+      )}
+
       {error && (
         <p style={{ marginTop: 10, color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-jb)" }}>
           {error}
         </p>
       )}
     </section>
+  );
+}
+
+function StrategyPicker({
+  value,
+  options,
+  rowTicker,
+  disabled,
+  onChange,
+}: {
+  value: string | null;
+  options: StrategyLite[];
+  rowTicker: string;
+  disabled: boolean;
+  onChange: (strategy_id: string | null) => void;
+}) {
+  // Group: ticker-matched first, then others.
+  const sortedOptions = useMemo(() => {
+    const upTicker = rowTicker.toUpperCase();
+    const matched: StrategyLite[] = [];
+    const other: StrategyLite[] = [];
+    for (const s of options) {
+      if (s.ticker && s.ticker.toUpperCase() === upTicker) matched.push(s);
+      else other.push(s);
+    }
+    matched.sort((a, b) => a.name.localeCompare(b.name));
+    other.sort((a, b) => a.name.localeCompare(b.name));
+    return { matched, other };
+  }, [options, rowTicker]);
+
+  return (
+    <select
+      value={value ?? ""}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 5,
+        color: "var(--ink)",
+        fontFamily: "var(--font-jb)",
+        fontSize: 12,
+        padding: "5px 8px",
+        minWidth: 200,
+        maxWidth: 280,
+      }}
+    >
+      <option value="">— unassigned —</option>
+      {sortedOptions.matched.length > 0 && (
+        <optgroup label={`for ${rowTicker}`}>
+          {sortedOptions.matched.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} v{s.version}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {sortedOptions.other.length > 0 && (
+        <optgroup label="other tickers">
+          {sortedOptions.other.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} v{s.version}
+              {s.ticker ? ` · ${s.ticker}` : ""}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </select>
   );
 }
 

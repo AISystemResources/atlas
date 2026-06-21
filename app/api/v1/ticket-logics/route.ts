@@ -35,7 +35,9 @@ export async function GET(req: Request): Promise<Response> {
   let query = sb
     .from("ticket_logics")
     .select(
-      "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_by, created_at",
+      // Sprint 077A.8: include ticker + tags so the Settings strategy
+      // picker can highlight strategies that match each watchlist row.
+      "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_by, created_at, ticker, tags",
     )
     .order("created_at", { ascending: false })
     .limit(limit);
