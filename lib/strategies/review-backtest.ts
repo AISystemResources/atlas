@@ -14,13 +14,15 @@ import { z } from "zod";
 import { getLlm } from "@/lib/agents/llm";
 import { getServiceClient } from "@/lib/supabase-server";
 import {
+  clampProposedChange,
+  effectiveMaxStepPct,
   getTunables,
   readByPath,
   type TunableParameter,
 } from "./tunable-params";
 import type { TicketLogicBody } from "./types";
 
-export const BACKTEST_INSIGHT_PROMPT_VERSION = "backtest-insight-v2-attribution";
+export const BACKTEST_INSIGHT_PROMPT_VERSION = "backtest-insight-v3-ratchet";
 
 // Sprint 053.0: forced attribution — every pattern + proposed change
 // must cite trade indices the LLM was shown (1-based, in the order the
@@ -80,6 +82,25 @@ export interface ReviewBacktestInput {
   }>;
 }
 
+/**
+ * Sprint 053.1: per-change ratchet metadata. The LLM proposes a value; the
+ * server may clamp it (per-tunable max_step_pct or min/max bounds). Both the
+ * original ask and the applied value are stamped onto the JSONB so the
+ * academic audit can show "LLM said X, ratchet allowed Y".
+ */
+export interface ProposedChangeAttribution {
+  /** What the LLM originally asked for. */
+  original_proposed_value: number;
+  /** What was actually applied after clamping. */
+  applied_value: number;
+  /** True iff applied_value !== original_proposed_value. */
+  was_clamped: boolean;
+  /** "" if no clamp; otherwise "step" (ratchet), "min", or "max". */
+  clamp_reason: "" | "step" | "min" | "max";
+  /** max_step_pct in effect for this tunable at the time of the promote. */
+  max_step_pct: number;
+}
+
 export interface ReviewBacktestResult {
   insight: BacktestInsight;
   model: string;
@@ -89,6 +110,8 @@ export interface ReviewBacktestResult {
   losing_trade_ids: string[];
   /** Per-change trade-id attributions, keyed by proposed_change.name. */
   supporting_trade_ids_by_change: Record<string, string[]>;
+  /** Sprint 053.1: per-change clamp metadata, keyed by proposed_change.name. */
+  clamp_by_change: Record<string, ProposedChangeAttribution>;
 }
 
 function mapIndicesToIds(indices: number[], trades: ReviewBacktestInput["trades"]): string[] {
@@ -120,7 +143,14 @@ function describeTunables(
         t.min !== undefined && t.max !== undefined
           ? ` [${t.min}, ${t.max}]`
           : "";
-      return `  - ${t.name}: ${cur}${bounds} — ${t.description}`;
+      // Sprint 053.1: tell the LLM the per-promote ratchet so it doesn't
+      // burn proposals on values that will be silently clamped.
+      const stepPct = (effectiveMaxStepPct(t) * 100).toFixed(0);
+      const cap =
+        typeof cur === "number"
+          ? ` (max ±${stepPct}% per promote, i.e. ${(cur - Math.abs(cur) * effectiveMaxStepPct(t)).toFixed(2)}..${(cur + Math.abs(cur) * effectiveMaxStepPct(t)).toFixed(2)})`
+          : ` (max ±${stepPct}% per promote)`;
+      return `  - ${t.name}: ${cur}${bounds}${cap} — ${t.description}`;
     })
     .join("\n");
 }
@@ -173,7 +203,7 @@ ANSWER ALL FOUR. You MUST cite specific trade numbers (1-${visibleCount}) for ev
 1. What's the strongest pattern in WINNING trades? List the trade numbers that exemplify it.
 2. What's the strongest pattern in LOSING trades? List the trade numbers that exemplify it.
 3. Recommend: promote / keep / deprecate. If you cannot articulate a *specific* parameter change that would improve the strategy, prefer KEEP — do not promote with empty changes.
-4. If PROMOTE, propose 1-3 parameter changes by name. Use ONLY names from the tunable list above. For each change, list the trade numbers whose behaviour would change for the better.
+4. If PROMOTE, propose 1-3 parameter changes by name. Use ONLY names from the tunable list above. For each change, list the trade numbers whose behaviour would change for the better. RATCHET RULE: each proposed_value MUST fall within the per-promote cap shown next to the parameter (max ±N% from current). Proposals outside the cap are silently clamped server-side — don't waste a slot on a move you can't actually make in one promote.
 
 Return ONLY a JSON object with this exact shape (no prose before or after):
 {
@@ -230,6 +260,24 @@ export async function reviewBacktest(
     tunables.some((t) => t.name === c.name),
   );
 
+  // Sprint 053.1: ratchet each proposed change against its tunable's
+  // max_step_pct (per-promote cap) and bounds. Original ask + applied value
+  // are both recorded for the academic audit. We mutate proposed_value in
+  // place so applyParameterChanges downstream gets the clamped value.
+  const clamp_by_change: Record<string, ProposedChangeAttribution> = {};
+  for (const c of insight.proposed_changes) {
+    const tunable = tunables.find((t) => t.name === c.name)!;
+    const result = clampProposedChange(tunable, c.current_value, c.proposed_value);
+    clamp_by_change[c.name] = {
+      original_proposed_value: result.original_proposed_value,
+      applied_value: result.applied_value,
+      was_clamped: result.was_clamped,
+      clamp_reason: result.clamp_reason,
+      max_step_pct: effectiveMaxStepPct(tunable),
+    };
+    c.proposed_value = result.applied_value;
+  }
+
   // Sprint 053.0: map LLM-cited indices → real trade ids. Out-of-range or
   // duplicate indices are dropped silently.
   const winning_trade_ids = mapIndicesToIds(insight.winning_trade_indices, input.trades);
@@ -258,6 +306,7 @@ export async function reviewBacktest(
     winning_trade_ids,
     losing_trade_ids,
     supporting_trade_ids_by_change,
+    clamp_by_change,
   };
 }
 
@@ -268,15 +317,22 @@ export async function saveBacktestInsight(
   const sb = getServiceClient();
   await sb.from("ticket_backtest_insights").delete().eq("backtest_id", backtestId);
 
-  // Sprint 053.0: stamp the mapped trade ids onto each proposed_change so
-  // readers don't need a second join.
-  const proposedChangesWithAttribution = result.insight.proposed_changes.map((c) => ({
-    name: c.name,
-    current_value: c.current_value,
-    proposed_value: c.proposed_value,
-    reason: c.reason,
-    supporting_trade_ids: result.supporting_trade_ids_by_change[c.name] ?? [],
-  }));
+  // Sprint 053.0 + 053.1: stamp trade-id attributions and ratchet metadata
+  // onto each proposed_change so the JSONB is self-contained for audit.
+  const proposedChangesWithAttribution = result.insight.proposed_changes.map((c) => {
+    const clamp = result.clamp_by_change[c.name];
+    return {
+      name: c.name,
+      current_value: c.current_value,
+      proposed_value: c.proposed_value,
+      reason: c.reason,
+      supporting_trade_ids: result.supporting_trade_ids_by_change[c.name] ?? [],
+      original_proposed_value: clamp?.original_proposed_value ?? c.proposed_value,
+      was_clamped: clamp?.was_clamped ?? false,
+      clamp_reason: clamp?.clamp_reason ?? "",
+      max_step_pct: clamp?.max_step_pct ?? null,
+    };
+  });
 
   const { data, error } = await sb
     .from("ticket_backtest_insights")

@@ -27,8 +27,10 @@ function mapIndicesToIds(indices: number[], trades: Array<{ id: string }>): stri
 describe("Sprint 053.0 attribution", () => {
   const trades = Array.from({ length: 12 }, (_, i) => ({ id: `t-${i + 1}` }));
 
-  it("prompt version bumped to v2-attribution", () => {
-    expect(BACKTEST_INSIGHT_PROMPT_VERSION).toContain("attribution");
+  it("prompt version is at least the attribution generation (v2+)", () => {
+    // 053.0 introduced "v2-attribution"; 053.1 bumped to "v3-ratchet".
+    // We just want to assert we've moved past v1.
+    expect(BACKTEST_INSIGHT_PROMPT_VERSION).toMatch(/^backtest-insight-v[2-9]/);
   });
 
   it("maps 1-based indices to trade ids in order", () => {

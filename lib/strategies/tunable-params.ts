@@ -14,9 +14,81 @@ import type { TicketLogicBody, TunableParameter } from "./types";
 
 export type { TunableParameter } from "./types";
 
+/**
+ * Sprint 053.1: global ratchet floor. A tunable that doesn't declare its own
+ * max_step_pct still gets a 25% per-promote cap so the safety story is
+ * unconditional.
+ */
+export const DEFAULT_MAX_STEP_PCT = 0.25;
+
 /** Return the tunables declared by a body, or [] if the body has none. */
 export function getTunables(body: TicketLogicBody): TunableParameter[] {
   return body.tunable_parameters ?? [];
+}
+
+/**
+ * Sprint 053.1: effective max_step_pct for a tunable — its own declaration
+ * or the global floor.
+ */
+export function effectiveMaxStepPct(tunable: TunableParameter): number {
+  return tunable.max_step_pct ?? DEFAULT_MAX_STEP_PCT;
+}
+
+export interface ClampResult {
+  /** The value to actually persist. */
+  applied_value: number;
+  /** True iff applied_value !== proposed_value (for any reason). */
+  was_clamped: boolean;
+  /** What the LLM originally asked for. Always recorded for audit. */
+  original_proposed_value: number;
+  /** Free-text reason — "step", "min", "max", or "" if no clamp. */
+  clamp_reason: "" | "step" | "min" | "max";
+}
+
+/**
+ * Sprint 053.1: bound a single proposed parameter change.
+ *
+ * Order of operations:
+ *   1. Ratchet: clip the move to ±(|current| * max_step_pct).
+ *   2. Bounds: clip to [tunable.min, tunable.max] if declared.
+ *
+ * Edge case — current_value is 0 or non-finite: skip the ratchet step
+ * (pct math has no anchor) and apply bounds only. Strategies whose tunables
+ * pass through 0 should declare explicit min/max.
+ */
+export function clampProposedChange(
+  tunable: TunableParameter,
+  current_value: number,
+  proposed_value: number,
+): ClampResult {
+  const step = effectiveMaxStepPct(tunable);
+  let val = proposed_value;
+  let reason: ClampResult["clamp_reason"] = "";
+
+  if (Number.isFinite(current_value) && current_value !== 0) {
+    const maxDelta = Math.abs(current_value) * step;
+    const delta = val - current_value;
+    if (Math.abs(delta) > maxDelta) {
+      val = current_value + Math.sign(delta) * maxDelta;
+      reason = "step";
+    }
+  }
+
+  if (tunable.max !== undefined && val > tunable.max) {
+    val = tunable.max;
+    reason = "max";
+  }
+  if (tunable.min !== undefined && val < tunable.min) {
+    val = tunable.min;
+    reason = "min";
+  }
+
+  return {
+    applied_value: val,
+    was_clamped: val !== proposed_value,
+    original_proposed_value: proposed_value,
+    clamp_reason: reason,
+  };
 }
 
 /**
