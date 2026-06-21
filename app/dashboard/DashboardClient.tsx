@@ -85,6 +85,8 @@ type Position = {
   trade_id?: string;
   executed_at?: string;
   boundary_mode?: string;
+  // Sprint 077A.6: where the position is held — sim portfolio vs Alpaca
+  venue?: "sim" | "alpaca";
 };
 
 type Portfolio = {

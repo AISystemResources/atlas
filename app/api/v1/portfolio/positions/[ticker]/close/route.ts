@@ -1,14 +1,19 @@
 /**
  * POST /api/v1/portfolio/positions/:ticker/close
  *
- * Manual close — user-triggered SELL of the full position via Alpaca.
+ * Manual close — user-triggered SELL of the full position.
  * Records the trade with closed_by='human' so the 4-cell autonomy attribution
- * tracks accurately. Idempotent on Alpaca's side (one position → one close order).
+ * tracks accurately.
+ *
+ * Sprint 077A.6: routes sim positions through AtlasSimAdapter so the
+ * close button works without any broker connected. Sim sells fill at the
+ * latest Yahoo quote.
  */
-import { AlpacaAdapter, BrokerError } from "@/lib/broker";
+import { AlpacaAdapter, AtlasSimAdapter, BrokerError } from "@/lib/broker";
 import { getBrokerCredentials } from "@/lib/broker/credentials";
 import { getUserFromRequest } from "@/lib/auth/context";
 import { getServiceClient } from "@/lib/supabase-server";
+import { fetchLatestPrices } from "@/lib/market/yahoo-quote";
 
 export async function POST(
   req: Request,
@@ -21,6 +26,50 @@ export async function POST(
   const ticker = rawTicker.toUpperCase();
   if (!ticker) {
     return Response.json({ error: "ticker is required" }, { status: 400 });
+  }
+
+  const sb = getServiceClient();
+
+  // Sprint 077A.6: try the sim portfolio first. If the user holds this
+  // ticker in sim, close it there — sim closes are broker-independent.
+  const { data: simOpen } = await sb
+    .from("simulated_positions")
+    .select("id, qty, entry_price")
+    .eq("user_id", user.userId)
+    .eq("ticker", ticker)
+    .eq("status", "open")
+    .order("opened_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const simRow = simOpen as { id: string; qty: number; entry_price: number } | null;
+
+  if (simRow) {
+    const sim = new AtlasSimAdapter(user.userId);
+    const prices = await fetchLatestPrices([ticker]);
+    const lastPrice = prices.get(ticker) ?? Number(simRow.entry_price);
+    const notional = Number(simRow.qty) * lastPrice;
+    try {
+      const order = await sim.submitOrder({
+        ticker,
+        action: "SELL",
+        notional,
+        referencePrice: lastPrice,
+        strategy: "manual",
+      });
+      return Response.json({
+        success: true,
+        ticker,
+        order_id: order.orderId,
+        status: order.status,
+        shares: order.qty,
+        realized_pnl: Math.round((lastPrice - Number(simRow.entry_price)) * Number(simRow.qty) * 10000) / 10000,
+        closed_by: "human",
+        venue: "sim",
+      });
+    } catch (err) {
+      const message = err instanceof BrokerError ? err.message : err instanceof Error ? err.message : String(err);
+      return Response.json({ success: false, error: message, venue: "sim" }, { status: 500 });
+    }
   }
 
   let creds: Awaited<ReturnType<typeof getBrokerCredentials>>;
@@ -78,8 +127,7 @@ export async function POST(
         : String(err);
   }
 
-  // Look up portfolio_id for the trade insert
-  const sb = getServiceClient();
+  // Look up portfolio_id for the trade insert (sb already available)
   const { data: portfolio } = await sb
     .from("portfolios")
     .select("id")
