@@ -84,26 +84,28 @@ export async function PUT(req: Request): Promise<Response> {
 
   const sb = getServiceClient();
 
-  // Sprint 068: PUT does a wipe-and-recreate, but scalper_enabled and
-  // strategy_id are per-(user, ticker) pairings that this caller does not
-  // send. Pull them off the existing rows first so we can re-stamp them on
-  // any ticker that survives the save.
+  // Sprint 068 + 077A.5: PUT does a wipe-and-recreate, but per-(user, ticker)
+  // fields the caller doesn't send must survive — scalper_enabled, strategy_id,
+  // and execution_mode (sim vs alpaca). Pull existing rows first so we can
+  // re-stamp them on any ticker that survives the save.
   const { data: prev } = await sb
     .from("watchlist")
-    .select("ticker, scalper_enabled, strategy_id")
+    .select("ticker, scalper_enabled, strategy_id, execution_mode")
     .eq("user_id", user.userId);
   const prevByTicker = new Map<
     string,
-    { scalper_enabled: boolean; strategy_id: string | null }
+    { scalper_enabled: boolean; strategy_id: string | null; execution_mode: string }
   >();
   for (const r of (prev ?? []) as Array<{
     ticker: string;
     scalper_enabled: boolean | null;
     strategy_id: string | null;
+    execution_mode: string | null;
   }>) {
     prevByTicker.set(r.ticker, {
       scalper_enabled: Boolean(r.scalper_enabled),
       strategy_id: r.strategy_id,
+      execution_mode: r.execution_mode ?? "sim",
     });
   }
 
@@ -118,6 +120,7 @@ export async function PUT(req: Request): Promise<Response> {
         schedule: e.schedule,
         scalper_enabled: carried?.scalper_enabled ?? false,
         strategy_id: carried?.strategy_id ?? null,
+        execution_mode: carried?.execution_mode ?? "sim",
       };
     });
     const { error } = await sb.from("watchlist").insert(rows);
