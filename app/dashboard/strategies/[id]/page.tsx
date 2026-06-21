@@ -17,6 +17,7 @@ import {
   type StrategyDetail,
   type VersionFamilyEntry,
   type BacktestListEntry,
+  type PendingProposal,
 } from "./StrategyDetailClient";
 
 interface StrategyRow {
@@ -107,6 +108,77 @@ export default async function StrategyDetailPage({
     created_at: string;
   }>).map((r) => r);
 
+  // Sprint 053.3: pending promote-proposals for THIS version. Owner-only —
+  // promote is owner-gated anyway, no point showing the section to viewers
+  // who couldn't act on it.
+  let pendingProposals: PendingProposal[] = [];
+  if (isOwner && backtests.length > 0) {
+    const backtestIds = backtests.map((b) => b.id);
+    const { data: insightRows } = await sb
+      .from("ticket_backtest_insights")
+      .select(
+        "id, backtest_id, rationale, proposed_changes, ab_comparison, winning_trade_ids, losing_trade_ids, created_at, model",
+      )
+      .in("backtest_id", backtestIds)
+      .eq("recommendation", "promote")
+      .is("promoted_to_version_id", null)
+      .order("created_at", { ascending: false });
+
+    type ProposedChangeRow = {
+      name: string;
+      current_value: number;
+      proposed_value: number;
+      reason: string;
+      supporting_trade_ids?: string[];
+      original_proposed_value?: number;
+      was_clamped?: boolean;
+      clamp_reason?: string;
+      max_step_pct?: number | null;
+    };
+    type InsightRowLite = {
+      id: string;
+      backtest_id: string;
+      rationale: string | null;
+      proposed_changes: ProposedChangeRow[] | null;
+      ab_comparison: unknown;
+      winning_trade_ids: string[] | null;
+      losing_trade_ids: string[] | null;
+      created_at: string;
+      model: string;
+    };
+    const btMeta = new Map(
+      backtests.map((b) => [b.id, { ticker: b.ticker, timeframe: b.timeframe }] as const),
+    );
+    pendingProposals = ((insightRows ?? []) as InsightRowLite[]).map((r) => ({
+      insight_id: r.id,
+      backtest_id: r.backtest_id,
+      backtest_ticker: btMeta.get(r.backtest_id)?.ticker ?? "",
+      backtest_timeframe: btMeta.get(r.backtest_id)?.timeframe ?? "",
+      created_at: r.created_at,
+      model: r.model,
+      rationale: r.rationale,
+      proposed_changes: (r.proposed_changes ?? []).map((c) => ({
+        name: c.name,
+        current_value: c.current_value,
+        applied_value: c.proposed_value, // post-clamp value persisted into proposed_value
+        original_proposed_value:
+          c.original_proposed_value ?? c.proposed_value,
+        was_clamped: c.was_clamped ?? false,
+        clamp_reason: (c.clamp_reason ?? "") as
+          | ""
+          | "step"
+          | "min"
+          | "max",
+        max_step_pct: c.max_step_pct ?? null,
+        reason: c.reason,
+        supporting_trade_ids: c.supporting_trade_ids ?? [],
+      })),
+      winning_trade_count: r.winning_trade_ids?.length ?? 0,
+      losing_trade_count: r.losing_trade_ids?.length ?? 0,
+      ab_comparison: r.ab_comparison as PendingProposal["ab_comparison"],
+    }));
+  }
+
   // Forked-from info, if any.
   let forkedFromLabel: string | null = null;
   if (row.forked_from_id) {
@@ -176,6 +248,7 @@ export default async function StrategyDetailPage({
       detail={detail}
       family={family}
       backtests={backtests}
+      pendingProposals={pendingProposals}
     />
   );
 }

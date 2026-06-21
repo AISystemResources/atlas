@@ -45,6 +45,69 @@ export interface StrategyShareEntry {
   granted_at: string;
 }
 
+// Sprint 053.3: pending promote-proposal surfaced from ticket_backtest_insights.
+// Combines forced attribution (053.0), ratchet clamp (053.1), and forward
+// A/B (053.2) into a single audit-ready card.
+export interface ProposedChangeView {
+  name: string;
+  current_value: number;
+  /** Post-clamp value that will be applied if promoted. */
+  applied_value: number;
+  /** What the LLM originally asked for (pre-clamp). */
+  original_proposed_value: number;
+  was_clamped: boolean;
+  clamp_reason: "" | "step" | "min" | "max";
+  max_step_pct: number | null;
+  reason: string;
+  supporting_trade_ids: string[];
+}
+
+export type AbComparisonView =
+  | null
+  | { status: "no_changes" }
+  | {
+      status: "insufficient_forward_data";
+      forward_window: { start_date: string; end_date: string; days_requested: number };
+      bars_returned: number;
+      reason: string;
+    }
+  | {
+      status: "ok";
+      forward_window: { start_date: string; end_date: string; days_requested: number };
+      control: {
+        total_trades: number;
+        win_rate: number | null;
+        total_pnl_dollars: number;
+        max_drawdown_dollars: number;
+      };
+      treatment: {
+        total_trades: number;
+        win_rate: number | null;
+        total_pnl_dollars: number;
+        max_drawdown_dollars: number;
+      };
+      delta: {
+        total_trades: number;
+        win_rate: number | null;
+        total_pnl_dollars: number;
+        max_drawdown_dollars: number;
+      };
+    };
+
+export interface PendingProposal {
+  insight_id: string;
+  backtest_id: string;
+  backtest_ticker: string;
+  backtest_timeframe: string;
+  created_at: string;
+  model: string;
+  rationale: string | null;
+  proposed_changes: ProposedChangeView[];
+  winning_trade_count: number;
+  losing_trade_count: number;
+  ab_comparison: AbComparisonView;
+}
+
 export interface StrategyDetail {
   id: string;
   name: string;
@@ -73,10 +136,12 @@ export function StrategyDetailClient({
   detail,
   family,
   backtests,
+  pendingProposals,
 }: {
   detail: StrategyDetail;
   family: VersionFamilyEntry[];
   backtests: BacktestListEntry[];
+  pendingProposals: PendingProposal[];
 }) {
   const router = useRouter();
   const [forkBusy, setForkBusy] = useState(false);
@@ -352,6 +417,24 @@ export function StrategyDetailClient({
         </Section>
       )}
 
+      {/* Sprint 053.3: pending promote-proposals (owner-only) */}
+      {detail.is_mine && pendingProposals.length > 0 && (
+        <Section title={`Pending promote proposals (${pendingProposals.length})`}>
+          <div className="space-y-3">
+            {pendingProposals.map((p) => (
+              <PendingProposalCard
+                key={p.insight_id}
+                proposal={p}
+                parentLogicId={detail.id}
+                onPromoted={(newId) =>
+                  router.push(`/dashboard/strategies/${newId}`)
+                }
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* Backtests */}
       <Section title={`Recent backtests (${backtests.length})`}>
         {backtests.length === 0 ? (
@@ -412,6 +495,283 @@ export function StrategyDetailClient({
       </Section>
     </div>
   );
+}
+
+// ── Sprint 053.3: pending promote-proposal card ─────────────────────────────
+
+function PendingProposalCard({
+  proposal,
+  parentLogicId,
+  onPromoted,
+}: {
+  proposal: PendingProposal;
+  parentLogicId: string;
+  onPromoted: (newId: string) => void;
+}) {
+  const [promoteBusy, setPromoteBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  async function onPromote() {
+    setPromoteBusy(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/v1/ticket-logics/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parent_logic_id: parentLogicId,
+          backtest_insight_id: proposal.insight_id,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      onPromoted(body.new_logic_id);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setPromoteBusy(false);
+    }
+  }
+
+  const ab = proposal.ab_comparison;
+
+  return (
+    <div
+      className="p-4 rounded-lg border"
+      style={{
+        background: "var(--surface)",
+        borderColor: "var(--line)",
+        borderLeftWidth: 3,
+        borderLeftColor: "var(--hold)",
+        boxShadow: "var(--card-shadow)",
+      }}
+    >
+      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <Link
+              href={`/dashboard/backtests/${proposal.backtest_id}`}
+              className="text-xs font-mono underline"
+              style={{ color: "var(--brand)" }}
+            >
+              {proposal.backtest_ticker} {proposal.backtest_timeframe}
+            </Link>
+            <span className="text-[11px]" style={{ color: "var(--ghost)" }}>
+              · proposed {timeAgo(proposal.created_at)} by{" "}
+              <span className="font-mono">{proposal.model}</span>
+            </span>
+          </div>
+          <div className="text-[11px]" style={{ color: "var(--ghost)" }}>
+            backed by {proposal.winning_trade_count} winning · {proposal.losing_trade_count} losing
+            trade citations
+          </div>
+        </div>
+        <button
+          onClick={onPromote}
+          disabled={promoteBusy}
+          className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50"
+          style={{ background: "var(--brand)", color: "#fff" }}
+        >
+          {promoteBusy ? "Promoting…" : "Promote to v(N+1)"}
+        </button>
+      </div>
+
+      {proposal.rationale && (
+        <p className="text-xs mb-3 leading-relaxed" style={{ color: "var(--dim)" }}>
+          {proposal.rationale}
+        </p>
+      )}
+
+      {/* Proposed changes */}
+      <div className="space-y-1.5 mb-3">
+        {proposal.proposed_changes.map((c) => (
+          <div
+            key={c.name}
+            className="p-2 rounded text-xs"
+            style={{ background: "var(--elevated)" }}
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="font-mono" style={{ color: "var(--ink)" }}>
+                {c.name}
+              </span>
+              <span className="font-mono" style={{ color: "var(--dim)" }}>
+                {c.current_value} →{" "}
+                <span style={{ color: "var(--brand)" }}>{c.applied_value}</span>
+              </span>
+            </div>
+            {c.was_clamped && (
+              <div
+                className="mt-1 text-[11px] flex items-center gap-1.5 flex-wrap"
+                style={{ color: "var(--bear)" }}
+              >
+                <span
+                  className="inline-block px-1.5 py-0.5 rounded font-medium uppercase tracking-wide text-[10px]"
+                  style={{
+                    background: "var(--bear-bg)",
+                    color: "var(--bear)",
+                  }}
+                >
+                  clamped · {c.clamp_reason}
+                </span>
+                <span style={{ color: "var(--ghost)" }}>
+                  LLM asked {c.original_proposed_value}, ratchet allowed {c.applied_value}
+                  {c.max_step_pct != null &&
+                    ` (cap ±${(c.max_step_pct * 100).toFixed(0)}%)`}
+                </span>
+              </div>
+            )}
+            <div className="mt-1 text-[11px]" style={{ color: "var(--ghost)" }}>
+              {c.reason}
+              {c.supporting_trade_ids.length > 0 && (
+                <> · cites {c.supporting_trade_ids.length} trade
+                  {c.supporting_trade_ids.length === 1 ? "" : "s"}</>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* A/B forward-test status */}
+      <AbStatusBlock ab={ab} />
+
+      {errorMsg && (
+        <p className="text-xs mt-2" style={{ color: "var(--bear)" }}>
+          {errorMsg}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AbStatusBlock({ ab }: { ab: AbComparisonView }) {
+  if (ab === null) {
+    return (
+      <div
+        className="p-2 rounded text-[11px]"
+        style={{ background: "var(--elevated)", color: "var(--ghost)" }}
+      >
+        A/B forward-test not run yet
+      </div>
+    );
+  }
+  if (ab.status === "no_changes") {
+    return null;
+  }
+  if (ab.status === "insufficient_forward_data") {
+    return (
+      <div
+        className="p-2 rounded text-[11px]"
+        style={{ background: "var(--elevated)", color: "var(--ghost)" }}
+      >
+        <span className="font-medium" style={{ color: "var(--hold)" }}>
+          Forward-test deferred —{" "}
+        </span>
+        {ab.reason}
+        <div className="mt-0.5 font-mono" style={{ color: "var(--ghost)" }}>
+          window: {ab.forward_window.start_date} … {ab.forward_window.end_date}, bars={ab.bars_returned}
+        </div>
+      </div>
+    );
+  }
+  // status === "ok"
+  const pnlDelta = ab.delta.total_pnl_dollars;
+  const pnlColor =
+    pnlDelta > 0 ? "var(--bull)" : pnlDelta < 0 ? "var(--bear)" : "var(--dim)";
+  return (
+    <div
+      className="p-2 rounded text-[11px]"
+      style={{ background: "var(--elevated)" }}
+    >
+      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+        <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--brand)" }}>
+          Out-of-sample forward-test
+        </span>
+        <span className="font-mono" style={{ color: "var(--ghost)" }}>
+          {ab.forward_window.start_date} → {ab.forward_window.end_date}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2" style={{ color: "var(--dim)" }}>
+        <AbStatCell
+          label="trades"
+          control={ab.control.total_trades}
+          treatment={ab.treatment.total_trades}
+          delta={ab.delta.total_trades}
+          fmt={(n) => String(n)}
+        />
+        <AbStatCell
+          label="PnL ($)"
+          control={ab.control.total_pnl_dollars}
+          treatment={ab.treatment.total_pnl_dollars}
+          delta={ab.delta.total_pnl_dollars}
+          fmt={(n) => n.toFixed(2)}
+          deltaColor={pnlColor}
+        />
+        <AbStatCell
+          label="max DD ($)"
+          control={ab.control.max_drawdown_dollars}
+          treatment={ab.treatment.max_drawdown_dollars}
+          delta={ab.delta.max_drawdown_dollars}
+          fmt={(n) => n.toFixed(2)}
+          // Lower DD is better → invert the colour rule.
+          deltaColor={
+            ab.delta.max_drawdown_dollars < 0
+              ? "var(--bull)"
+              : ab.delta.max_drawdown_dollars > 0
+                ? "var(--bear)"
+                : "var(--dim)"
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function AbStatCell({
+  label,
+  control,
+  treatment,
+  delta,
+  fmt,
+  deltaColor,
+}: {
+  label: string;
+  control: number;
+  treatment: number;
+  delta: number;
+  fmt: (n: number) => string;
+  deltaColor?: string;
+}) {
+  const sign = delta > 0 ? "+" : "";
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--ghost)" }}>
+        {label}
+      </div>
+      <div className="font-mono" style={{ color: "var(--dim)" }}>
+        ctrl {fmt(control)}
+      </div>
+      <div className="font-mono" style={{ color: "var(--dim)" }}>
+        tx {fmt(treatment)}
+      </div>
+      <div
+        className="font-mono font-semibold"
+        style={{ color: deltaColor ?? (delta > 0 ? "var(--bull)" : delta < 0 ? "var(--bear)" : "var(--dim)") }}
+      >
+        Δ {sign}{fmt(delta)}
+      </div>
+    </div>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  const ms = Date.now() - then;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
 // ── Small primitives ─────────────────────────────────────────────────────────
