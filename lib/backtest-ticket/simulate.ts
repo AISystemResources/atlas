@@ -1,0 +1,196 @@
+/**
+ * Pure backtest simulator — Sprint 053.2.
+ *
+ * Extracted from backtestTicketLogic so the A/B forward-test harness can
+ * compute control + treatment statistics on the same forward window without
+ * polluting the ticket_backtests table with throwaway runs.
+ *
+ * No DB access. Takes a body + bars + run options, returns trade list and
+ * summary statistics. backtestTicketLogic wraps this with DB writes.
+ */
+
+import { evaluate } from "@/lib/strategies/evaluate";
+import type { TicketLogicBody } from "@/lib/strategies/types";
+import {
+  applyFillFriction,
+  type AssetClass,
+  type BrokerProfile,
+} from "@/lib/brokers/profiles";
+import type { Bar } from "@/lib/strategies/indicators";
+import { simulateExit, type ExitReason } from "./simulate-exit";
+
+const BARS_AROUND_ENTRY = 50;
+
+export interface SimulatedTrade {
+  entry_bar_index: number;
+  entry_ts: string;
+  entry_price: number;
+  take_profit_price: number;
+  stop_loss_price: number;
+  exit_bar_index: number;
+  exit_ts: string;
+  exit_price: number;
+  exit_reason: string;
+  pnl_dollars: number;
+  pnl_pct: number;
+  qty: number;
+  indicator_snapshot: Record<string, number>;
+  bars_around_entry: Bar[];
+}
+
+export interface SimulatedStats {
+  total_bars: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number | null;
+  total_pnl_dollars: number;
+  avg_pnl_dollars: number | null;
+  max_drawdown_dollars: number;
+  total_friction_dollars: number;
+}
+
+export interface SimulateOptions {
+  body: TicketLogicBody;
+  bars: Bar[];
+  notional: number;
+  profile: BrokerProfile;
+  asset: AssetClass;
+}
+
+export interface SimulateResult {
+  trades: SimulatedTrade[];
+  stats: SimulatedStats;
+}
+
+function exitIsMarket(reason: ExitReason): boolean {
+  return reason === "sl_hit" || reason === "eod" || reason === "time_stop" || reason === "open_at_end";
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+function round5(n: number): number {
+  return Math.round(n * 100000) / 100000;
+}
+
+export function simulateBacktest(opts: SimulateOptions): SimulateResult {
+  const { body, bars, notional, profile, asset } = opts;
+  const entries = evaluate(body, bars);
+
+  const trades: SimulatedTrade[] = [];
+  let cumulativePnl = 0;
+  let peakPnl = 0;
+  let maxDrawdown = 0;
+  let winning = 0;
+  let losing = 0;
+  let totalPnl = 0;
+  let totalFriction = 0;
+
+  for (const entry of entries) {
+    const exit = simulateExit({
+      entryBarIndex: entry.bar_index,
+      entryPrice: entry.entry_price,
+      takeProfitPrice: entry.take_profit,
+      stopLossPrice: entry.stop_loss,
+      direction: entry.direction,
+      bars,
+      timeStop: body.exit.time_stop,
+    });
+
+    const qty = round5(notional / entry.entry_price);
+    if (qty <= 0) continue;
+
+    const entryFill = applyFillFriction(profile, {
+      action: "BUY",
+      referencePrice: entry.entry_price,
+      qty,
+      asset,
+    });
+    const exitFill = applyFillFriction(profile, {
+      action: "SELL",
+      referencePrice: exit.exitPrice,
+      qty,
+      asset,
+    });
+    const adjEntryPrice = round4(entryFill.fillPrice);
+    const adjExitPrice = round4(
+      exitIsMarket(exit.exitReason) ? exitFill.fillPrice : exit.exitPrice,
+    );
+    const tradeFriction = round2(
+      entryFill.commission +
+        exitFill.commission +
+        (entryFill.fillPrice - entry.entry_price) * qty +
+        (exitIsMarket(exit.exitReason)
+          ? (exit.exitPrice - exitFill.fillPrice) * qty
+          : 0),
+    );
+
+    const pnlPerShare =
+      entry.direction === "long"
+        ? adjExitPrice - adjEntryPrice
+        : adjEntryPrice - adjExitPrice;
+    const pnlDollars = round2(
+      pnlPerShare * qty - entryFill.commission - exitFill.commission,
+    );
+    const pnlPct = round4(pnlPerShare / adjEntryPrice);
+
+    totalPnl += pnlDollars;
+    totalFriction += tradeFriction;
+    cumulativePnl += pnlDollars;
+    peakPnl = Math.max(peakPnl, cumulativePnl);
+    maxDrawdown = Math.max(maxDrawdown, peakPnl - cumulativePnl);
+
+    if (pnlDollars > 0) winning++;
+    else if (pnlDollars < 0) losing++;
+
+    const sliceStart = Math.max(0, entry.bar_index - BARS_AROUND_ENTRY);
+    const sliceEnd = Math.min(bars.length, exit.exitBarIndex + 1 + 5);
+    const barsAroundEntry = bars.slice(sliceStart, sliceEnd);
+
+    trades.push({
+      entry_bar_index: entry.bar_index,
+      entry_ts: entry.bar_timestamp ?? "",
+      entry_price: adjEntryPrice,
+      take_profit_price: entry.take_profit,
+      stop_loss_price: entry.stop_loss,
+      exit_bar_index: exit.exitBarIndex,
+      exit_ts: exit.exitTimestamp,
+      exit_price: adjExitPrice,
+      exit_reason: exit.exitReason,
+      pnl_dollars: pnlDollars,
+      pnl_pct: pnlPct,
+      qty,
+      indicator_snapshot: entry.indicator_snapshot,
+      bars_around_entry: barsAroundEntry,
+    });
+  }
+
+  const winRate =
+    winning + losing > 0 ? round4(winning / (winning + losing)) : null;
+  const avgPnl = trades.length > 0 ? round2(totalPnl / trades.length) : null;
+
+  return {
+    trades,
+    stats: {
+      total_bars: bars.length,
+      total_trades: trades.length,
+      winning_trades: winning,
+      losing_trades: losing,
+      win_rate: winRate,
+      total_pnl_dollars: round2(totalPnl),
+      avg_pnl_dollars: avgPnl,
+      max_drawdown_dollars: round2(maxDrawdown),
+      total_friction_dollars: round2(totalFriction),
+    },
+  };
+}
+
+export function inferAsset(ticker: string): AssetClass {
+  if (ticker.includes("/")) return "crypto";
+  if (ticker.startsWith("^")) return "index";
+  return "equity";
+}

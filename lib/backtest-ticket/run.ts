@@ -10,19 +10,12 @@
  * backtest statistics agnostic to share-count rounding noise.
  */
 
-import { evaluate } from "@/lib/strategies/evaluate";
 import { loadTicketLogic } from "@/lib/strategies/loader";
 import { getServiceClient } from "@/lib/supabase-server";
 import { type BacktestTimeframe } from "./fetch-bars";
 import { fetchHistoricalBarsCached } from "./fetch-bars-cached";
-import { simulateExit, type ExitReason } from "./simulate-exit";
-import {
-  applyFillFriction,
-  getBrokerProfile,
-  type AssetClass,
-} from "@/lib/brokers/profiles";
-
-const BARS_AROUND_ENTRY = 50;
+import { getBrokerProfile } from "@/lib/brokers/profiles";
+import { inferAsset, simulateBacktest } from "./simulate";
 
 export interface BacktestInput {
   logic_name: string;
@@ -58,18 +51,6 @@ export interface BacktestSummary {
   total_friction_dollars: number;
 }
 
-function inferAsset(ticker: string): AssetClass {
-  if (ticker.includes("/")) return "crypto";
-  if (ticker.startsWith("^")) return "index";
-  return "equity";
-}
-
-/** Bracket TP fills at the limit price (no adverse spread). Stop SL +
- *  EOD + time_stop are market exits and pay adverse spread + slippage. */
-function exitIsMarket(reason: ExitReason): boolean {
-  return reason === "sl_hit" || reason === "eod" || reason === "time_stop" || reason === "open_at_end";
-}
-
 export async function backtestTicketLogic(
   input: BacktestInput,
 ): Promise<BacktestSummary> {
@@ -90,14 +71,22 @@ export async function backtestTicketLogic(
     input.timeframe,
   );
 
-  const entries = evaluate(logic.body, bars);
-
   const notional =
     input.notionalPerTrade ?? logic.body.entry.sizing.value;
 
   // Sprint 077B.1: load the profile up-front; throws if invalid id.
   const profile = getBrokerProfile(input.brokerProfileId ?? "pure");
   const asset = inferAsset(input.ticker);
+
+  // Sprint 053.2: pure compute extracted to simulate.ts so the A/B harness
+  // can reuse it on forward windows without DB writes.
+  const { trades: simTrades, stats } = simulateBacktest({
+    body: logic.body,
+    bars,
+    notional,
+    profile,
+    asset,
+  });
 
   const sb = getServiceClient();
 
@@ -121,124 +110,23 @@ export async function backtestTicketLogic(
   }
   const backtestId = btRow.id as string;
 
-  interface TradeRow {
-    backtest_id: string;
-    entry_bar_index: number;
-    entry_ts: string;
-    entry_price: number;
-    take_profit_price: number;
-    stop_loss_price: number;
-    exit_bar_index: number;
-    exit_ts: string;
-    exit_price: number;
-    exit_reason: string;
-    pnl_dollars: number;
-    pnl_pct: number;
-    qty: number;
-    indicator_snapshot: Record<string, number>;
-    bars_around_entry: unknown[];
-  }
-
-  const tradeRows: TradeRow[] = [];
-  let cumulativePnl = 0;
-  let peakPnl = 0;
-  let maxDrawdown = 0;
-  let winning = 0;
-  let losing = 0;
-  let totalPnl = 0;
-  let totalFriction = 0;
-
-  for (const entry of entries) {
-    const exit = simulateExit({
-      entryBarIndex: entry.bar_index,
-      entryPrice: entry.entry_price,
-      takeProfitPrice: entry.take_profit,
-      stopLossPrice: entry.stop_loss,
-      direction: entry.direction,
-      bars,
-      timeStop: logic.body.exit.time_stop,
-    });
-
-    const qty = round5(notional / entry.entry_price);
-    if (qty <= 0) continue;
-
-    // Sprint 077B.1: apply BrokerProfile friction. Entry is a market BUY
-    // (adverse spread + slippage). Exit depends on the exit reason:
-    //   - tp_hit → limit fill at TP, no adverse spread, commission charged
-    //   - sl_hit / eod / time_stop / open_at_end → market exit, full friction
-    // For shorts the direction sign flips but the rules are the same in
-    // structure; this engine is long-only today (per Sprint 051 deferral)
-    // so the friction-side branch is straight.
-    const entryFill = applyFillFriction(profile, {
-      action: "BUY",
-      referencePrice: entry.entry_price,
-      qty,
-      asset,
-    });
-    const exitFill = applyFillFriction(profile, {
-      action: "SELL",
-      referencePrice: exit.exitPrice,
-      qty,
-      asset,
-    });
-    const adjEntryPrice = round4(entryFill.fillPrice);
-    const adjExitPrice = round4(
-      exitIsMarket(exit.exitReason) ? exitFill.fillPrice : exit.exitPrice,
-    );
-    const tradeFriction = round2(
-      entryFill.commission +
-        exitFill.commission +
-        (entryFill.fillPrice - entry.entry_price) * qty +
-        (exitIsMarket(exit.exitReason)
-          ? (exit.exitPrice - exitFill.fillPrice) * qty
-          : 0),
-    );
-
-    const pnlPerShare =
-      entry.direction === "long"
-        ? adjExitPrice - adjEntryPrice
-        : adjEntryPrice - adjExitPrice;
-    const pnlDollars = round2(pnlPerShare * qty - entryFill.commission - exitFill.commission);
-    const pnlPct = round4(pnlPerShare / adjEntryPrice);
-
-    totalPnl += pnlDollars;
-    totalFriction += tradeFriction;
-    cumulativePnl += pnlDollars;
-    peakPnl = Math.max(peakPnl, cumulativePnl);
-    maxDrawdown = Math.max(maxDrawdown, peakPnl - cumulativePnl);
-
-    if (pnlDollars > 0) winning++;
-    else if (pnlDollars < 0) losing++;
-
-    const sliceStart = Math.max(0, entry.bar_index - BARS_AROUND_ENTRY);
-    const sliceEnd = Math.min(bars.length, exit.exitBarIndex + 1 + 5); // a few bars past exit for context
-    const barsAroundEntry = bars.slice(sliceStart, sliceEnd);
-
-    tradeRows.push({
-      backtest_id: backtestId,
-      entry_bar_index: entry.bar_index,
-      entry_ts: entry.bar_timestamp ?? "",
-      // Persist friction-adjusted fill prices so downstream readers see the
-      // numbers the user actually would have paid under this profile.
-      entry_price: adjEntryPrice,
-      take_profit_price: entry.take_profit,
-      stop_loss_price: entry.stop_loss,
-      exit_bar_index: exit.exitBarIndex,
-      exit_ts: exit.exitTimestamp,
-      exit_price: adjExitPrice,
-      exit_reason: exit.exitReason,
-      pnl_dollars: pnlDollars,
-      pnl_pct: pnlPct,
-      qty,
-      indicator_snapshot: entry.indicator_snapshot,
-      bars_around_entry: barsAroundEntry,
-    });
-  }
-
-  const winRate =
-    winning + losing > 0 ? round4(winning / (winning + losing)) : null;
-  const avgPnl =
-    tradeRows.length > 0 ? round2(totalPnl / tradeRows.length) : null;
+  const tradeRows = simTrades.map((t) => ({
+    backtest_id: backtestId,
+    entry_bar_index: t.entry_bar_index,
+    entry_ts: t.entry_ts,
+    entry_price: t.entry_price,
+    take_profit_price: t.take_profit_price,
+    stop_loss_price: t.stop_loss_price,
+    exit_bar_index: t.exit_bar_index,
+    exit_ts: t.exit_ts,
+    exit_price: t.exit_price,
+    exit_reason: t.exit_reason,
+    pnl_dollars: t.pnl_dollars,
+    pnl_pct: t.pnl_pct,
+    qty: t.qty,
+    indicator_snapshot: t.indicator_snapshot,
+    bars_around_entry: t.bars_around_entry,
+  }));
 
   // From here on, if anything throws we delete the parent row so an orphaned
   // ticket_backtests row with total_trades=0 doesn't accumulate in the table.
@@ -255,14 +143,14 @@ export async function backtestTicketLogic(
     const { error: upErr } = await sb
       .from("ticket_backtests")
       .update({
-        total_trades: tradeRows.length,
-        winning_trades: winning,
-        losing_trades: losing,
-        win_rate: winRate,
-        total_pnl_dollars: round2(totalPnl),
-        avg_pnl_dollars: avgPnl,
-        max_drawdown_dollars: round2(maxDrawdown),
-        total_friction_dollars: round2(totalFriction),
+        total_trades: stats.total_trades,
+        winning_trades: stats.winning_trades,
+        losing_trades: stats.losing_trades,
+        win_rate: stats.win_rate,
+        total_pnl_dollars: stats.total_pnl_dollars,
+        avg_pnl_dollars: stats.avg_pnl_dollars,
+        max_drawdown_dollars: stats.max_drawdown_dollars,
+        total_friction_dollars: stats.total_friction_dollars,
       })
       .eq("id", backtestId);
     if (upErr) {
@@ -276,25 +164,15 @@ export async function backtestTicketLogic(
   return {
     backtest_id: backtestId,
     ticker: input.ticker,
-    total_bars: bars.length,
-    total_trades: tradeRows.length,
-    winning_trades: winning,
-    losing_trades: losing,
-    win_rate: winRate,
-    total_pnl_dollars: round2(totalPnl),
-    avg_pnl_dollars: avgPnl,
-    max_drawdown_dollars: round2(maxDrawdown),
+    total_bars: stats.total_bars,
+    total_trades: stats.total_trades,
+    winning_trades: stats.winning_trades,
+    losing_trades: stats.losing_trades,
+    win_rate: stats.win_rate,
+    total_pnl_dollars: stats.total_pnl_dollars,
+    avg_pnl_dollars: stats.avg_pnl_dollars,
+    max_drawdown_dollars: stats.max_drawdown_dollars,
     broker_profile_id: profile.id,
-    total_friction_dollars: round2(totalFriction),
+    total_friction_dollars: stats.total_friction_dollars,
   };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-function round4(n: number): number {
-  return Math.round(n * 10000) / 10000;
-}
-function round5(n: number): number {
-  return Math.round(n * 100000) / 100000;
 }

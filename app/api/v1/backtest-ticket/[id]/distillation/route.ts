@@ -13,6 +13,10 @@ import {
   reviewBacktest,
   saveBacktestInsight,
 } from "@/lib/strategies/review-backtest";
+import {
+  persistAbComparison,
+  runAbForwardTest,
+} from "@/lib/strategies/ab-harness";
 
 interface BacktestRow {
   id: string;
@@ -149,10 +153,29 @@ export async function POST(
 
     const saved = await saveBacktestInsight(backtest.id, result);
 
+    // Sprint 053.2: forward-test A/B on out-of-sample window. Failure here
+    // must not fail distillation — log + swallow and leave ab_comparison NULL.
+    let abComparison: Awaited<ReturnType<typeof runAbForwardTest>> | null = null;
+    if (result.insight.proposed_changes.length > 0) {
+      try {
+        abComparison = await runAbForwardTest({
+          original_backtest_id: backtest.id,
+          proposed_changes: result.insight.proposed_changes.map((c) => ({
+            name: c.name,
+            proposed_value: c.proposed_value,
+          })),
+        });
+        await persistAbComparison(saved.id, abComparison);
+      } catch (abErr) {
+        console.error("[backtest-insight] ab-harness failed (non-fatal):", abErr);
+      }
+    }
+
     return Response.json({
       id: saved.id,
       insight: result.insight,
       model: result.model,
+      ab_comparison: abComparison,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
