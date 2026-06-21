@@ -11,6 +11,8 @@ export type { BrokerAdapter } from "./base";
 export { BrokerError } from "./base";
 export { AlpacaAdapter } from "./alpaca";
 export { MockBrokerAdapter } from "./mock";
+export { AtlasSimAdapter } from "./atlas-sim";
+export type { BarLike, TickBracketsResult } from "./atlas-sim";
 export type {
   Account,
   Order,
