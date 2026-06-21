@@ -189,6 +189,7 @@ async function main() {
         max_drawdown_dollars: summary.max_drawdown_dollars,
       },
       trades: ((allTrades ?? []) as Array<Record<string, unknown>>).map((t) => ({
+        id: String(t.id), // Sprint 053.0
         entry_ts: String(t.entry_ts),
         exit_ts: t.exit_ts as string | null,
         exit_reason: t.exit_reason as string | null,

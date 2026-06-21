@@ -565,6 +565,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           trades: trades.map((t) => {
             const rev = reviewByTrade.get(t.id);
             return {
+              id: t.id, // Sprint 053.0: enables LLM index → trade id mapping
               entry_ts: t.entry_ts,
               exit_ts: t.exit_ts,
               exit_reason: t.exit_reason,

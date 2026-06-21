@@ -134,6 +134,7 @@ export async function POST(
       trades: trades.map((t) => {
         const rev = reviewByTrade.get(t.id);
         return {
+          id: t.id, // Sprint 053.0
           entry_ts: t.entry_ts,
           exit_ts: t.exit_ts,
           exit_reason: t.exit_reason,
