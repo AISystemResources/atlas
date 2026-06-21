@@ -36,9 +36,11 @@ export async function GET(req: Request): Promise<Response> {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const sb = getServiceClient();
+  // Sprint 077A.7: return full per-row state so the Settings UI can
+  // render the sim/alpaca toggle alongside strategy + scalper fields.
   const { data, error } = await sb
     .from("watchlist")
-    .select("ticker, schedule")
+    .select("ticker, schedule, scalper_enabled, strategy_id, execution_mode")
     .eq("user_id", user.userId)
     .order("created_at");
 
