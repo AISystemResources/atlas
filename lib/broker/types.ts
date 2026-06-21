@@ -40,6 +40,14 @@ export interface OrderRequest {
   notional: number;
   /** Alpaca time-in-force. "day" for equities (default), "gtc" required for crypto. */
   timeInForce?: "day" | "gtc";
+  /**
+   * Sprint 077A: optional fill price for in-process simulators (Atlas Sim).
+   * Real brokers ignore this — they fill at the current market price. The
+   * sim adapter requires it because it has no market access.
+   */
+  referencePrice?: number;
+  /** Sprint 077A: strategy hint stored on simulated_trades. */
+  strategy?: string;
 }
 
 /**
