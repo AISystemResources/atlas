@@ -25,7 +25,16 @@ interface WatchlistRow {
   scalper_enabled: boolean;
   strategy_id: string | null;
   execution_mode: "sim" | "alpaca";
+  broker_profile_id: string;
 }
+
+const PROFILE_OPTIONS: Array<{ id: string; label: string }> = [
+  { id: "pure", label: "Pure — frictionless" },
+  { id: "alpaca-paper", label: "Alpaca paper" },
+  { id: "alpaca-live", label: "Alpaca live" },
+  { id: "ibkr-paper", label: "IBKR paper" },
+  { id: "pepperstone-cfd-dow", label: "Pepperstone CFD (Dow)" },
+];
 
 interface StrategyLite {
   id: string;
@@ -225,24 +234,49 @@ export function ExecutionModeSection() {
                     </span>
                   )}
                 </div>
-                <div
-                  className="flex items-center gap-1"
-                  style={{ background: "var(--elevated)", borderRadius: 6, padding: 2 }}
-                >
-                  <ModeButton
-                    active={isSim}
-                    disabled={isSaving}
-                    onClick={() => patchRow(r.ticker, { execution_mode: "sim" })}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Sprint 077B.2 — broker profile picker (sim only) */}
+                  <select
+                    value={r.broker_profile_id}
+                    disabled={isSaving || !isSim}
+                    onChange={(e) => patchRow(r.ticker, { broker_profile_id: e.target.value })}
+                    title={isSim ? "Broker physics applied to sim fills" : "Profiles only apply in SIM mode"}
+                    style={{
+                      background: "var(--surface)",
+                      border: "1px solid var(--line)",
+                      borderRadius: 5,
+                      color: isSim ? "var(--ink)" : "var(--ghost)",
+                      fontFamily: "var(--font-jb)",
+                      fontSize: 11,
+                      padding: "4px 8px",
+                      opacity: isSim ? 1 : 0.4,
+                    }}
                   >
-                    SIM
-                  </ModeButton>
-                  <ModeButton
-                    active={!isSim}
-                    disabled={isSaving}
-                    onClick={() => patchRow(r.ticker, { execution_mode: "alpaca" })}
+                    {PROFILE_OPTIONS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div
+                    className="flex items-center gap-1"
+                    style={{ background: "var(--elevated)", borderRadius: 6, padding: 2 }}
                   >
-                    ALPACA
-                  </ModeButton>
+                    <ModeButton
+                      active={isSim}
+                      disabled={isSaving}
+                      onClick={() => patchRow(r.ticker, { execution_mode: "sim" })}
+                    >
+                      SIM
+                    </ModeButton>
+                    <ModeButton
+                      active={!isSim}
+                      disabled={isSaving}
+                      onClick={() => patchRow(r.ticker, { execution_mode: "alpaca" })}
+                    >
+                      ALPACA
+                    </ModeButton>
+                  </div>
                 </div>
               </div>
             );

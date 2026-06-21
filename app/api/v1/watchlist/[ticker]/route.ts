@@ -19,6 +19,10 @@ const PatchSchema = z.object({
   execution_mode: z.enum(["sim", "alpaca"]).optional(),
   scalper_enabled: z.boolean().optional(),
   strategy_id: z.string().uuid().nullable().optional(),
+  // Sprint 077B.2 — only consulted when execution_mode='sim'
+  broker_profile_id: z
+    .enum(["pure", "alpaca-paper", "alpaca-live", "ibkr-paper", "pepperstone-cfd-dow"])
+    .optional(),
 });
 
 export async function PATCH(
@@ -54,7 +58,7 @@ export async function PATCH(
     .update(parsed.data)
     .eq("user_id", user.userId)
     .eq("ticker", ticker)
-    .select("ticker, schedule, scalper_enabled, strategy_id, execution_mode")
+    .select("ticker, schedule, scalper_enabled, strategy_id, execution_mode, broker_profile_id")
     .maybeSingle();
 
   if (error) return Response.json({ error: error.message }, { status: 500 });

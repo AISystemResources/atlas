@@ -36,11 +36,11 @@ export async function GET(req: Request): Promise<Response> {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const sb = getServiceClient();
-  // Sprint 077A.7: return full per-row state so the Settings UI can
-  // render the sim/alpaca toggle alongside strategy + scalper fields.
+  // Sprint 077A.7 + 077B.2: return full per-row state so the Settings UI
+  // can render strategy + sim/alpaca + broker profile picks in one go.
   const { data, error } = await sb
     .from("watchlist")
-    .select("ticker, schedule, scalper_enabled, strategy_id, execution_mode")
+    .select("ticker, schedule, scalper_enabled, strategy_id, execution_mode, broker_profile_id")
     .eq("user_id", user.userId)
     .order("created_at");
 
@@ -86,28 +86,31 @@ export async function PUT(req: Request): Promise<Response> {
 
   const sb = getServiceClient();
 
-  // Sprint 068 + 077A.5: PUT does a wipe-and-recreate, but per-(user, ticker)
-  // fields the caller doesn't send must survive — scalper_enabled, strategy_id,
-  // and execution_mode (sim vs alpaca). Pull existing rows first so we can
-  // re-stamp them on any ticker that survives the save.
+  // Sprint 068 + 077A.5 + 077B.2: PUT does a wipe-and-recreate, but
+  // per-(user, ticker) fields the caller doesn't send must survive —
+  // scalper_enabled, strategy_id, execution_mode, and broker_profile_id.
+  // Pull existing rows first so we can re-stamp them on any ticker that
+  // survives the save.
   const { data: prev } = await sb
     .from("watchlist")
-    .select("ticker, scalper_enabled, strategy_id, execution_mode")
+    .select("ticker, scalper_enabled, strategy_id, execution_mode, broker_profile_id")
     .eq("user_id", user.userId);
   const prevByTicker = new Map<
     string,
-    { scalper_enabled: boolean; strategy_id: string | null; execution_mode: string }
+    { scalper_enabled: boolean; strategy_id: string | null; execution_mode: string; broker_profile_id: string }
   >();
   for (const r of (prev ?? []) as Array<{
     ticker: string;
     scalper_enabled: boolean | null;
     strategy_id: string | null;
     execution_mode: string | null;
+    broker_profile_id: string | null;
   }>) {
     prevByTicker.set(r.ticker, {
       scalper_enabled: Boolean(r.scalper_enabled),
       strategy_id: r.strategy_id,
       execution_mode: r.execution_mode ?? "sim",
+      broker_profile_id: r.broker_profile_id ?? "pure",
     });
   }
 
@@ -123,6 +126,7 @@ export async function PUT(req: Request): Promise<Response> {
         scalper_enabled: carried?.scalper_enabled ?? false,
         strategy_id: carried?.strategy_id ?? null,
         execution_mode: carried?.execution_mode ?? "sim",
+        broker_profile_id: carried?.broker_profile_id ?? "pure",
       };
     });
     const { error } = await sb.from("watchlist").insert(rows);
