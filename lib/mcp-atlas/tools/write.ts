@@ -95,8 +95,11 @@ export const WRITE_TOOL_DEFS = [
     name: "run_ticket_backtest",
     description:
       "Run a backtest of a Ticket Logic strategy on historical bars from Yahoo Finance. Returns a BacktestSummary " +
-      "with the new backtest_id, total trades, win rate, and total PnL. Index tickers (e.g. ^DJI) and ETFs both " +
-      "supported. Yahoo intraday limits: 5m/15m → 60 days, 1h → 730 days, 1d → effectively unlimited.",
+      "with the new backtest_id, total trades, win rate, total PnL, and total friction cost under the chosen " +
+      "broker profile. Index tickers (e.g. ^DJI) and ETFs both supported. Yahoo intraday limits: 5m/15m → 60 days, " +
+      "1h → 730 days, 1d → effectively unlimited. Sprint 077B.1: `broker_profile_id` parameterises the fill engine " +
+      "with spread + commission + slippage. Same strategy under different profiles produces different PnL — that's " +
+      "the academic comparison the final report is built around.",
     inputSchema: {
       type: "object",
       properties: {
@@ -110,6 +113,13 @@ export const WRITE_TOOL_DEFS = [
           type: "number",
           minimum: 1,
           description: "Override the strategy's default sizing (optional).",
+        },
+        broker_profile_id: {
+          type: "string",
+          enum: ["pure", "alpaca-paper", "alpaca-live", "ibkr-paper", "pepperstone-cfd-dow"],
+          default: "pure",
+          description:
+            "Apply this broker's spread + commission + slippage during fill simulation. 'pure' = frictionless reference. Run the same strategy under multiple profiles to isolate raw edge vs friction-dependent edge.",
         },
       },
       required: ["logic_name", "ticker", "start_date", "end_date", "timeframe"],
@@ -434,6 +444,9 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         const version = typeof args.version === "number" ? args.version : undefined;
         const notional =
           typeof args.notional_per_trade === "number" ? args.notional_per_trade : undefined;
+        // Sprint 077B.1
+        const brokerProfileId =
+          typeof args.broker_profile_id === "string" ? args.broker_profile_id : "pure";
 
         if (!logicName || !ticker || !startDate || !endDate || !timeframe) {
           return toolError(
@@ -458,6 +471,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           timeframe: timeframe as "5m" | "15m" | "1h" | "1d",
           userId,
           notionalPerTrade: notional,
+          brokerProfileId,
         });
         return textContent(result);
       }

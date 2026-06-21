@@ -15,7 +15,12 @@ import { loadTicketLogic } from "@/lib/strategies/loader";
 import { getServiceClient } from "@/lib/supabase-server";
 import { type BacktestTimeframe } from "./fetch-bars";
 import { fetchHistoricalBarsCached } from "./fetch-bars-cached";
-import { simulateExit } from "./simulate-exit";
+import { simulateExit, type ExitReason } from "./simulate-exit";
+import {
+  applyFillFriction,
+  getBrokerProfile,
+  type AssetClass,
+} from "@/lib/brokers/profiles";
 
 const BARS_AROUND_ENTRY = 50;
 
@@ -32,6 +37,9 @@ export interface BacktestInput {
   userId?: string;
   /** Override the strategy's default sizing value */
   notionalPerTrade?: number;
+  /** Sprint 077B.1: BrokerProfile id to apply during fill simulation.
+   *  Default 'pure' (frictionless) so previous behaviour is preserved. */
+  brokerProfileId?: string;
 }
 
 export interface BacktestSummary {
@@ -45,6 +53,21 @@ export interface BacktestSummary {
   total_pnl_dollars: number;
   avg_pnl_dollars: number | null;
   max_drawdown_dollars: number;
+  /** Sprint 077B.1 */
+  broker_profile_id: string;
+  total_friction_dollars: number;
+}
+
+function inferAsset(ticker: string): AssetClass {
+  if (ticker.includes("/")) return "crypto";
+  if (ticker.startsWith("^")) return "index";
+  return "equity";
+}
+
+/** Bracket TP fills at the limit price (no adverse spread). Stop SL +
+ *  EOD + time_stop are market exits and pay adverse spread + slippage. */
+function exitIsMarket(reason: ExitReason): boolean {
+  return reason === "sl_hit" || reason === "eod" || reason === "time_stop" || reason === "open_at_end";
 }
 
 export async function backtestTicketLogic(
@@ -72,6 +95,10 @@ export async function backtestTicketLogic(
   const notional =
     input.notionalPerTrade ?? logic.body.entry.sizing.value;
 
+  // Sprint 077B.1: load the profile up-front; throws if invalid id.
+  const profile = getBrokerProfile(input.brokerProfileId ?? "pure");
+  const asset = inferAsset(input.ticker);
+
   const sb = getServiceClient();
 
   const { data: btRow, error: btErr } = await sb
@@ -85,6 +112,7 @@ export async function backtestTicketLogic(
       end_date: input.end_date,
       notional_per_trade: notional,
       total_bars: bars.length,
+      broker_profile_id: profile.id,
     })
     .select("id")
     .single();
@@ -118,6 +146,7 @@ export async function backtestTicketLogic(
   let winning = 0;
   let losing = 0;
   let totalPnl = 0;
+  let totalFriction = 0;
 
   for (const entry of entries) {
     const exit = simulateExit({
@@ -133,14 +162,47 @@ export async function backtestTicketLogic(
     const qty = round5(notional / entry.entry_price);
     if (qty <= 0) continue;
 
+    // Sprint 077B.1: apply BrokerProfile friction. Entry is a market BUY
+    // (adverse spread + slippage). Exit depends on the exit reason:
+    //   - tp_hit → limit fill at TP, no adverse spread, commission charged
+    //   - sl_hit / eod / time_stop / open_at_end → market exit, full friction
+    // For shorts the direction sign flips but the rules are the same in
+    // structure; this engine is long-only today (per Sprint 051 deferral)
+    // so the friction-side branch is straight.
+    const entryFill = applyFillFriction(profile, {
+      action: "BUY",
+      referencePrice: entry.entry_price,
+      qty,
+      asset,
+    });
+    const exitFill = applyFillFriction(profile, {
+      action: "SELL",
+      referencePrice: exit.exitPrice,
+      qty,
+      asset,
+    });
+    const adjEntryPrice = round4(entryFill.fillPrice);
+    const adjExitPrice = round4(
+      exitIsMarket(exit.exitReason) ? exitFill.fillPrice : exit.exitPrice,
+    );
+    const tradeFriction = round2(
+      entryFill.commission +
+        exitFill.commission +
+        (entryFill.fillPrice - entry.entry_price) * qty +
+        (exitIsMarket(exit.exitReason)
+          ? (exit.exitPrice - exitFill.fillPrice) * qty
+          : 0),
+    );
+
     const pnlPerShare =
       entry.direction === "long"
-        ? exit.exitPrice - entry.entry_price
-        : entry.entry_price - exit.exitPrice;
-    const pnlDollars = round2(pnlPerShare * qty);
-    const pnlPct = round4(pnlPerShare / entry.entry_price);
+        ? adjExitPrice - adjEntryPrice
+        : adjEntryPrice - adjExitPrice;
+    const pnlDollars = round2(pnlPerShare * qty - entryFill.commission - exitFill.commission);
+    const pnlPct = round4(pnlPerShare / adjEntryPrice);
 
     totalPnl += pnlDollars;
+    totalFriction += tradeFriction;
     cumulativePnl += pnlDollars;
     peakPnl = Math.max(peakPnl, cumulativePnl);
     maxDrawdown = Math.max(maxDrawdown, peakPnl - cumulativePnl);
@@ -156,12 +218,14 @@ export async function backtestTicketLogic(
       backtest_id: backtestId,
       entry_bar_index: entry.bar_index,
       entry_ts: entry.bar_timestamp ?? "",
-      entry_price: entry.entry_price,
+      // Persist friction-adjusted fill prices so downstream readers see the
+      // numbers the user actually would have paid under this profile.
+      entry_price: adjEntryPrice,
       take_profit_price: entry.take_profit,
       stop_loss_price: entry.stop_loss,
       exit_bar_index: exit.exitBarIndex,
       exit_ts: exit.exitTimestamp,
-      exit_price: exit.exitPrice,
+      exit_price: adjExitPrice,
       exit_reason: exit.exitReason,
       pnl_dollars: pnlDollars,
       pnl_pct: pnlPct,
@@ -198,6 +262,7 @@ export async function backtestTicketLogic(
         total_pnl_dollars: round2(totalPnl),
         avg_pnl_dollars: avgPnl,
         max_drawdown_dollars: round2(maxDrawdown),
+        total_friction_dollars: round2(totalFriction),
       })
       .eq("id", backtestId);
     if (upErr) {
@@ -219,6 +284,8 @@ export async function backtestTicketLogic(
     total_pnl_dollars: round2(totalPnl),
     avg_pnl_dollars: avgPnl,
     max_drawdown_dollars: round2(maxDrawdown),
+    broker_profile_id: profile.id,
+    total_friction_dollars: round2(totalFriction),
   };
 }
 
