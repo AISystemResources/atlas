@@ -142,11 +142,15 @@ async function runUserScalper(
   // (one strategy per ticker, per the post-pivot framing). If a row has no
   // strategy_id, the scalper skips that ticker — the user hasn't picked
   // what to run for it yet.
+  // Sprint 077A.5: this scalper handles only execution_mode='alpaca' rows.
+  // Sim-mode rows go through lib/scheduler/sim-scalper.ts which uses
+  // Yahoo bars + the in-process AtlasSimAdapter and never touches Alpaca.
   const { data: wlRows } = await sb
     .from("watchlist")
     .select("ticker, scalper_enabled, strategy_id")
     .eq("user_id", userId)
-    .eq("scalper_enabled", true);
+    .eq("scalper_enabled", true)
+    .eq("execution_mode", "alpaca");
   const wlRowsTyped = (wlRows ?? []) as Array<{
     ticker: string;
     strategy_id: string | null;
