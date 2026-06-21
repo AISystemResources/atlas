@@ -23,6 +23,7 @@ interface TradeLite {
   status: string;
   executed_at: string | null;
   realized_pnl: number | null;
+  venue?: "alpaca" | "sim";
 }
 
 interface InsightLite {
@@ -303,6 +304,22 @@ function PositionsTabContent({
                 >
                   {pos.ticker}
                 </span>
+                {pos.venue === "sim" && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontFamily: "var(--font-jb)",
+                      letterSpacing: "0.06em",
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: "var(--elevated)",
+                      color: "var(--brand)",
+                      textTransform: "uppercase" as const,
+                    }}
+                  >
+                    SIM
+                  </span>
+                )}
                 {isLive && (
                   <span
                     aria-hidden
@@ -693,10 +710,27 @@ function TradesTabContent({ trades }: { trades: TradeLite[] }) {
             }}
           >
             <span
-              className="col-span-2 font-display font-bold"
+              className="col-span-2 font-display font-bold flex items-center gap-1.5"
               style={{ fontSize: 13, color: "var(--ink)" }}
             >
               {t.ticker}
+              {t.venue === "sim" && (
+                <span
+                  style={{
+                    fontSize: 8,
+                    fontFamily: "var(--font-jb)",
+                    letterSpacing: "0.06em",
+                    padding: "1px 4px",
+                    borderRadius: 3,
+                    background: "var(--elevated)",
+                    color: "var(--brand)",
+                    textTransform: "uppercase" as const,
+                    fontWeight: 600,
+                  }}
+                >
+                  SIM
+                </span>
+              )}
             </span>
             <span
               className="col-span-1"

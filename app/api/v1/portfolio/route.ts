@@ -6,6 +6,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/lib/auth/context";
+import { loadSimPortfolio } from "@/lib/portfolio/sim-portfolio";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY =
@@ -29,6 +30,12 @@ export async function GET(req: Request): Promise<Response> {
 
   const sb = getServiceClient();
 
+  // Sprint 077A.6: sim portfolio is fetched in parallel with Alpaca and
+  // merged into the response so users without a broker connection still
+  // see their paper-trading state. Cash + positions + total value all
+  // aggregate across the two venues.
+  const simPromise = loadSimPortfolio(user.userId);
+
   // Fetch broker credentials from Supabase
   const connResult = await sb
     .from("broker_connections")
@@ -42,13 +49,25 @@ export async function GET(req: Request): Promise<Response> {
     console.error("[portfolio] broker_connections query error:", connResult.error.message);
   }
   if (!connResult.data) {
-    console.warn("[portfolio] no active broker connection for user:", user.userId);
+    // No Alpaca: return sim-only portfolio.
+    const sim = await simPromise;
+    if (!sim.has_simulator) {
+      return Response.json({
+        total_value: 0,
+        cash: 0,
+        pnl_today: 0,
+        pnl_total: 0,
+        positions: [],
+      });
+    }
+    const pnlTotal = sim.equity - sim.starting_cash;
+    const pnlOpen = sim.positions.reduce((s, p) => s + p.pnl, 0);
     return Response.json({
-      total_value: 0,
-      cash: 0,
-      pnl_today: 0,
-      pnl_total: 0,
-      positions: [],
+      total_value: sim.equity,
+      cash: sim.cash,
+      pnl_today: pnlOpen,
+      pnl_total: pnlTotal,
+      positions: sim.positions,
     });
   }
 
@@ -102,7 +121,7 @@ export async function GET(req: Request): Promise<Response> {
       // Graceful degradation — positions still return without override metadata
     }
 
-    const positions = (rawPositions as Record<string, unknown>[]).map((p) => {
+    const alpacaPositions = (rawPositions as Record<string, unknown>[]).map((p) => {
       const ticker = p["symbol"] as string;
       const meta = tradeByTicker[ticker] ?? {};
       return {
@@ -114,18 +133,24 @@ export async function GET(req: Request): Promise<Response> {
         trade_id: (meta["id"] as string | undefined) ?? null,
         executed_at: (meta["executed_at"] as string | undefined) ?? null,
         boundary_mode: (meta["boundary_mode"] as string | undefined) ?? null,
+        venue: "alpaca" as const,
       };
     });
 
-    const totalUnrealizedPl = positions.reduce((sum, p) => sum + p.pnl, 0);
-    const equity = Number(account["equity"]);
-    const pnlTotal = equity - BASE_CAPITAL;
+    // Sprint 077A.6: merge sim portfolio in.
+    const sim = await simPromise;
+    const positions = [...alpacaPositions, ...sim.positions];
+    const alpacaUnrealizedPl = alpacaPositions.reduce((sum, p) => sum + p.pnl, 0);
+    const simUnrealizedPl = sim.positions.reduce((sum, p) => sum + p.pnl, 0);
+    const alpacaEquity = Number(account["equity"]);
+    const alpacaPnlTotal = alpacaEquity - BASE_CAPITAL;
+    const simPnlTotal = sim.has_simulator ? sim.equity - sim.starting_cash : 0;
 
     return Response.json({
-      total_value: Number(account["portfolio_value"]),
-      cash: Number(account["cash"]),
-      pnl_today: totalUnrealizedPl,
-      pnl_total: pnlTotal,
+      total_value: Number(account["portfolio_value"]) + (sim.has_simulator ? sim.equity : 0),
+      cash: Number(account["cash"]) + (sim.has_simulator ? sim.cash : 0),
+      pnl_today: alpacaUnrealizedPl + simUnrealizedPl,
+      pnl_total: alpacaPnlTotal + simPnlTotal,
       positions,
     });
   } catch (err) {
