@@ -154,6 +154,7 @@ export class AtlasSimAdapter implements BrokerAdapter {
           qty,
           entry_price: fillPrice,
           status: "open",
+          broker_profile_id: this.profile.id,
         })
         .select("id")
         .single();
@@ -356,6 +357,7 @@ export class AtlasSimAdapter implements BrokerAdapter {
         take_profit_price: input.take_profit_price,
         stop_loss_price: input.stop_loss_price,
         status: "open",
+        broker_profile_id: this.profile.id,
       })
       .select("id")
       .single();
@@ -478,11 +480,14 @@ export class AtlasSimAdapter implements BrokerAdapter {
    * have); a future BrokerProfile can flip this to pessimistic SL-first.
    */
   async tickBrackets(barsByTicker: Map<string, BarLike>): Promise<TickBracketsResult> {
+    // Sprint 077B.2: each adapter handles only positions opened under
+    // its own profile so closes apply the same physics as opens.
     const { data: openRows } = await this.sb
       .from("simulated_positions")
       .select("id, ticker, qty, entry_price, take_profit_price, stop_loss_price")
       .eq("user_id", this.userId)
-      .eq("status", "open");
+      .eq("status", "open")
+      .eq("broker_profile_id", this.profile.id);
 
     const result: TickBracketsResult = { filled: 0, details: [] };
     const rows = (openRows ?? []) as SimPositionRow[];

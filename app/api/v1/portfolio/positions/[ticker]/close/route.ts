@@ -34,17 +34,24 @@ export async function POST(
   // ticker in sim, close it there — sim closes are broker-independent.
   const { data: simOpen } = await sb
     .from("simulated_positions")
-    .select("id, qty, entry_price")
+    .select("id, qty, entry_price, broker_profile_id")
     .eq("user_id", user.userId)
     .eq("ticker", ticker)
     .eq("status", "open")
     .order("opened_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  const simRow = simOpen as { id: string; qty: number; entry_price: number } | null;
+  const simRow = simOpen as {
+    id: string;
+    qty: number;
+    entry_price: number;
+    broker_profile_id: string | null;
+  } | null;
 
   if (simRow) {
-    const sim = new AtlasSimAdapter(user.userId);
+    // Sprint 077B.2: close under the same profile the position was
+    // opened with — keeps the round-trip physics consistent.
+    const sim = new AtlasSimAdapter(user.userId, simRow.broker_profile_id ?? "pure");
     const prices = await fetchLatestPrices([ticker]);
     const lastPrice = prices.get(ticker) ?? Number(simRow.entry_price);
     const notional = Number(simRow.qty) * lastPrice;

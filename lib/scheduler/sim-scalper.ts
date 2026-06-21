@@ -42,6 +42,7 @@ function isWeekday(): boolean {
 interface WatchlistSimRow {
   ticker: string;
   strategy_id: string | null;
+  broker_profile_id: string | null;
 }
 
 async function runUserSimScalper(
@@ -70,7 +71,7 @@ async function runUserSimScalper(
   // Sim rows only — Alpaca rows are handled by the original scalper.
   const { data: wlRows } = await sb
     .from("watchlist")
-    .select("ticker, strategy_id")
+    .select("ticker, strategy_id, broker_profile_id")
     .eq("user_id", userId)
     .eq("scalper_enabled", true)
     .eq("execution_mode", "sim");
@@ -78,8 +79,10 @@ async function runUserSimScalper(
   const rows = (wlRows ?? []) as WatchlistSimRow[];
   const allCandidates = rows.map((r) => r.ticker);
   const strategyIdByTicker = new Map<string, string>();
+  const profileByTicker = new Map<string, string>();
   for (const row of rows) {
     if (row.strategy_id) strategyIdByTicker.set(row.ticker, row.strategy_id);
+    profileByTicker.set(row.ticker, row.broker_profile_id ?? "pure");
   }
 
   if (allCandidates.length === 0) return result;
@@ -130,7 +133,25 @@ async function runUserSimScalper(
     ),
   );
 
-  const adapter = new AtlasSimAdapter(userId);
+  // Sprint 077B.2: one adapter per profile. Each adapter handles only
+  // positions opened under its own profile so closes apply the same
+  // physics as opens. The set of profiles in play comes from the
+  // watchlist rows.
+  const adapterByProfile = new Map<string, AtlasSimAdapter>();
+  function getAdapter(profileId: string): AtlasSimAdapter {
+    let a = adapterByProfile.get(profileId);
+    if (!a) {
+      a = new AtlasSimAdapter(userId, profileId);
+      adapterByProfile.set(profileId, a);
+    }
+    return a;
+  }
+  // Always have a 'pure' adapter for legacy positions that pre-date 077B.2.
+  getAdapter("pure");
+  // Prewarm one adapter per watchlist profile.
+  for (const profileId of new Set(profileByTicker.values())) {
+    getAdapter(profileId);
+  }
 
   // First pass: close anything whose latest bar crossed TP / SL.
   const latestByTicker = new Map<string, BarLike>();
@@ -143,23 +164,28 @@ async function runUserSimScalper(
   }
 
   if (latestByTicker.size > 0 && autonomy.ai_intervenes_close) {
-    try {
-      const exits = await adapter.tickBrackets(latestByTicker);
-      result.exits += exits.filled;
-      for (const d of exits.details) {
-        console.info(
-          `[sim-scalper] ${d.reason.toUpperCase()} ${d.ticker} qty=${d.qty} price=${d.price.toFixed(4)}`,
-        );
+    for (const a of adapterByProfile.values()) {
+      try {
+        const exits = await a.tickBrackets(latestByTicker);
+        result.exits += exits.filled;
+        for (const d of exits.details) {
+          console.info(
+            `[sim-scalper] ${d.reason.toUpperCase()} ${d.ticker} qty=${d.qty} price=${d.price.toFixed(4)}`,
+          );
+        }
+      } catch (err) {
+        result.errors.push(`tickBrackets: ${err instanceof Error ? err.message : String(err)}`);
       }
-    } catch (err) {
-      result.errors.push(`tickBrackets: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   // What's open after the bracket sweep — we don't open a fresh position
-  // if one is already in flight.
-  const openPositions = await adapter.getPositions();
-  const openTickers = new Set(openPositions.map((p) => p.ticker));
+  // if one is already in flight on the same ticker, regardless of profile.
+  const openTickers = new Set<string>();
+  for (const a of adapterByProfile.values()) {
+    const pos = await a.getPositions();
+    for (const p of pos) openTickers.add(p.ticker);
+  }
 
   // Second pass: evaluate entries on tickers without an open position.
   for (const br of barResults) {
@@ -223,7 +249,8 @@ async function runUserSimScalper(
     }
 
     try {
-      await adapter.submitBracketOrder({
+      const profileForTicker = profileByTicker.get(ticker) ?? "pure";
+      await getAdapter(profileForTicker).submitBracketOrder({
         ticker,
         qty,
         take_profit_price: signal.take_profit,
