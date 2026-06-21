@@ -576,7 +576,35 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           }),
         });
         const saved = await saveBacktestInsight(bt.id as string, result);
-        return textContent({ id: saved.id, insight: result.insight, model: result.model });
+
+        // Sprint 053.2: A/B forward-test. Non-fatal on failure.
+        let abComparison: unknown = null;
+        if (result.insight.proposed_changes.length > 0) {
+          try {
+            const { runAbForwardTest, persistAbComparison } = await import(
+              "@/lib/strategies/ab-harness"
+            );
+            abComparison = await runAbForwardTest({
+              original_backtest_id: bt.id as string,
+              proposed_changes: result.insight.proposed_changes.map((c) => ({
+                name: c.name,
+                proposed_value: c.proposed_value,
+              })),
+            });
+            await persistAbComparison(
+              saved.id,
+              abComparison as Awaited<ReturnType<typeof runAbForwardTest>>,
+            );
+          } catch (abErr) {
+            console.error("[run_distillation] ab-harness failed (non-fatal):", abErr);
+          }
+        }
+        return textContent({
+          id: saved.id,
+          insight: result.insight,
+          model: result.model,
+          ab_comparison: abComparison,
+        });
       }
 
       case "promote_ticket_logic_version": {

@@ -5,7 +5,8 @@
  *   1. backtestTicketLogic on ^DJI 5m 58d
  *   2. reviewTrade on the first trade (if any)
  *   3. reviewBacktest aggregate
- *   4. (if recommendation = promote) applyParameterChanges + insert v2
+ *   4. (Sprint 053.2) A/B forward-test on out-of-sample window
+ *   5. (if recommendation = promote) applyParameterChanges + insert v2
  *
  * Run with:
  *   npx tsx scripts/smoke-test-053.ts
@@ -20,6 +21,7 @@ import { loadTicketLogic } from "@/lib/strategies/loader";
 import { applyParameterChanges } from "@/lib/strategies/tunable-params";
 import { ticketLogicBodySchema } from "@/lib/strategies/schema";
 import { getServiceClient } from "@/lib/supabase-server";
+import { runAbForwardTest, persistAbComparison } from "@/lib/strategies/ab-harness";
 
 const EDMUND_USER_ID = "user_3B4k96FjK9wZUDi8Xs0AzeNLnvy";
 const TICKER = "^DJI";
@@ -211,12 +213,63 @@ async function main() {
     console.log(`       · ${c.name}: ${c.current_value} → ${c.proposed_value}`);
   }
 
+  // ── Sprint 053.2: A/B forward-test ──────────────────────────────────────
+  if (insightResult.insight.proposed_changes.length > 0) {
+    console.log(`\n[4/5] Running A/B forward-test on out-of-sample window`);
+    try {
+      const ab = await runAbForwardTest({
+        original_backtest_id: summary.backtest_id,
+        proposed_changes: insightResult.insight.proposed_changes.map((c) => ({
+          name: c.name,
+          proposed_value: c.proposed_value,
+        })),
+      });
+      if (ab.status === "ok") {
+        console.log(
+          `  ✓ forward [${ab.forward_window.start_date} → ${ab.forward_window.end_date}]`,
+        );
+        console.log(
+          `     control:   trades=${ab.control.total_trades} pnl=$${ab.control.total_pnl_dollars.toFixed(2)} dd=$${ab.control.max_drawdown_dollars.toFixed(2)}`,
+        );
+        console.log(
+          `     treatment: trades=${ab.treatment.total_trades} pnl=$${ab.treatment.total_pnl_dollars.toFixed(2)} dd=$${ab.treatment.max_drawdown_dollars.toFixed(2)}`,
+        );
+        console.log(
+          `     delta pnl: $${ab.delta.total_pnl_dollars.toFixed(2)}  win_rate_delta: ${ab.delta.win_rate ?? "—"}`,
+        );
+      } else if (ab.status === "insufficient_forward_data") {
+        console.log(`  ⚠ insufficient forward data: ${ab.reason}`);
+        console.log(`     window: ${ab.forward_window.start_date}..${ab.forward_window.end_date}, bars=${ab.bars_returned}`);
+      } else {
+        console.log(`  ⚠ no_changes: A/B skipped`);
+      }
+      // Persist whatever we got (including insufficient_forward_data) so the
+      // audit JSONB records the attempt.
+      const sb2 = getServiceClient();
+      const { data: insightRow } = await sb2
+        .from("ticket_backtest_insights")
+        .select("id")
+        .eq("backtest_id", summary.backtest_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (insightRow) {
+        await persistAbComparison((insightRow as { id: string }).id, ab);
+      }
+    } catch (err) {
+      console.error("  ✗ A/B harness failed:", err instanceof Error ? err.message : String(err));
+      // Non-fatal — continue.
+    }
+  } else {
+    console.log(`\n[4/5] Skipped A/B forward-test — no proposed changes`);
+  }
+
   // ── Promote (if recommended) ────────────────────────────────────────────
   if (
     insightResult.insight.recommendation === "promote" &&
     insightResult.insight.proposed_changes.length > 0
   ) {
-    console.log(`\n[4/4] Promoting to v(N+1) — applying changes locally`);
+    console.log(`\n[5/5] Promoting to v(N+1) — applying changes locally`);
     try {
       const newBody = applyParameterChanges(
         logic.body as unknown as Record<string, unknown>,
@@ -239,7 +292,7 @@ async function main() {
     }
   } else {
     console.log(
-      `\n[4/4] Skipped promote step — recommendation was "${insightResult.insight.recommendation}"`,
+      `\n[5/5] Skipped promote step — recommendation was "${insightResult.insight.recommendation}"`,
     );
   }
 
