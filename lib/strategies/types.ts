@@ -79,6 +79,13 @@ export interface TunableParameter {
   /** Optional soft bounds. The reviewer should respect these. */
   min?: number;
   max?: number;
+  /**
+   * Sprint 053.1: per-promote ratchet. Max fractional move from the current
+   * value in one distillation step (e.g. 0.25 = ±25%). Omit to use the global
+   * default of 0.25. Bigger steps the LLM proposes are clamped, not rejected —
+   * the original proposal is preserved on the JSONB for audit.
+   */
+  max_step_pct?: number;
 }
 
 // ── Session window + weekday filter — Sprint 069 ─────────────────────────────

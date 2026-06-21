@@ -142,6 +142,8 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
         "Absolute points added to signal_bar.high for the entry trigger. Sandy's Dow convention is 3.",
       min: 1,
       max: 100,
+      // Sprint 053.1: structural — small buffer is identity of the strategy.
+      max_step_pct: 0.2,
     },
     {
       name: "stop_buffer_points",
@@ -150,6 +152,8 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
         "Absolute points subtracted from signal_bar.low for the stop loss. Default 3.",
       min: 1,
       max: 100,
+      // Sprint 053.1: stop buffer changes risk profile — conservative cap.
+      max_step_pct: 0.2,
     },
     {
       name: "notional_per_trade",
@@ -157,6 +161,8 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
       description: "Position size in dollars per trade. Default 200.",
       min: 50,
       max: 10_000,
+      // Sprint 053.1: sizing is allowed to move more aggressively.
+      max_step_pct: 0.5,
     },
   ],
   // Sprint 069: Sandy's S1 was authored as a US-equity-morning strategy.

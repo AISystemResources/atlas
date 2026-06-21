@@ -67,6 +67,8 @@ const tunableParameterSchema = z.object({
   description: z.string().min(1),
   min: z.number().optional(),
   max: z.number().optional(),
+  // Sprint 053.1: per-promote ratchet. Fractional cap (0 < x ≤ 1).
+  max_step_pct: z.number().positive().max(1).optional(),
 });
 
 // Sprint 069: session_window + valid_weekdays
