@@ -6,7 +6,7 @@
 
 ## What this is
 
-AI trading assistant on the Vercel + Inngest + Supabase + MongoDB stack with a LangGraph.js multi-agent pipeline. Capstone project (BAC3004, SIT, due 2026-07-19) **and** real B2C product. Cash equities live via Alpaca paper; futures (MYM/Dow) deliberately simulator-only per the academic-honesty story. Full product context: see `projects/ATLAS/CONTEXT.md` in EMDEE.
+AI trading assistant on the Vercel + Inngest + Supabase stack. Per-strategy distillation pipeline (Sandy-style ticket logic + ratchet-clamped LLM proposals + forward A/B tests) drives the autonomous scalper. Capstone project (BAC3004, SIT, due 2026-07-19) **and** real B2C product. Cash equities live via Alpaca paper; futures (MYM/Dow) deliberately simulator-only per the academic-honesty story. Full product context: see `projects/ATLAS/CONTEXT.md` in EMDEE.
 
 ## Stack
 
@@ -15,10 +15,9 @@ AI trading assistant on the Vercel + Inngest + Supabase + MongoDB stack with a L
 | Framework | Next.js 16.1 (App Router) + React 19 + TypeScript 5 |
 | Styling | Tailwind v4 |
 | Auth | Clerk v7 (middleware lives in `proxy.ts`, not `middleware.ts`) |
-| Postgres | Supabase (RLS-on; service-role bypasses for server-only code) |
-| Document store | MongoDB v7 (collection `reasoning_traces`) |
-| Workflows / cron | Inngest 4.2 (`/api/inngest` serve handler, `serveOrigin` pinned) |
-| Agent graph | LangGraph 1.2 with Google Gemini primary, Groq / Ollama / OpenAI as alternates |
+| Postgres | Supabase (RLS-on; service-role bypasses for server-only code; archived MongoDB collections live in `archived_*` tables) |
+| Workflows / cron | Inngest 4.2 (`/api/inngest` serve handler, `serveOrigin` pinned) — `intradayCron` (scalper) + `orderReconcilerCron` only |
+| LLM | Groq (Llama 3.3 70B for distillation) + Gemini fallback via `lib/agents/llm.ts`. No multi-agent LangGraph pipeline — retired Sprint 078B. |
 | Broker | Alpaca paper (`lib/broker/alpaca.ts`); per-user creds in `broker_connections`, not env |
 | Billing | Stripe |
 | Tests | Jest 30 + ts-jest + testing-library, jsdom env |
@@ -52,7 +51,7 @@ The `.claude/worktrees/` path contains stale agent-session checkouts that pollut
    - There is no long-lived agent-shared branch. Each autonomous run gets its own short-lived `feat/*` branch and is deleted after merge.
 
 2. **Never commit secrets.** `.env.local` is gitignored. Real secrets named in `.env.example` — none of these may appear in tracked files:
-   `SUPABASE_SERVICE_ROLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `MONGODB_URI`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+   `SUPABASE_SERVICE_ROLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
    Per-user Alpaca credentials live in `broker_connections` (Supabase), never env.
 
 3. **Migration discipline.** All schema changes go through `supabase/migrations/`. Use `mcp__supabase__apply_migration` (server-side) which writes the migration file *and* applies it. One-off SQL via dashboard is forbidden — captures must be retroactive migration files. Never edit a migration that has already been applied to Production; write a new one.
