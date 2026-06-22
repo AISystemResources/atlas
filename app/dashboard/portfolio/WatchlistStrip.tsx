@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 
 interface Quote {
@@ -31,7 +30,6 @@ interface WatchlistRow {
  * On mobile, collapses to a horizontal scroll.
  */
 export function WatchlistStrip() {
-  const router = useRouter();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -118,10 +116,7 @@ export function WatchlistStrip() {
           <QuoteCard
             key={q.symbol}
             quote={q}
-            onClick={() => {
-              if (q.symbol.startsWith("^")) return;
-              router.push(`/dashboard/stock/${q.symbol}`);
-            }}
+            onClick={() => { /* stock detail page removed in 078B */ }}
           />
         ))}
       </div>

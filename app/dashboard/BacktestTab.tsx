@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { PROVIDER_DEFAULTS } from "@/lib/agents/llm";
 import type { LLMProvider } from "@/lib/agents/llm";
-import { TournamentModal } from "./TournamentModal";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -243,7 +242,6 @@ export function BacktestTab({ role }: { role?: string }) {
   const [selected, setSelected] = useState<BacktestJob | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [cancellingStale, setCancellingStale] = useState(false);
-  const [showTournament, setShowTournament] = useState(false);
 
   async function loadJobs() {
     const res = await fetchWithAuth(`${API}/v1/backtest`);
@@ -368,19 +366,6 @@ export function BacktestTab({ role }: { role?: string }) {
                 {cancellingStale ? "Cancelling…" : `Cancel ${staleCount} stale`}
               </button>
             )}
-            <button
-              onClick={() => setShowTournament(true)}
-              style={{
-                background: "none",
-                color: "var(--brand)",
-                fontFamily: "var(--font-nunito)", fontWeight: 600, fontSize: 12,
-                padding: "7px 12px", borderRadius: 6,
-                border: "1px solid var(--brand)50",
-                cursor: "pointer",
-              }}
-            >
-              Tournament
-            </button>
             <button
               onClick={() => setView("new")}
               style={{
@@ -548,7 +533,6 @@ export function BacktestTab({ role }: { role?: string }) {
           );
         })}
       </div>
-      {showTournament && <TournamentModal onClose={() => setShowTournament(false)} />}
     </>
   );
 }

@@ -15,13 +15,10 @@ const NAV_ITEMS = [
   { path: "/admin",                 label: "Overview",       short: "OV" },
   { path: "/admin/users",           label: "Users",          short: "US" },
   { path: "/admin/invites",         label: "Invites",        short: "IV" },
-  { path: "/admin/system-status",   label: "System Status",  short: "SS" },
   { path: "/admin/roles",           label: "Roles",          short: "RL" },
   // Archived legacy surfaces — superadmin access only
   { path: "/admin/backtesting",     label: "Backtesting 1",  short: "B1" },
   { path: "/dashboard/backtests",   label: "Backtesting 2",  short: "B2" },
-  { path: "/dashboard/agents",      label: "Pipeline Agents", short: "PA" },
-  { path: "/dashboard/insights",    label: "Insights",       short: "IN" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

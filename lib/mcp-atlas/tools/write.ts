@@ -1,7 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 
-import { getNyTradingDayBounds } from "../utils";
-
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
@@ -50,44 +48,6 @@ export const WRITE_TOOL_DEFS = [
         confirmed: { type: "boolean", default: false },
       },
       required: ["entries"],
-    },
-  },
-  {
-    name: "submit_daily_learning",
-    description:
-      "Submit the AI's end-of-day reflection on a trading day. Pair this with get_daily_distillation_context — fetch the day's trades + reasoning, distill what worked/didn't, then submit structured findings here. Upserts by (user_id, trading_date). No confirmation required — this is a reflection record, not a destructive action.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        date: {
-          type: "string",
-          pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-          description: "Trading date YYYY-MM-DD (US/Eastern day) this reflection covers.",
-        },
-        summary: {
-          type: "string",
-          minLength: 20,
-          maxLength: 2000,
-          description:
-            "Free-text reflection on the day. Avoid platitudes — be specific (e.g. 'tech sector underperformed on rate-hike news; sentiment lagged price action by ~15min').",
-        },
-        key_observations: {
-          type: "array",
-          items: { type: "string", minLength: 10, maxLength: 400 },
-          minItems: 1,
-          maxItems: 10,
-          description: "Concrete observations — patterns, anomalies, ticker-specific notes. Each item is one observation.",
-        },
-        recommendations: {
-          type: "array",
-          items: { type: "string", minLength: 10, maxLength: 400 },
-          minItems: 1,
-          maxItems: 10,
-          description:
-            "Concrete actions to take tomorrow. Each item is one specific recommendation (not 'be more cautious').",
-        },
-      },
-      required: ["date", "summary", "key_observations", "recommendations"],
     },
   },
   // ── Ticket Logic write tools (Sprint 066) ────────────────────────────────
@@ -363,75 +323,6 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
 
         if (error) return toolError(error.message);
         return textContent(data ?? []);
-      }
-
-      case "submit_daily_learning": {
-        const date = String(args.date ?? "").trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-          return toolError("date must be ISO YYYY-MM-DD", "invalid_input");
-        }
-        const summary = String(args.summary ?? "").trim();
-        if (summary.length < 20 || summary.length > 2000) {
-          return toolError("summary must be 20–2000 characters", "invalid_input");
-        }
-        const keyObservations = Array.isArray(args.key_observations) ? args.key_observations : [];
-        const recommendations = Array.isArray(args.recommendations) ? args.recommendations : [];
-        if (keyObservations.length === 0) {
-          return toolError("key_observations must contain at least 1 item", "invalid_input");
-        }
-        if (recommendations.length === 0) {
-          return toolError("recommendations must contain at least 1 item", "invalid_input");
-        }
-        const obsClean = keyObservations.map((s) => String(s).trim()).filter((s) => s.length >= 10);
-        const recClean = recommendations.map((s) => String(s).trim()).filter((s) => s.length >= 10);
-        if (obsClean.length === 0 || recClean.length === 0) {
-          return toolError(
-            "each observation/recommendation must be ≥10 characters of actual content",
-            "invalid_input",
-          );
-        }
-
-        const sb = getServiceClient();
-
-        // DST-aware NY trading-day bounds for trade_count/win_count
-        const { dayStart, dayEnd } = getNyTradingDayBounds(date);
-
-        const { data: dayTrades } = await sb
-          .from("trades")
-          .select("realized_pnl, status")
-          .eq("user_id", userId)
-          .gte("executed_at", dayStart)
-          .lt("executed_at", dayEnd);
-
-        const filledTrades = (dayTrades ?? []).filter(
-          (t: { status: string }) => t.status === "filled",
-        );
-        const winCount = filledTrades.filter(
-          (t: { realized_pnl?: number | null }) =>
-            typeof t.realized_pnl === "number" && t.realized_pnl > 0,
-        ).length;
-
-        const { data, error } = await sb
-          .from("daily_learnings")
-          .upsert(
-            {
-              user_id: userId,
-              trading_date: date,
-              trade_count: filledTrades.length,
-              win_count: winCount,
-              learnings_summary: summary,
-              key_observations: obsClean,
-              recommendations: recClean,
-              source: "mcp",
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id,trading_date" },
-          )
-          .select("id, trading_date, trade_count, win_count, source, created_at, updated_at")
-          .single();
-
-        if (error) return toolError(error.message);
-        return textContent(data);
       }
 
       // ── Ticket Logic write tools (Sprint 066) ──────────────────────────

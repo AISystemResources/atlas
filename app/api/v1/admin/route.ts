@@ -7,15 +7,12 @@
  * Port of backend/api/routes/admin.py.
  */
 import { createClient } from "@supabase/supabase-js";
-import { MongoClient } from "mongodb";
 import { getUserFromRequest } from "@/lib/auth/context";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? "";
-const MONGO_URI = process.env.MONGODB_URI;
-const MONGO_DB = process.env.MONGODB_DB_NAME ?? "atlas";
 
 function getServiceClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -35,24 +32,6 @@ async function requireAdmin(req: Request): Promise<{ userId: string } | null> {
   const role = (data as Record<string, unknown> | null)?.["role"] as string | undefined;
   if (!role || !["admin", "superadmin"].includes(role)) return null;
   return user;
-}
-
-async function countSignalsToday(): Promise<number> {
-  if (!MONGO_URI) return 0;
-  const client = new MongoClient(MONGO_URI);
-  try {
-    await client.connect();
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    return await client
-      .db(MONGO_DB)
-      .collection("reasoning_traces")
-      .countDocuments({ created_at: { $gte: today } });
-  } catch {
-    return 0;
-  } finally {
-    await client.close();
-  }
 }
 
 async function getClerkEmails(userIds: string[]): Promise<Record<string, string>> {
@@ -114,9 +93,7 @@ async function getStats(): Promise<Response> {
     executionsToday = (data ?? []).length;
   } catch { /* continue */ }
 
-  const signalsToday = await countSignalsToday();
-
-  return Response.json({ total_users: totalUsers, free_count: freeCount, pro_count: proCount, max_count: maxCount, signals_today: signalsToday, executions_today: executionsToday });
+  return Response.json({ total_users: totalUsers, free_count: freeCount, pro_count: proCount, max_count: maxCount, signals_today: 0, executions_today: executionsToday });
 }
 
 async function getUsers(): Promise<Response> {
