@@ -548,6 +548,7 @@ function PendingProposalCard({
       <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1">
+            <ModelChip model={proposal.model} />
             <Link
               href={`/dashboard/backtests/${proposal.backtest_id}`}
               className="text-xs font-mono underline"
@@ -556,8 +557,7 @@ function PendingProposalCard({
               {proposal.backtest_ticker} {proposal.backtest_timeframe}
             </Link>
             <span className="text-[11px]" style={{ color: "var(--ghost)" }}>
-              · proposed {timeAgo(proposal.created_at)} by{" "}
-              <span className="font-mono">{proposal.model}</span>
+              · {timeAgo(proposal.created_at)}
             </span>
           </div>
           <div className="text-[11px]" style={{ color: "var(--ghost)" }}>
@@ -759,6 +759,43 @@ function AbStatCell({
         Δ {sign}{fmt(delta)}
       </div>
     </div>
+  );
+}
+
+/**
+ * Sprint 079C.1: visual differentiator for the multi-reviewer story.
+ * Strip provider prefix + version tail to a short family label, and
+ * tint by family so the user can scan a list of proposals and see
+ * "Llama said X, Claude said Y" at a glance.
+ */
+function ModelChip({ model }: { model: string }) {
+  const lower = model.toLowerCase();
+  let label = model;
+  let bg = "var(--elevated)";
+  let fg = "var(--ghost)";
+  if (lower.includes("claude")) {
+    const m = lower.match(/claude-(opus|sonnet|haiku)-?[\d.]*/);
+    label = m ? `claude-${m[1]}` : "claude";
+    bg = "var(--brand-bg, var(--elevated))";
+    fg = "var(--brand)";
+  } else if (lower.includes("llama")) {
+    const m = lower.match(/llama-?([\d.]+)/);
+    label = m ? `llama-${m[1]}` : "llama";
+    bg = "var(--hold-bg, var(--elevated))";
+    fg = "var(--hold)";
+  } else if (lower.includes("gemini")) {
+    label = "gemini";
+    bg = "var(--bull-bg, var(--elevated))";
+    fg = "var(--bull)";
+  }
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wide"
+      style={{ background: bg, color: fg }}
+      title={model}
+    >
+      {label}
+    </span>
   );
 }
 

@@ -315,7 +315,12 @@ export async function saveBacktestInsight(
   result: ReviewBacktestResult,
 ): Promise<{ id: string }> {
   const sb = getServiceClient();
-  await sb.from("ticket_backtest_insights").delete().eq("backtest_id", backtestId);
+
+  // Sprint 079C.1: multiple insights per backtest can coexist, keyed by
+  // (backtest_id, model, prompt_version). Same (model, prompt_version)
+  // re-runs UPSERT so we don't get duplicate spam. Different models can
+  // coexist on the same backtest — e.g. Llama auto-review + Claude-via-MCP
+  // submission live side-by-side for direct comparison in the academic story.
 
   // Sprint 053.0 + 053.1: stamp trade-id attributions and ratchet metadata
   // onto each proposed_change so the JSONB is self-contained for audit.
@@ -336,19 +341,27 @@ export async function saveBacktestInsight(
 
   const { data, error } = await sb
     .from("ticket_backtest_insights")
-    .insert({
-      backtest_id: backtestId,
-      model: result.model,
-      prompt_version: result.prompt_version,
-      winning_pattern: result.insight.winning_pattern,
-      losing_pattern: result.insight.losing_pattern,
-      recommendation: result.insight.recommendation,
-      rationale: result.insight.rationale,
-      proposed_changes:
-        proposedChangesWithAttribution.length > 0 ? proposedChangesWithAttribution : null,
-      winning_trade_ids: result.winning_trade_ids.length > 0 ? result.winning_trade_ids : null,
-      losing_trade_ids: result.losing_trade_ids.length > 0 ? result.losing_trade_ids : null,
-    })
+    .upsert(
+      {
+        backtest_id: backtestId,
+        model: result.model,
+        prompt_version: result.prompt_version,
+        winning_pattern: result.insight.winning_pattern,
+        losing_pattern: result.insight.losing_pattern,
+        recommendation: result.insight.recommendation,
+        rationale: result.insight.rationale,
+        proposed_changes:
+          proposedChangesWithAttribution.length > 0 ? proposedChangesWithAttribution : null,
+        winning_trade_ids: result.winning_trade_ids.length > 0 ? result.winning_trade_ids : null,
+        losing_trade_ids: result.losing_trade_ids.length > 0 ? result.losing_trade_ids : null,
+        // Reset promotion state on re-run — promoted version is per-row,
+        // not per-backtest, so a re-distillation can be re-promoted.
+        promoted_to_version_id: null,
+        promoted_at: null,
+        ab_comparison: null,
+      },
+      { onConflict: "backtest_id,model,prompt_version" },
+    )
     .select("id")
     .single();
   if (error || !data) {
