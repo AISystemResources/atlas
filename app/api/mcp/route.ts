@@ -119,6 +119,8 @@ const READ_TOOL_NAMES = new Set([
   "get_ticket_logic",
   "list_ticket_backtests",
   "get_ticket_backtest",
+  // Sprint 079A: distillation workflow
+  "list_pending_proposals",
 ]);
 
 const WRITE_TOOL_NAMES = new Set([
