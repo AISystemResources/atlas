@@ -133,126 +133,6 @@ describe("POST /api/v1/portfolio", () => {
   });
 });
 
-// ─── backtest/route.ts ────────────────────────────────────────────────────────
-
-describe("POST /api/v1/backtest", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: null });
-    const { POST } = await import("@/app/api/v1/backtest/route");
-    const res = await POST(makeReq("POST", {}));
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 422 for validation errors", async () => {
-    auth.mockResolvedValueOnce({ userId: "user_1" });
-    // requireTier queries profiles for tier — return pro so validation runs
-    mockSupabaseFrom.mockReturnValueOnce(
-      mockSupabaseChain({ data: { tier: "pro" }, error: null })
-    );
-    const { POST } = await import("@/app/api/v1/backtest/route");
-    // Missing required fields
-    const res = await POST(makeReq("POST", { tickers: [] }));
-    expect(res.status).toBe(422);
-  });
-});
-
-describe("GET /api/v1/backtest", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: null });
-    const { GET } = await import("@/app/api/v1/backtest/route");
-    const res = await GET(makeReq());
-    expect(res.status).toBe(401);
-  });
-
-  it("returns array of jobs when authenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: "user_1" });
-    const jobRows = [
-      { id: "job_1", user_id: "user_1", status: "completed", created_at: "2026-01-01T00:00:00Z" },
-    ];
-    mockSupabaseFrom.mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      order: jest.fn().mockResolvedValue({ data: jobRows, error: null }),
-    });
-
-    const { GET } = await import("@/app/api/v1/backtest/route");
-    const res = await GET(makeReq());
-    const json = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(Array.isArray(json)).toBe(true);
-  });
-});
-
-// ─── backtest/[job_id]/route.ts ───────────────────────────────────────────────
-
-describe("GET /api/v1/backtest/:job_id", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: null });
-    const { GET } = await import("@/app/api/v1/backtest/[job_id]/route");
-    const res = await GET(makeReq(), makeCtx("job_1"));
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 404 when job not found", async () => {
-    auth.mockResolvedValueOnce({ userId: "user_1" });
-    mockSupabaseFrom.mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
-    });
-
-    const { GET } = await import("@/app/api/v1/backtest/[job_id]/route");
-    const res = await GET(makeReq(), makeCtx("missing_job"));
-    expect(res.status).toBe(404);
-  });
-
-  it("returns 403 when job belongs to different user", async () => {
-    auth.mockResolvedValueOnce({ userId: "user_1" });
-    mockSupabaseFrom.mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      maybeSingle: jest.fn().mockResolvedValue({
-        data: { id: "job_1", user_id: "other_user", status: "completed" },
-        error: null,
-      }),
-    });
-
-    const { GET } = await import("@/app/api/v1/backtest/[job_id]/route");
-    const res = await GET(makeReq(), makeCtx("job_1"));
-    expect(res.status).toBe(403);
-  });
-
-  it("returns job when authenticated and owner", async () => {
-    auth.mockResolvedValueOnce({ userId: "user_1" });
-    const job = { id: "job_1", user_id: "user_1", status: "completed" };
-    mockSupabaseFrom.mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      maybeSingle: jest.fn().mockResolvedValue({ data: job, error: null }),
-    });
-
-    const { GET } = await import("@/app/api/v1/backtest/[job_id]/route");
-    const res = await GET(makeReq(), makeCtx("job_1"));
-    const json = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(json).toMatchObject({ id: "job_1", status: "completed" });
-  });
-});
-
 // ─── user/settings/route.ts ───────────────────────────────────────────────────
 
 describe("GET /api/v1/user/settings", () => {
@@ -274,7 +154,6 @@ describe("GET /api/v1/user/settings", () => {
       boundary_mode: "advisory",
       display_name: "Alice",
       email: "alice@test.com",
-      investment_philosophy: "balanced",
       onboarding_completed: true,
       role: "user",
       tier: "free",
@@ -293,7 +172,6 @@ describe("GET /api/v1/user/settings", () => {
     expect(json).toMatchObject({
       id: "user_1",
       boundary_mode: "advisory",
-      investment_philosophy: "balanced",
     });
   });
 });

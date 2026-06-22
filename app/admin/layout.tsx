@@ -7,10 +7,10 @@ import { AccountDropdown } from "@/components/AccountDropdown";
 import { AdminContext } from "./admin-context";
 
 // Sprint 074: legacy user-facing surfaces moved to the admin sidebar so
-// the user view stays clean. "Backtesting 1" is the philosophy/threshold
-// experiments page (the older multi-agent backtest UI). "Backtesting 2" is
-// the Ticket Logic backtest list — still hosted under /dashboard/backtests
-// to avoid breaking deep links, but only entered from here now.
+// the user view stays clean. "Backtesting 1" is the older multi-agent
+// backtest UI. "Backtesting 2" is the Ticket Logic backtest list — still
+// hosted under /dashboard/backtests to avoid breaking deep links, but only
+// entered from here now.
 const NAV_ITEMS = [
   { path: "/admin",                 label: "Overview",       short: "OV" },
   { path: "/admin/users",           label: "Users",          short: "US" },

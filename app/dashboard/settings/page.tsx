@@ -12,7 +12,7 @@ export default async function SettingsPage() {
   const sb = getServiceClient();
   const { data: profile } = await sb
     .from("profiles")
-    .select("tier, investment_philosophy")
+    .select("tier")
     .eq("id", userId)
     .maybeSingle();
 
@@ -20,16 +20,12 @@ export default async function SettingsPage() {
   const VALID_TIERS = ["free", "pro", "max"] as const;
   const rawTier = String(p?.["tier"] ?? "free");
   const tier = (VALID_TIERS.includes(rawTier as typeof VALID_TIERS[number]) ? rawTier : "free") as "free" | "pro" | "max";
-  const philosophy = String(p?.["investment_philosophy"] ?? "balanced") as Parameters<typeof SettingsTab>[0]["initialPhilosophy"];
 
   return (
     <div>
       <AutonomySection />
       <ExecutionModeSection />
-      <SettingsTab
-        tier={tier}
-        initialPhilosophy={philosophy}
-      />
+      <SettingsTab tier={tier} />
     </div>
   );
 }

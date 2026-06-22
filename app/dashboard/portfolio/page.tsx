@@ -10,7 +10,7 @@ export default async function PortfolioPage() {
   const sb = getServiceClient();
   const { data: profile } = await sb
     .from("profiles")
-    .select("tier, investment_philosophy, boundary_mode, scalper_strategy_id")
+    .select("tier, boundary_mode, scalper_strategy_id")
     .eq("id", userId)
     .maybeSingle();
 
@@ -18,7 +18,6 @@ export default async function PortfolioPage() {
   const VALID_TIERS = ["free", "pro", "max"] as const;
   const rawTier = String(p?.["tier"] ?? "free");
   const tier = (VALID_TIERS.includes(rawTier as typeof VALID_TIERS[number]) ? rawTier : "free") as "free" | "pro" | "max";
-  const philosophy = String(p?.["investment_philosophy"] ?? "balanced");
   const boundaryMode = String(p?.["boundary_mode"] ?? "advisory");
   // Sprint 065: first-run prompt — banner shown when user hasn't selected a
   // strategy for the scalper to run. Without it, the scalper sits idle and
@@ -28,7 +27,6 @@ export default async function PortfolioPage() {
   return (
     <PortfolioPageClient
       tier={tier}
-      philosophy={philosophy}
       boundaryMode={boundaryMode}
       needsScalperStrategy={needsScalperStrategy}
     />
