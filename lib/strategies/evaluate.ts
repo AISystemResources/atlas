@@ -18,8 +18,10 @@ import { computeAllIndicators, type Bar, type IndicatorArrays } from "./indicato
 import { isBarInSession } from "./time-filter";
 import type {
   Condition,
+  Direction,
   Expression,
   Sizing,
+  StopLossMethod,
   TicketLogicBody,
 } from "./types";
 
@@ -101,8 +103,27 @@ function evaluateAtBar(
   const takeProfit = round4(
     evaluateExpression(logic.exit.take_profit, bars, indicators, computed, barIdx),
   );
+  // Sprint 079G: sl_method overrides the legacy stop_loss expression when set.
   const stopLoss = round4(
-    evaluateExpression(logic.exit.stop_loss, bars, indicators, computed, barIdx),
+    logic.exit.sl_method
+      ? computeStopLossFromMethod(
+          logic.exit.sl_method,
+          entryPrice,
+          bars,
+          indicators,
+          barIdx,
+          logic.direction,
+        )
+      : evaluateExpression(
+          // Schema enforces stop_loss when sl_method is absent; the !
+          // is safe at runtime, but guard explicitly for older callers.
+          logic.exit.stop_loss ??
+            ({ type: "constant", value: 0 } as const),
+          bars,
+          indicators,
+          computed,
+          barIdx,
+        ),
   );
 
   // Sanity: for long, TP > entry > SL. For short, TP < entry < SL.
@@ -198,6 +219,44 @@ function snapshotIndicators(
     if (v !== null && v !== undefined) out[id] = v;
   }
   return out;
+}
+
+/**
+ * Sprint 079G: compute SL price from a declarative method instead of an
+ * expression. All three methods produce a price the caller compares
+ * against entry for the long/short sanity check.
+ */
+function computeStopLossFromMethod(
+  method: StopLossMethod,
+  entryPrice: number,
+  bars: Bar[],
+  indicators: IndicatorArrays,
+  barIdx: number,
+  direction: Direction,
+): number {
+  const sign = direction === "long" ? -1 : +1;
+  switch (method.type) {
+    case "fixed_buffer": {
+      // Equivalent to legacy signal_bar.low − value (long).
+      const anchor = direction === "long" ? bars[barIdx].low : bars[barIdx].high;
+      return anchor + sign * method.value;
+    }
+    case "atr_multiple": {
+      const atrSeries = indicators[method.atr_indicator_id];
+      const atr = atrSeries?.[barIdx];
+      if (atr == null || !Number.isFinite(atr)) {
+        // Missing indicator OR no ATR at this bar (warmup). Surface as
+        // a sentinel that fails the long/short sanity check downstream
+        // — no signal fires, no throw. Consistent with how missing
+        // indicator warmup is handled elsewhere in the evaluator.
+        return direction === "long" ? Infinity : -Infinity;
+      }
+      return entryPrice + sign * method.value * atr;
+    }
+    case "pct_of_entry": {
+      return entryPrice * (1 + sign * method.value);
+    }
+  }
 }
 
 function round4(n: number): number {

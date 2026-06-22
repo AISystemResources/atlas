@@ -20,8 +20,10 @@
 
 import type {
   Condition,
+  Direction,
   Expression,
   IndicatorSpec,
+  StopLossMethod,
   TicketLogicBody,
 } from "./types";
 import { describeSessionWindow, describeWeekdays } from "./time-filter";
@@ -171,6 +173,32 @@ export interface RenderedSections {
   whenItFires: string | null;
 }
 
+/**
+ * Sprint 079G: human-friendly description of a declarative SL method.
+ * Used on the strategy detail page in place of the expression renderer
+ * when the strategy uses sl_method.
+ */
+export function renderSlMethodProse(
+  method: StopLossMethod,
+  direction: Direction,
+): string {
+  const dir = direction === "long" ? "below" : "above";
+  const sign = direction === "long" ? "−" : "+";
+  switch (method.type) {
+    case "fixed_buffer": {
+      const anchor = direction === "long" ? "signal bar's low" : "signal bar's high";
+      return `${anchor} ${sign} ${method.value} points (fixed buffer)`;
+    }
+    case "atr_multiple": {
+      return `entry price ${sign} ${method.value} × ${method.atr_indicator_id} (${method.value}× ATR ${dir} entry)`;
+    }
+    case "pct_of_entry": {
+      const pct = (method.value * 100).toFixed(2);
+      return `${pct}% ${dir} entry price (pct_of_entry)`;
+    }
+  }
+}
+
 export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
   const signalBar = body.entry.conditions.map((c) =>
     renderConditionProse(c, body.indicators, body.computed),
@@ -199,11 +227,17 @@ export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
     entryLines.push(`Position size: ${sizing.value}% portfolio risk per trade`);
   }
 
-  const stopLoss = renderExpressionProse(
-    body.exit.stop_loss,
-    body.indicators,
-    body.computed,
-  );
+  // Sprint 079G: render sl_method as prose when set; fall back to the
+  // legacy expression-based stop_loss otherwise.
+  const stopLoss = body.exit.sl_method
+    ? renderSlMethodProse(body.exit.sl_method, body.direction)
+    : body.exit.stop_loss
+      ? renderExpressionProse(
+          body.exit.stop_loss,
+          body.indicators,
+          body.computed,
+        )
+      : "(stop loss not defined)";
   const takeProfit = renderExpressionProse(
     body.exit.take_profit,
     body.indicators,

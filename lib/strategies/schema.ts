@@ -61,6 +61,23 @@ const timeStopSchema = z.union([
   z.object({ bars: z.number().int().positive() }),
 ]);
 
+// Sprint 079G: discriminated union for the structured SL methodology.
+const slMethodSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("fixed_buffer"),
+    value: z.number(),
+  }),
+  z.object({
+    type: z.literal("atr_multiple"),
+    value: z.number().positive(),
+    atr_indicator_id: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("pct_of_entry"),
+    value: z.number().positive().max(1),
+  }),
+]);
+
 const tunableParameterSchema = z.object({
   name: z.string().min(1),
   path: z.array(z.string().min(1)).min(1),
@@ -97,11 +114,17 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
     sizing: sizingSchema,
   }),
   computed: z.record(z.string(), expressionSchema).optional(),
-  exit: z.object({
-    take_profit: expressionSchema,
-    stop_loss: expressionSchema,
-    time_stop: timeStopSchema.optional(),
-  }),
+  exit: z
+    .object({
+      take_profit: expressionSchema,
+      stop_loss: expressionSchema.optional(),
+      sl_method: slMethodSchema.optional(),
+      time_stop: timeStopSchema.optional(),
+    })
+    .refine((e) => !!e.stop_loss || !!e.sl_method, {
+      message: "exit must define either stop_loss expression or sl_method",
+      path: ["sl_method"],
+    }),
   tunable_parameters: z.array(tunableParameterSchema).optional(),
   session_window: sessionWindowSchema.optional(),
   valid_weekdays: validWeekdaysSchema.optional(),

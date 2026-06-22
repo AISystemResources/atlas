@@ -67,6 +67,25 @@ export interface Sizing {
 
 export type TimeStop = "eod" | { bars: number };
 
+/**
+ * Sprint 079G: declarative stop-loss methodology. Lifts SL geometry from
+ * a hard-coded body expression to a first-class tunable concept.
+ *
+ *   - fixed_buffer: SL = signal_bar.low − value (long) / signal_bar.high + value (short).
+ *     Equivalent to the legacy expression-based SL; provided for parity.
+ *   - atr_multiple: SL = entry_price − value × ATR (long) / entry_price + value × ATR (short).
+ *     `atr_indicator_id` must reference an ATR indicator declared in `indicators`.
+ *   - pct_of_entry: SL = entry_price × (1 − value) (long) / entry_price × (1 + value) (short).
+ *     `value` is a fraction (e.g. 0.005 = 0.5%).
+ *
+ * Tunables can target the `value` field of any sl_method via the standard
+ * path mechanism — e.g. `path: ["exit", "sl_method", "value"]`.
+ */
+export type StopLossMethod =
+  | { type: "fixed_buffer"; value: number }
+  | { type: "atr_multiple"; value: number; atr_indicator_id: string }
+  | { type: "pct_of_entry"; value: number };
+
 // ── Tunable parameter (embedded in body) — Sprint 060B ───────────────────────
 
 export interface TunableParameter {
@@ -131,7 +150,20 @@ export interface TicketLogicBody {
   computed?: Record<string, Expression>;
   exit: {
     take_profit: Expression;
-    stop_loss: Expression;
+    /**
+     * Sprint 079G: optional. When omitted, `sl_method` is required.
+     * Legacy strategies use this expression-based SL; new strategies
+     * SHOULD use sl_method instead so the SL methodology itself is
+     * tunable (the structural fix both reviewers flagged on 079D).
+     */
+    stop_loss?: Expression;
+    /**
+     * Sprint 079G: structured SL declaration. When set, overrides the
+     * `stop_loss` expression. Exposes SL method + magnitude as first-class
+     * tunables, so distillation can propose changes to either the method
+     * or its parameter via the standard ratchet path.
+     */
+    sl_method?: StopLossMethod;
     time_stop?: TimeStop;
   };
   /**
