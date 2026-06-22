@@ -3,7 +3,7 @@
  *
  * Route handler tests — 401 without auth, correct response shape with auth.
  *
- * Supabase, MongoDB, and Inngest clients are mocked.
+ * Supabase and Inngest clients are mocked.
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -19,23 +19,6 @@ jest.mock("@supabase/supabase-js", () => ({
   createClient: jest.fn(() => ({
     from: mockSupabaseFrom,
   })),
-}));
-
-// MongoDB mock
-const mockMongoFind = jest.fn();
-const mockMongoCollection = jest.fn(() => ({
-  find: jest.fn(() => ({
-    sort: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    toArray: mockMongoFind,
-  })),
-}));
-const mockMongoDb = jest.fn(() => ({ collection: mockMongoCollection }));
-
-jest.mock("mongodb", () => ({
-  MongoClient: jest.fn().mockImplementation(() => ({ db: mockMongoDb })),
-  ObjectId: jest.fn(),
-  BSON: {},
 }));
 
 // Inngest mock
