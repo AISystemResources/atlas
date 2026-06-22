@@ -52,7 +52,9 @@ export const WRITE_TOOL_DEFS = [
     description:
       "Run a backtest of a Ticket Logic strategy on historical bars from Yahoo Finance. Returns a BacktestSummary " +
       "with the new backtest_id, total trades, win rate, total PnL, and total friction cost under the chosen " +
-      "broker profile. Index tickers (e.g. ^DJI) and ETFs both supported. Yahoo intraday limits: 5m/15m → 60 days, " +
+      "broker profile, plus an `auto_distillation` field carrying the Llama review that fires automatically post-backtest " +
+      "(Sprint 079F). For per-trade detail or to layer your own analysis, use get_backtest_for_distillation + " +
+      "submit_distillation_insight. Index tickers (e.g. ^DJI) and ETFs both supported. Yahoo intraday limits: 5m/15m → 60 days, " +
       "1h → 730 days, 1d → effectively unlimited. Sprint 077B.1: `broker_profile_id` parameterises the fill engine " +
       "with spread + commission + slippage. Same strategy under different profiles produces different PnL — that's " +
       "the academic comparison the final report is built around.",
@@ -415,138 +417,55 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           notionalPerTrade: notional,
           brokerProfileId,
         });
-        return textContent(result);
+
+        // Sprint 079F: auto-trigger Llama distillation so the user always
+        // has a baseline review without having to remember to call
+        // run_distillation. Non-fatal — backtest result returns regardless.
+        let autoDistillation: unknown = null;
+        if (result.total_trades > 0) {
+          try {
+            const { runLlamaDistillation } = await import(
+              "@/lib/strategies/auto-distill"
+            );
+            autoDistillation = await runLlamaDistillation(result.backtest_id);
+          } catch (err) {
+            console.error("[run_ticket_backtest] auto-distillation failed (non-fatal):", err);
+            autoDistillation = {
+              status: "failed",
+              reason: err instanceof Error ? err.message : String(err),
+            };
+          }
+        }
+
+        return textContent({ ...result, auto_distillation: autoDistillation });
       }
 
       case "run_distillation": {
         const backtestId = typeof args.backtest_id === "string" ? args.backtest_id : "";
         if (!backtestId) return toolError("backtest_id required", "invalid_request");
 
+        // Ownership pre-check before invoking the shared pipeline.
         const sb = getServiceClient();
-
-        // Ownership + load backtest summary.
-        const { data: btData } = await sb
+        const { data: btOwner } = await sb
           .from("ticket_backtests")
-          .select(
-            "id, user_id, ticker, timeframe, ticket_logic_id, total_trades, winning_trades, losing_trades, win_rate, total_pnl_dollars, avg_pnl_dollars, max_drawdown_dollars",
-          )
+          .select("user_id, total_trades")
           .eq("id", backtestId)
           .maybeSingle();
-        const bt = btData as
-          | (Record<string, unknown> & { user_id: string; ticker: string; timeframe: string; ticket_logic_id: string; total_trades: number })
-          | null;
-        if (!bt) return toolError("backtest not found", "not_found");
-        if (bt.user_id !== userId) return toolError("forbidden", "forbidden");
-        if (bt.total_trades === 0) {
+        const owner = btOwner as { user_id: string; total_trades: number } | null;
+        if (!owner) return toolError("backtest not found", "not_found");
+        if (owner.user_id !== userId) return toolError("forbidden", "forbidden");
+        if (owner.total_trades === 0) {
           return toolError("cannot distil a backtest with zero trades", "invalid_request");
         }
 
-        // Load the ticket_logic, trades, and any per-trade reviews.
-        const { data: logicRow } = await sb
-          .from("ticket_logics")
-          .select("name, version")
-          .eq("id", bt.ticket_logic_id)
-          .maybeSingle();
-        if (!logicRow) return toolError("ticket_logic not found", "not_found");
-        const { loadTicketLogic } = await import("@/lib/strategies/loader");
-        const logic = await loadTicketLogic(
-          (logicRow as { name: string }).name,
-          (logicRow as { version: number }).version,
-        );
-        if (!logic) return toolError("ticket_logic load failed");
-
-        const { data: tradeRows } = await sb
-          .from("ticket_backtest_trades")
-          .select("id, entry_ts, exit_ts, exit_reason, pnl_dollars, pnl_pct")
-          .eq("backtest_id", backtestId)
-          .order("entry_bar_index", { ascending: true });
-        const trades = (tradeRows ?? []) as Array<{
-          id: string;
-          entry_ts: string;
-          exit_ts: string | null;
-          exit_reason: string | null;
-          pnl_dollars: number | null;
-          pnl_pct: number | null;
-        }>;
-
-        const { data: reviewRows } = await sb
-          .from("ticket_backtest_trade_reviews")
-          .select("trade_id, skill_or_luck, rationale")
-          .in("trade_id", trades.map((t) => t.id));
-        const reviewByTrade = new Map<string, { skill_or_luck: string; rationale: string }>();
-        for (const r of (reviewRows ?? []) as Array<{
-          trade_id: string;
-          skill_or_luck: string;
-          rationale: string;
-        }>) {
-          reviewByTrade.set(r.trade_id, { skill_or_luck: r.skill_or_luck, rationale: r.rationale });
+        // Sprint 079F: shared pipeline. Same code path as the auto-trigger
+        // from run_ticket_backtest.
+        const { runLlamaDistillation } = await import("@/lib/strategies/auto-distill");
+        const result = await runLlamaDistillation(backtestId);
+        if (result.status === "skipped") {
+          return toolError(`distillation skipped: ${result.reason}`, "internal_error");
         }
-
-        const { reviewBacktest, saveBacktestInsight } = await import(
-          "@/lib/strategies/review-backtest"
-        );
-        const result = await reviewBacktest({
-          backtest_id: bt.id as string,
-          strategy: {
-            name: logic.name,
-            version: logic.version,
-            description: logic.description,
-            body: logic.body,
-          },
-          ticker: bt.ticker,
-          timeframe: bt.timeframe,
-          performance: {
-            total_trades: bt.total_trades,
-            winning_trades: (bt.winning_trades as number) ?? 0,
-            losing_trades: (bt.losing_trades as number) ?? 0,
-            win_rate: (bt.win_rate as number | null) ?? null,
-            total_pnl_dollars: (bt.total_pnl_dollars as number | null) ?? null,
-            avg_pnl_dollars: (bt.avg_pnl_dollars as number | null) ?? null,
-            max_drawdown_dollars: (bt.max_drawdown_dollars as number | null) ?? null,
-          },
-          trades: trades.map((t) => {
-            const rev = reviewByTrade.get(t.id);
-            return {
-              id: t.id, // Sprint 053.0: enables LLM index → trade id mapping
-              entry_ts: t.entry_ts,
-              exit_ts: t.exit_ts,
-              exit_reason: t.exit_reason,
-              pnl_dollars: t.pnl_dollars != null ? Number(t.pnl_dollars) : null,
-              pnl_pct: t.pnl_pct != null ? Number(t.pnl_pct) : null,
-              review_summary: rev,
-            };
-          }),
-        });
-        const saved = await saveBacktestInsight(bt.id as string, result);
-
-        // Sprint 053.2: A/B forward-test. Non-fatal on failure.
-        let abComparison: unknown = null;
-        if (result.insight.proposed_changes.length > 0) {
-          try {
-            const { runAbForwardTest, persistAbComparison } = await import(
-              "@/lib/strategies/ab-harness"
-            );
-            abComparison = await runAbForwardTest({
-              original_backtest_id: bt.id as string,
-              proposed_changes: result.insight.proposed_changes.map((c) => ({
-                name: c.name,
-                proposed_value: c.proposed_value,
-              })),
-            });
-            await persistAbComparison(
-              saved.id,
-              abComparison as Awaited<ReturnType<typeof runAbForwardTest>>,
-            );
-          } catch (abErr) {
-            console.error("[run_distillation] ab-harness failed (non-fatal):", abErr);
-          }
-        }
-        return textContent({
-          id: saved.id,
-          insight: result.insight,
-          model: result.model,
-          ab_comparison: abComparison,
-        });
+        return textContent(result);
       }
 
       case "submit_distillation_insight": {
