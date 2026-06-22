@@ -1,20 +1,7 @@
 import { serve } from "inngest/next";
 
 import { inngest } from "@/lib/inngest";
-import { runBacktest } from "@/lib/backtest";
-import { runTournament } from "@/lib/backtest/tournament-runner";
-import {
-  premarketCron,
-  openCron,
-  midmorningCron,
-  middayCron,
-  afternoonCron,
-  closeCron,
-  onPipelineTriggered,
-  intradayCron,
-  dailyDistillationCron,
-  orderReconcilerCron,
-} from "@/lib/scheduler";
+import { intradayCron, orderReconcilerCron } from "@/lib/scheduler";
 
 export const maxDuration = 300;
 
@@ -30,18 +17,5 @@ const SERVE_HOST =
 export const { GET, POST, PUT } = serve({
   client: inngest,
   serveOrigin: SERVE_HOST,
-  functions: [
-    runBacktest,
-    runTournament,
-    premarketCron,
-    openCron,
-    midmorningCron,
-    middayCron,
-    afternoonCron,
-    closeCron,
-    onPipelineTriggered,
-    intradayCron,
-    dailyDistillationCron,
-    orderReconcilerCron,
-  ],
+  functions: [intradayCron, orderReconcilerCron],
 });

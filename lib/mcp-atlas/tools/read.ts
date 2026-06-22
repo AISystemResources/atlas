@@ -1,20 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
-import { MongoClient, ObjectId } from "mongodb";
-import { getNyTradingDayBounds, getNyTodayDate } from "../utils";
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
   return createClient(url, key, { auth: { persistSession: false } });
-}
-
-let _mongoClient: MongoClient | null = null;
-
-function getMongoCollection() {
-  if (!_mongoClient) {
-    _mongoClient = new MongoClient(process.env.MONGODB_URI!);
-  }
-  return _mongoClient.db(process.env.MONGODB_DB_NAME ?? "atlas").collection("reasoning_traces");
 }
 
 export const READ_TOOL_DEFS = [
@@ -139,23 +128,6 @@ export const READ_TOOL_DEFS = [
         backtest_id: { type: "string", description: "The ticket_backtest UUID." },
       },
       required: ["backtest_id"],
-    },
-  },
-  {
-    name: "get_daily_distillation_context",
-    description:
-      "Get the day's executed trades and matching pipeline reasoning traces for end-of-day reflection. " +
-      "Used by Claude Desktop / ChatGPT to distill what worked and what didn't, then submit findings via submit_daily_learning. " +
-      "Trades are filtered to the trading_date in US/Eastern timezone (market day, not UTC day).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        date: {
-          type: "string",
-          pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-          description: "ISO date YYYY-MM-DD (US/Eastern trading day). Defaults to today (NY time) when omitted.",
-        },
-      },
     },
   },
 ] as const;
@@ -358,75 +330,6 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
           .order("created_at");
         if (error) return toolError(error.message);
         return textContent(data ?? []);
-      }
-
-      case "get_daily_distillation_context": {
-        // Resolve trading date: explicit YYYY-MM-DD, or today in US/Eastern.
-        const explicit = typeof args.date === "string" ? args.date.trim() : "";
-        const tradingDate = explicit !== "" ? explicit : getNyTodayDate();
-
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate)) {
-          return toolError("date must be ISO YYYY-MM-DD", "invalid_input");
-        }
-
-        // DST-aware bracket of the NY trading day in UTC.
-        const { dayStart, dayEnd } = getNyTradingDayBounds(tradingDate);
-
-        const sb = getServiceClient();
-        const { data: trades, error: tradesErr } = await sb
-          .from("trades")
-          .select(
-            "id, ticker, action, shares, price, status, boundary_mode, strategy, signal_id, order_id, realized_pnl, executed_at",
-          )
-          .eq("user_id", userId)
-          .gte("executed_at", dayStart)
-          .lt("executed_at", dayEnd)
-          .order("executed_at", { ascending: true });
-        if (tradesErr) return toolError(tradesErr.message);
-
-        const tradesList = trades ?? [];
-
-        // Pull matching reasoning_traces from MongoDB by signal_id
-        const signalIds = tradesList
-          .map((t: { signal_id?: string | null }) => t.signal_id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
-
-        const traces: unknown[] = [];
-        if (signalIds.length > 0) {
-          const oids: ObjectId[] = [];
-          for (const sid of signalIds) {
-            try {
-              oids.push(new ObjectId(sid));
-            } catch {
-              // Non-ObjectId signal_ids exist for scalper trades — skip silently
-            }
-          }
-          if (oids.length > 0) {
-            const col = getMongoCollection();
-            const cursor = col.find(
-              { _id: { $in: oids }, user_id: userId },
-              { projection: { ticker: 1, current_price: 1, portfolio_decision: 1, synthesis: 1, risk: 1 } },
-            );
-            const docs = await cursor.toArray();
-            for (const doc of docs) {
-              const docId = doc["_id"] instanceof ObjectId
-                ? doc["_id"].toHexString()
-                : String(doc["_id"] ?? "");
-              traces.push({ ...doc, _id: docId });
-            }
-          }
-        }
-
-        return textContent({
-          trading_date: tradingDate,
-          trade_count: tradesList.length,
-          win_count: tradesList.filter(
-            (t: { realized_pnl?: number | null }) =>
-              typeof t.realized_pnl === "number" && t.realized_pnl > 0,
-          ).length,
-          trades: tradesList,
-          reasoning_traces: traces,
-        });
       }
 
       // ── Ticket Logic read tools (Sprint 066) ───────────────────────────

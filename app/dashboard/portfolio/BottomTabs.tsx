@@ -1,18 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import type { Portfolio } from "../DashboardClient";
 
-type TabKey = "positions" | "signals" | "trades" | "insights";
-
-interface PendingSignalLite {
-  id: string;
-  ticker: string;
-  action: string;
-  confidence: number;
-}
+type TabKey = "positions" | "trades";
 
 interface TradeLite {
   id: string;
@@ -24,14 +16,6 @@ interface TradeLite {
   executed_at: string | null;
   realized_pnl: number | null;
   venue?: "alpaca" | "sim";
-}
-
-interface InsightLite {
-  trading_date: string;
-  trade_count: number;
-  win_count: number;
-  learnings_summary: string;
-  source: "mcp" | "groq";
 }
 
 function fmt(n: number): string {
@@ -91,42 +75,22 @@ export function BottomTabs({
   portfolio: Portfolio | null;
   onPositionClick: (ticker: string) => void;
 }) {
-  const router = useRouter();
   const [active, setActive] = useState<TabKey>("positions");
 
-  const [pendingSignals, setPendingSignals] = useState<PendingSignalLite[]>([]);
   const [recentTrades, setRecentTrades] = useState<TradeLite[]>([]);
-  const [todayInsight, setTodayInsight] = useState<InsightLite | null>(null);
 
   useEffect(() => {
     let active = true;
 
     async function loadSidebars() {
       try {
-        const [signalsRes, tradesRes, insightsRes] = await Promise.all([
-          fetchWithAuth("/api/v1/signals?limit=20"),
-          fetchWithAuth("/api/v1/trades?limit=15"),
-          fetchWithAuth("/api/v1/insights/today"),
-        ]);
+        const tradesRes = await fetchWithAuth("/api/v1/trades?limit=15");
 
         if (!active) return;
 
-        const signalsJson = (await signalsRes?.json().catch(() => null)) as
-          | PendingSignalLite[]
-          | null;
         const trades = (await tradesRes?.json().catch(() => null)) as TradeLite[] | null;
-        const insight = (await insightsRes?.json().catch(() => null)) as InsightLite | null;
-
-        // Show only non-HOLD signals as "pending review" candidates
-        if (Array.isArray(signalsJson)) {
-          const actionable = signalsJson.filter(
-            (s) => s.action && s.action !== "HOLD",
-          );
-          setPendingSignals(actionable.slice(0, 10));
-        }
 
         if (Array.isArray(trades)) setRecentTrades(trades);
-        if (insight && insight.trading_date) setTodayInsight(insight);
       } catch {
         // Silent fail — tabs just show empty states
       }
@@ -156,21 +120,10 @@ export function BottomTabs({
           onClick={() => setActive("positions")}
         />
         <TabButton
-          active={active === "signals"}
-          label="Signals"
-          count={pendingSignals.length}
-          onClick={() => setActive("signals")}
-        />
-        <TabButton
           active={active === "trades"}
           label="Recent trades"
           count={recentTrades.length}
           onClick={() => setActive("trades")}
-        />
-        <TabButton
-          active={active === "insights"}
-          label="Insights"
-          onClick={() => setActive("insights")}
         />
       </div>
 
@@ -180,13 +133,7 @@ export function BottomTabs({
           onPositionClick={onPositionClick}
         />
       )}
-      {active === "signals" && (
-        <SignalsTabContent signals={pendingSignals} router={router} />
-      )}
       {active === "trades" && <TradesTabContent trades={recentTrades} />}
-      {active === "insights" && (
-        <InsightsTabContent insight={todayInsight} />
-      )}
     </div>
   );
 }
@@ -607,83 +554,6 @@ function ManualCloseConfirmation({
   );
 }
 
-function SignalsTabContent({
-  signals,
-  router,
-}: {
-  signals: PendingSignalLite[];
-  router: ReturnType<typeof useRouter>;
-}) {
-  if (signals.length === 0) {
-    return (
-      <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", padding: "32px 0" }}>
-        No signals awaiting your review.
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      {signals.map((sig) => (
-        <button
-          key={sig.id}
-          onClick={() => router.push(`/dashboard/signal/${sig.id}`)}
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: 10,
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-            textAlign: "left",
-            boxShadow: "var(--card-shadow)",
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <span
-              className="font-display font-bold"
-              style={{ fontSize: 15, color: "var(--ink)" }}
-            >
-              {sig.ticker}
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                fontFamily: "var(--font-mono)",
-                color: sig.action === "BUY" ? "var(--bull)" : "var(--bear)",
-                letterSpacing: "0.06em",
-              }}
-            >
-              {sig.action}
-            </span>
-            <span
-              className="num"
-              style={{
-                fontSize: 11,
-                fontFamily: "var(--font-jb)",
-                color: "var(--ghost)",
-              }}
-            >
-              {(sig.confidence * 100).toFixed(0)}% conf
-            </span>
-          </div>
-          <span
-            style={{
-              color: "var(--hold)",
-              fontSize: 11,
-              fontFamily: "var(--font-jb)",
-            }}
-          >
-            Review →
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function TradesTabContent({ trades }: { trades: TradeLite[] }) {
   if (trades.length === 0) {
     return (
@@ -776,85 +646,6 @@ function TradesTabContent({ trades }: { trades: TradeLite[] }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function InsightsTabContent({
-  insight,
-}: {
-  insight: InsightLite | null;
-}) {
-  if (!insight) {
-    return (
-      <div
-        style={{
-          color: "var(--ghost)",
-          fontSize: 13,
-          textAlign: "center",
-          padding: "32px 0",
-        }}
-      >
-        No reflection yet for today. The AI will distill today&apos;s trading after market close.
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--line)",
-        borderRadius: 12,
-        padding: "16px 18px",
-        boxShadow: "var(--card-shadow)",
-      }}
-    >
-      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-        <div
-          style={{
-            color: "var(--ghost)",
-            fontSize: 10,
-            fontFamily: "var(--font-mono)",
-            letterSpacing: "0.06em",
-          }}
-        >
-          REFLECTION · {insight.trading_date}
-        </div>
-        <span
-          style={{
-            fontSize: 9,
-            fontFamily: "var(--font-mono)",
-            letterSpacing: "0.08em",
-            padding: "2px 6px",
-            borderRadius: 4,
-            background: insight.source === "mcp" ? "rgba(123,97,255,0.12)" : "rgba(64,140,255,0.12)",
-            color: insight.source === "mcp" ? "rgb(123,97,255)" : "rgb(64,140,255)",
-          }}
-        >
-          {insight.source.toUpperCase()}
-        </span>
-      </div>
-      <p
-        style={{
-          fontSize: 13,
-          color: "var(--ink)",
-          lineHeight: 1.55,
-          marginBottom: 12,
-        }}
-      >
-        {insight.learnings_summary}
-      </p>
-      <div className="flex items-center justify-between">
-        <span
-          className="num"
-          style={{ fontSize: 11, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}
-        >
-          {insight.win_count}/{insight.trade_count} wins
-        </span>
-        {/* Sprint 074: "All insights →" link removed — /dashboard/insights
-            is admin-only now. The single most recent insight stays inline. */}
-      </div>
     </div>
   );
 }

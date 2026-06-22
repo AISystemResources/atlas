@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { fetchWithAuth } from "@/lib/api";
-import { Card, SectionLabel, StatCard, relTime, type AdminStats, type SystemStatus } from "./admin-shared";
+import { Card, SectionLabel, StatCard, relTime, type AdminStats } from "./admin-shared";
 
 const API = "";
 
@@ -17,8 +17,6 @@ const PLACEHOLDER_RUNS = [
 export default function OverviewPage() {
   const [stats, setStats]               = useState<AdminStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-  const [systemLoading, setSystemLoading] = useState(true);
 
   const loadStats = useCallback(async () => {
     try {
@@ -27,17 +25,9 @@ export default function OverviewPage() {
     } catch { /* non-fatal */ } finally { setStatsLoading(false); }
   }, []);
 
-  const loadSystemStatus = useCallback(async () => {
-    try {
-      const res = await fetchWithAuth(`${API}/v1/admin/system-status`);
-      if (res?.ok) setSystemStatus(await res.json());
-    } catch { /* non-fatal */ } finally { setSystemLoading(false); }
-  }, []);
-
   useEffect(() => {
     loadStats();
-    loadSystemStatus();
-  }, [loadStats, loadSystemStatus]);
+  }, [loadStats]);
 
   const sparkline = [12, 18, 15, 22, 19, 27, stats?.total_users ?? 30];
 
@@ -75,28 +65,6 @@ export default function OverviewPage() {
           </Card>
         </div>
 
-        {/* System health summary */}
-        <div>
-          <SectionLabel>System Health</SectionLabel>
-          <Card>
-            {systemLoading && (
-              <div style={{ padding: "24px", color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-jb)", textAlign: "center" }}>Loading…</div>
-            )}
-            {!systemLoading && !systemStatus && (
-              <div style={{ padding: "24px", color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-jb)", textAlign: "center" }}>No data</div>
-            )}
-            {!systemLoading && systemStatus && (
-              <div style={{ padding: "14px 16px", display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {Object.entries(systemStatus).map(([svc, info]) => (
-                  <span key={svc} className={`system-status-pill ${info.status}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, padding: "4px 10px", borderRadius: 20 }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", display: "inline-block", flexShrink: 0 }} />
-                    {svc}
-                  </span>
-                ))}
-              </div>
-            )}
-          </Card>
-        </div>
       </div>
     </div>
   );

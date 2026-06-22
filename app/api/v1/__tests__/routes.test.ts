@@ -150,59 +150,6 @@ describe("POST /api/v1/portfolio", () => {
   });
 });
 
-// ─── signals/route.ts ─────────────────────────────────────────────────────────
-
-describe("GET /api/v1/signals", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    process.env.MONGODB_URI = "mongodb://localhost:27017";
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: null });
-    const { GET } = await import("@/app/api/v1/signals/route");
-    const res = await GET(makeReq());
-    expect(res.status).toBe(401);
-  });
-
-  it("returns an array of signals with correct shape when authenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: "user_1" });
-    mockMongoFind.mockResolvedValueOnce([
-      {
-        _id: { toHexString: () => "trace001" },
-        ticker: "AAPL",
-        created_at: new Date("2026-01-01"),
-        pipeline_run: {
-          final_decision: { action: "BUY", confidence: 0.85, reasoning: "test" },
-          risk: { stop_loss: 140, take_profit: 170, position_size: 10, risk_reward_ratio: 2 },
-          boundary_mode: "advisory",
-        },
-        execution: { executed: true, shares: 10, price: 150 },
-      },
-    ]);
-
-    const { GET } = await import("@/app/api/v1/signals/route");
-    const res = await GET(makeReq());
-    const json = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(Array.isArray(json)).toBe(true);
-    const signal = json[0];
-    expect(signal).toMatchObject({
-      ticker: "AAPL",
-      action: "BUY",
-      confidence: 0.85,
-      status: "signal",
-    });
-    expect(signal.risk).toMatchObject({
-      stop_loss: 140,
-      take_profit: 170,
-      position_size: 10,
-      risk_reward_ratio: 2,
-    });
-  });
-});
-
 // ─── backtest/route.ts ────────────────────────────────────────────────────────
 
 describe("POST /api/v1/backtest", () => {
@@ -320,38 +267,6 @@ describe("GET /api/v1/backtest/:job_id", () => {
 
     expect(res.status).toBe(200);
     expect(json).toMatchObject({ id: "job_1", status: "completed" });
-  });
-});
-
-// ─── schedules/route.ts ───────────────────────────────────────────────────────
-
-describe("GET /api/v1/schedules", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: null });
-    const { GET } = await import("@/app/api/v1/schedules/route");
-    const res = await GET(makeReq());
-    expect(res.status).toBe(401);
-  });
-
-  it("returns schedules array when authenticated", async () => {
-    auth.mockResolvedValueOnce({ userId: "user_1" });
-    const schedules = [{ window: "0930", enabled: true }];
-    mockSupabaseFrom.mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      order: jest.fn().mockResolvedValue({ data: schedules, error: null }),
-    });
-
-    const { GET } = await import("@/app/api/v1/schedules/route");
-    const res = await GET(makeReq());
-    const json = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(json).toEqual(schedules);
   });
 });
 

@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { MongoClient } from "mongodb";
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -36,25 +35,6 @@ function toolError(message: string, code = "internal_error") {
     isError: true,
     content: [{ type: "text", text: JSON.stringify({ code, message }, null, 2) }],
   };
-}
-
-async function countSignalsToday(): Promise<number> {
-  const mongoUri = process.env.MONGODB_URI;
-  if (!mongoUri) return 0;
-  const client = new MongoClient(mongoUri);
-  try {
-    await client.connect();
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    return await client
-      .db(process.env.MONGODB_DB_NAME ?? "atlas")
-      .collection("reasoning_traces")
-      .countDocuments({ created_at: { $gte: today } });
-  } catch {
-    return 0;
-  } finally {
-    await client.close();
-  }
 }
 
 async function getClerkEmails(userIds: string[]): Promise<Record<string, string>> {
@@ -107,14 +87,12 @@ export async function handleAdminTool(name: string, _args: Record<string, unknow
           executionsToday = (data ?? []).length;
         } catch { /* continue */ }
 
-        const signalsToday = await countSignalsToday();
-
         return textContent({
           total_users: totalUsers,
           free_count: freeCount,
           pro_count: proCount,
           max_count: maxCount,
-          signals_today: signalsToday,
+          signals_today: 0,
           executions_today: executionsToday,
         });
       }

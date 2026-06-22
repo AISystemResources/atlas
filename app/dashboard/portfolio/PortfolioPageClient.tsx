@@ -110,17 +110,12 @@ export function PortfolioPageClient({
         </div>
       )}
 
-      {/* Sprint 074: "pending signal awaiting approval" banner removed.
-          It linked to /dashboard/agents (now admin-only) and surfaced the
-          archived multi-agent pipeline's approval flow. Approval UX is
-          superseded by the 4-cell autonomy matrix from Sprint 070. */}
-
       <PortfolioTab
         portfolio={portfolio}
         tier={tier}
         philosophy={philosophy}
         boundaryMode={boundaryMode}
-        onPositionClick={(ticker) => router.push(`/dashboard/stock/${ticker}`)}
+        onPositionClick={() => { /* per-position stock detail page removed in 078B */ }}
         onGoToSettings={() => router.push("/dashboard/settings")}
       />
     </div>

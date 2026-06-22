@@ -114,7 +114,6 @@ const READ_TOOL_NAMES = new Set([
   "get_ticker_metadata",
   "get_trades",
   "get_watchlist",
-  "get_daily_distillation_context",
   // Ticket Logic read tools (Sprint 066)
   "list_ticket_logics",
   "get_ticket_logic",
@@ -125,7 +124,6 @@ const READ_TOOL_NAMES = new Set([
 const WRITE_TOOL_NAMES = new Set([
   "update_settings",
   "update_watchlist",
-  "submit_daily_learning",
   // Ticket Logic write tools (Sprint 066) + create (Sprint 073)
   "run_ticket_backtest",
   "run_distillation",
