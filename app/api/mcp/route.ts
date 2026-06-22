@@ -121,6 +121,8 @@ const READ_TOOL_NAMES = new Set([
   "get_ticket_backtest",
   // Sprint 079A: distillation workflow
   "list_pending_proposals",
+  // Sprint 079C.2: Claude-callable distillation
+  "get_backtest_for_distillation",
 ]);
 
 const WRITE_TOOL_NAMES = new Set([
@@ -132,6 +134,8 @@ const WRITE_TOOL_NAMES = new Set([
   "promote_ticket_logic_version",
   "fork_ticket_logic",
   "create_ticket_logic",
+  // Sprint 079C.2: external LLM submits its own distillation
+  "submit_distillation_insight",
 ]);
 
 const ADMIN_TOOL_NAMES = new Set(["get_admin_stats", "list_users"]);

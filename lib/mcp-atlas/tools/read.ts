@@ -147,6 +147,20 @@ export const READ_TOOL_DEFS = [
       },
     },
   },
+  {
+    name: "get_backtest_for_distillation",
+    description:
+      "Fetch a backtest in a shape designed for YOU (the LLM) to reason over and then submit your own distillation insight via submit_distillation_insight. " +
+      "Returns: backtest summary, the full strategy body, the tunable parameters with their min/max bounds AND per-promote ratchet cap (max_step_pct), per-trade detail with indicator snapshots and 1-based indices for citation, and any existing insights from other reviewers (so you can see what Llama / other models have already said about this backtest). " +
+      "This is the deep-analysis read; use get_ticket_backtest for a quick summary view.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        backtest_id: { type: "string", description: "The ticket_backtest UUID." },
+      },
+      required: ["backtest_id"],
+    },
+  },
 ] as const;
 
 function textContent(payload: unknown) {
@@ -578,6 +592,119 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         });
 
         return textContent({ proposals });
+      }
+
+      case "get_backtest_for_distillation": {
+        const id = typeof args.backtest_id === "string" ? args.backtest_id : "";
+        if (!id) return toolError("backtest_id is required", "invalid_request");
+
+        const sb = getServiceClient();
+        const { data: bt } = await sb
+          .from("ticket_backtests")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+        if (!bt) return toolError("not found", "not_found");
+        if ((bt as { user_id: string }).user_id !== userId) {
+          return toolError("not found", "not_found");
+        }
+        const backtest = bt as Record<string, unknown>;
+
+        // Load strategy body via loader (parses the JSONB and validates).
+        const { data: logicRow } = await sb
+          .from("ticket_logics")
+          .select("name, version")
+          .eq("id", backtest.ticket_logic_id as string)
+          .maybeSingle();
+        if (!logicRow) return toolError("strategy not found", "not_found");
+        const { loadTicketLogic } = await import("@/lib/strategies/loader");
+        const logic = await loadTicketLogic(
+          (logicRow as { name: string }).name,
+          (logicRow as { version: number }).version,
+        );
+        if (!logic) return toolError("strategy load failed");
+
+        // Tunables with effective ratchet cap so the caller knows their
+        // proposal window per parameter.
+        const { getTunables, effectiveMaxStepPct, readByPath } = await import(
+          "@/lib/strategies/tunable-params"
+        );
+        const tunablesList = getTunables(logic.body).map((t) => ({
+          name: t.name,
+          path: t.path,
+          description: t.description,
+          current_value: readByPath(logic.body, t.path),
+          min: t.min ?? null,
+          max: t.max ?? null,
+          max_step_pct: effectiveMaxStepPct(t),
+        }));
+
+        // Trades with 1-based index + full detail.
+        const { data: tradeRows } = await sb
+          .from("ticket_backtest_trades")
+          .select(
+            "id, entry_bar_index, entry_ts, exit_ts, entry_price, exit_price, take_profit_price, stop_loss_price, exit_reason, pnl_dollars, pnl_pct, qty, indicator_snapshot",
+          )
+          .eq("backtest_id", id)
+          .order("entry_bar_index", { ascending: true });
+
+        const trades = ((tradeRows ?? []) as Array<Record<string, unknown>>).map(
+          (t, i) => ({
+            index: i + 1, // 1-based for LLM citation
+            id: t.id,
+            entry_ts: t.entry_ts,
+            exit_ts: t.exit_ts,
+            entry_price: t.entry_price,
+            exit_price: t.exit_price,
+            take_profit_price: t.take_profit_price,
+            stop_loss_price: t.stop_loss_price,
+            exit_reason: t.exit_reason,
+            pnl_dollars: t.pnl_dollars,
+            pnl_pct: t.pnl_pct,
+            qty: t.qty,
+            indicator_snapshot: t.indicator_snapshot,
+          }),
+        );
+
+        // Existing insights from any reviewer so caller can avoid
+        // duplicate work and reason about disagreement.
+        const { data: existingRows } = await sb
+          .from("ticket_backtest_insights")
+          .select(
+            "id, model, prompt_version, recommendation, winning_pattern, losing_pattern, proposed_changes, ab_comparison, created_at",
+          )
+          .eq("backtest_id", id)
+          .order("created_at", { ascending: false });
+
+        return textContent({
+          backtest: {
+            id: backtest.id,
+            ticker: backtest.ticker,
+            timeframe: backtest.timeframe,
+            start_date: backtest.start_date,
+            end_date: backtest.end_date,
+            broker_profile_id: backtest.broker_profile_id,
+            notional_per_trade: backtest.notional_per_trade,
+            total_trades: backtest.total_trades,
+            winning_trades: backtest.winning_trades,
+            losing_trades: backtest.losing_trades,
+            win_rate: backtest.win_rate,
+            total_pnl_dollars: backtest.total_pnl_dollars,
+            avg_pnl_dollars: backtest.avg_pnl_dollars,
+            max_drawdown_dollars: backtest.max_drawdown_dollars,
+            total_friction_dollars: backtest.total_friction_dollars,
+          },
+          strategy: {
+            id: logic.id,
+            name: logic.name,
+            version: logic.version,
+            description: logic.description,
+            body: logic.body,
+          },
+          tunables: tunablesList,
+          trades,
+          existing_insights: existingRows ?? [],
+        });
       }
 
       default:

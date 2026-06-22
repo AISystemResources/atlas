@@ -134,6 +134,74 @@ export const WRITE_TOOL_DEFS = [
     },
   },
   {
+    name: "submit_distillation_insight",
+    description:
+      "Post YOUR (the LLM caller's) distillation analysis of a backtest, so it persists alongside any auto-distillation from Llama. Use this when you've fetched a backtest via get_backtest_for_distillation, reasoned over the trades yourself, and want to record your conclusion. " +
+      "Server applies the same safety pipeline as the Llama path: filters unknown tunable names, applies the per-promote ratchet clamp to proposed_value, maps your 1-based trade indices to real trade ids, and runs the forward A/B test on the proposed changes (if any). " +
+      "Insight is stored with model=<your model string> and prompt_version='claude-mcp-v1'. Multiple models coexist on the same backtest; same model+prompt re-runs UPSERT. Returns the insight_id plus a clamp summary showing what was actually applied vs what you proposed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        backtest_id: { type: "string", description: "UUID of the backtest you are reviewing." },
+        model: {
+          type: "string",
+          description:
+            "Your model identifier (e.g. 'anthropic/claude-opus-4-7', 'anthropic/claude-sonnet-4-6'). Stamped on the insight row for academic provenance and so the UI can show which model proposed what.",
+        },
+        winning_pattern: {
+          type: "string",
+          minLength: 1,
+          description: "1–2 sentences on the strongest pattern among winning trades.",
+        },
+        losing_pattern: {
+          type: "string",
+          minLength: 1,
+          description: "1–2 sentences on the strongest pattern among losing trades.",
+        },
+        winning_trade_indices: {
+          type: "array",
+          items: { type: "integer", minimum: 1 },
+          description: "1-based indices (from the trades array in get_backtest_for_distillation) that exemplify your winning_pattern claim. Out-of-range or duplicate indices are dropped server-side.",
+        },
+        losing_trade_indices: {
+          type: "array",
+          items: { type: "integer", minimum: 1 },
+          description: "1-based indices that exemplify your losing_pattern claim.",
+        },
+        recommendation: {
+          type: "string",
+          enum: ["promote", "keep", "deprecate"],
+          description: "Your final verdict. If you cannot articulate a specific parameter change that would improve the strategy, prefer 'keep' over an empty 'promote'.",
+        },
+        rationale: {
+          type: "string",
+          minLength: 1,
+          description: "1 paragraph explaining your recommendation.",
+        },
+        proposed_changes: {
+          type: "array",
+          description: "Required when recommendation='promote'. Parameter changes to apply when this insight is promoted to v(N+1). Use ONLY tunable names from get_backtest_for_distillation's tunables array — unknown names are silently dropped. Each proposed_value is server-clamped to the ratchet cap.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Tunable name." },
+              current_value: { type: "number" },
+              proposed_value: { type: "number" },
+              reason: { type: "string", description: "1 sentence." },
+              supporting_trade_indices: {
+                type: "array",
+                items: { type: "integer", minimum: 1 },
+                description: "1-based trade indices that justify this change.",
+              },
+            },
+            required: ["name", "current_value", "proposed_value", "reason"],
+          },
+        },
+      },
+      required: ["backtest_id", "model", "winning_pattern", "losing_pattern", "recommendation", "rationale"],
+    },
+  },
+  {
     name: "create_ticket_logic",
     description:
       "Create a brand-new Ticket Logic strategy from scratch as v1 under the caller's ownership. The body is a full TicketLogicBody JSON — Atlas validates it via the same schema the rest of the system uses. Use this when iterating on a new idea in chat (the typical loop: create → run_ticket_backtest → get_ticket_backtest → reason over trades → either promote_ticket_logic_version or create_ticket_logic again with a new variant). Strategy is locked to one ticker per Sprint 068.",
@@ -477,6 +545,203 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           id: saved.id,
           insight: result.insight,
           model: result.model,
+          ab_comparison: abComparison,
+        });
+      }
+
+      case "submit_distillation_insight": {
+        // Sprint 079C.2: Claude (or any external LLM) posts its own distillation
+        // analysis. Server applies the same safety pipeline as the Llama path
+        // (clamp, attribution, A/B) and persists alongside any auto-distillation.
+
+        const backtestId = typeof args.backtest_id === "string" ? args.backtest_id : "";
+        const model = typeof args.model === "string" ? args.model : "";
+        const winningPattern = typeof args.winning_pattern === "string" ? args.winning_pattern : "";
+        const losingPattern = typeof args.losing_pattern === "string" ? args.losing_pattern : "";
+        const recommendation = typeof args.recommendation === "string" ? args.recommendation : "";
+        const rationale = typeof args.rationale === "string" ? args.rationale : "";
+        if (!backtestId || !model || !winningPattern || !losingPattern || !rationale) {
+          return toolError(
+            "backtest_id, model, winning_pattern, losing_pattern, rationale required",
+            "invalid_request",
+          );
+        }
+        if (!["promote", "keep", "deprecate"].includes(recommendation)) {
+          return toolError("recommendation must be promote|keep|deprecate", "invalid_request");
+        }
+
+        const sb = getServiceClient();
+
+        // Ownership + load backtest.
+        const { data: btData } = await sb
+          .from("ticket_backtests")
+          .select("id, user_id, ticket_logic_id")
+          .eq("id", backtestId)
+          .maybeSingle();
+        const bt = btData as { id: string; user_id: string; ticket_logic_id: string } | null;
+        if (!bt) return toolError("backtest not found", "not_found");
+        if (bt.user_id !== userId) return toolError("forbidden", "forbidden");
+
+        // Strategy body for tunable + clamp validation.
+        const { data: logicRow } = await sb
+          .from("ticket_logics")
+          .select("name, version")
+          .eq("id", bt.ticket_logic_id)
+          .maybeSingle();
+        if (!logicRow) return toolError("strategy not found", "not_found");
+        const { loadTicketLogic } = await import("@/lib/strategies/loader");
+        const logic = await loadTicketLogic(
+          (logicRow as { name: string }).name,
+          (logicRow as { version: number }).version,
+        );
+        if (!logic) return toolError("strategy load failed");
+
+        // Trades for index → id mapping.
+        const { data: tradeRows } = await sb
+          .from("ticket_backtest_trades")
+          .select("id")
+          .eq("backtest_id", backtestId)
+          .order("entry_bar_index", { ascending: true });
+        const tradesInOrder = ((tradeRows ?? []) as Array<{ id: string }>).map((t) => ({
+          id: t.id,
+        }));
+
+        // Helpers reused from the LLM path.
+        const { getTunables, clampProposedChange, effectiveMaxStepPct } = await import(
+          "@/lib/strategies/tunable-params"
+        );
+        const tunables = getTunables(logic.body);
+
+        function mapIndices(idx: number[]): string[] {
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const i of idx) {
+            if (i < 1 || i > Math.min(tradesInOrder.length, 50)) continue;
+            const id = tradesInOrder[i - 1].id;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            out.push(id);
+          }
+          return out;
+        }
+
+        const winningTradeIndices = Array.isArray(args.winning_trade_indices)
+          ? (args.winning_trade_indices.filter((n) => typeof n === "number") as number[])
+          : [];
+        const losingTradeIndices = Array.isArray(args.losing_trade_indices)
+          ? (args.losing_trade_indices.filter((n) => typeof n === "number") as number[])
+          : [];
+
+        // Validate + clamp proposed changes.
+        type SubmittedChange = {
+          name: string;
+          current_value: number;
+          proposed_value: number;
+          reason: string;
+          supporting_trade_indices?: number[];
+        };
+        const rawChanges = Array.isArray(args.proposed_changes)
+          ? (args.proposed_changes as SubmittedChange[])
+          : [];
+        const validChanges = rawChanges.filter(
+          (c) =>
+            typeof c?.name === "string" &&
+            typeof c?.current_value === "number" &&
+            typeof c?.proposed_value === "number" &&
+            typeof c?.reason === "string" &&
+            tunables.some((t) => t.name === c.name),
+        );
+
+        type ClampMeta = {
+          original_proposed_value: number;
+          applied_value: number;
+          was_clamped: boolean;
+          clamp_reason: "" | "step" | "min" | "max";
+          max_step_pct: number;
+        };
+        const clampByChange: Record<string, ClampMeta> = {};
+        const supportingIdsByChange: Record<string, string[]> = {};
+        const clampedChanges = validChanges.map((c) => {
+          const tunable = tunables.find((t) => t.name === c.name)!;
+          const r = clampProposedChange(tunable, c.current_value, c.proposed_value);
+          clampByChange[c.name] = {
+            original_proposed_value: r.original_proposed_value,
+            applied_value: r.applied_value,
+            was_clamped: r.was_clamped,
+            clamp_reason: r.clamp_reason,
+            max_step_pct: effectiveMaxStepPct(tunable),
+          };
+          supportingIdsByChange[c.name] = mapIndices(c.supporting_trade_indices ?? []);
+          return {
+            name: c.name,
+            current_value: c.current_value,
+            proposed_value: r.applied_value, // clamped
+            reason: c.reason,
+            supporting_trade_indices: c.supporting_trade_indices ?? [],
+          };
+        });
+
+        // Construct the ReviewBacktestResult shape that saveBacktestInsight expects.
+        const result = {
+          insight: {
+            winning_pattern: winningPattern,
+            winning_trade_indices: winningTradeIndices,
+            losing_pattern: losingPattern,
+            losing_trade_indices: losingTradeIndices,
+            recommendation: recommendation as "promote" | "keep" | "deprecate",
+            rationale,
+            proposed_changes: clampedChanges,
+          },
+          model,
+          prompt_version: "claude-mcp-v1",
+          winning_trade_ids: mapIndices(winningTradeIndices),
+          losing_trade_ids: mapIndices(losingTradeIndices),
+          supporting_trade_ids_by_change: supportingIdsByChange,
+          clamp_by_change: clampByChange,
+        };
+
+        const { saveBacktestInsight } = await import("@/lib/strategies/review-backtest");
+        const saved = await saveBacktestInsight(backtestId, result);
+
+        // A/B forward-test, mirror Llama path. Non-fatal.
+        let abComparison: unknown = null;
+        if (clampedChanges.length > 0) {
+          try {
+            const { runAbForwardTest, persistAbComparison } = await import(
+              "@/lib/strategies/ab-harness"
+            );
+            abComparison = await runAbForwardTest({
+              original_backtest_id: backtestId,
+              proposed_changes: clampedChanges.map((c) => ({
+                name: c.name,
+                proposed_value: c.proposed_value,
+              })),
+            });
+            await persistAbComparison(
+              saved.id,
+              abComparison as Awaited<ReturnType<typeof runAbForwardTest>>,
+            );
+          } catch (abErr) {
+            console.error(
+              "[submit_distillation_insight] ab-harness failed (non-fatal):",
+              abErr,
+            );
+          }
+        }
+
+        const appliedChangesSummary = clampedChanges.map((c) => ({
+          name: c.name,
+          original_proposed_value: clampByChange[c.name].original_proposed_value,
+          applied_value: clampByChange[c.name].applied_value,
+          was_clamped: clampByChange[c.name].was_clamped,
+          clamp_reason: clampByChange[c.name].clamp_reason,
+        }));
+
+        return textContent({
+          insight_id: saved.id,
+          model,
+          prompt_version: "claude-mcp-v1",
+          applied_changes: appliedChangesSummary,
           ab_comparison: abComparison,
         });
       }
