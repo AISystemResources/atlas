@@ -124,9 +124,8 @@ jest.mock("@/lib/broker", () => ({
   })),
 }));
 
-jest.mock("@/lib/agents/memory/trace", () => ({
-  saveTrace: jest.fn().mockResolvedValue("mock-trace-id-123"),
-}));
+// Sprint 078A: save_trace node is now a no-op; lib/agents/memory/trace
+// is no longer imported by save_trace.ts. Mock removed.
 
 jest.mock("@supabase/supabase-js", () => ({
   createClient: jest.fn(() => ({
@@ -164,7 +163,7 @@ const mockFinalState = {
   synthesis: { bull_case: "Bull.", bear_case: "Bear.", verdict: "HOLD", reasoning: "Balanced.", model: "gemini-2.5-flash", latency_ms: 500 },
   risk: { current_price: 152, stop_loss: 144.4, take_profit: 167.2, position_size: 10, position_value: 1520, position_pct_of_portfolio: 1.52, risk_reward_ratio: 2, max_loss_dollars: 1000, reasoning: "1% rule.", latency_ms: 5 },
   portfolio_decision: { action: "HOLD", confidence: 0.5, reasoning: "Mock.", latency_ms: 800 },
-  trace_id: "mock-trace-id-123",
+  // Sprint 078A: trace_id is no longer set by the (now-no-op) save_trace node.
 };
 
 beforeAll(() => {
@@ -274,6 +273,7 @@ describe("runGraph", () => {
     expect(result.synthesis).toBeDefined();
     expect(result.risk).toBeDefined();
     expect(result.portfolio_decision).toBeDefined();
-    expect(result.trace_id).toBe("mock-trace-id-123");
+    // Sprint 078A: save_trace is now a no-op; trace_id is no longer set.
+    expect(result.trace_id).toBeUndefined();
   });
 });
