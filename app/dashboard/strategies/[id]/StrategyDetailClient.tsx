@@ -137,11 +137,13 @@ export function StrategyDetailClient({
   family,
   backtests,
   pendingProposals,
+  nextVersion,
 }: {
   detail: StrategyDetail;
   family: VersionFamilyEntry[];
   backtests: BacktestListEntry[];
   pendingProposals: PendingProposal[];
+  nextVersion: number;
 }) {
   const router = useRouter();
   const [forkBusy, setForkBusy] = useState(false);
@@ -426,6 +428,7 @@ export function StrategyDetailClient({
                 key={p.insight_id}
                 proposal={p}
                 parentLogicId={detail.id}
+                nextVersion={nextVersion}
                 onPromoted={(newId) =>
                   router.push(`/dashboard/strategies/${newId}`)
                 }
@@ -502,10 +505,12 @@ export function StrategyDetailClient({
 function PendingProposalCard({
   proposal,
   parentLogicId,
+  nextVersion,
   onPromoted,
 }: {
   proposal: PendingProposal;
   parentLogicId: string;
+  nextVersion: number;
   onPromoted: (newId: string) => void;
 }) {
   const [promoteBusy, setPromoteBusy] = useState(false);
@@ -571,7 +576,7 @@ function PendingProposalCard({
           className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50"
           style={{ background: "var(--brand)", color: "#fff" }}
         >
-          {promoteBusy ? "Promoting…" : "Promote to v(N+1)"}
+          {promoteBusy ? "Promoting…" : `Promote to v${nextVersion}`}
         </button>
       </div>
 

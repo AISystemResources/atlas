@@ -86,6 +86,12 @@ export default async function StrategyDetailPage({
     is_current: r.id === row.id,
   }));
 
+  // Sprint 079E: surface the concrete next version number on the Promote
+  // button instead of the abstract "v(N+1)" so non-technical users can
+  // see exactly what they're creating before clicking.
+  const nextVersion =
+    family.length > 0 ? Math.max(...family.map((f) => f.version)) + 1 : row.version + 1;
+
   // Recent backtests targeting this exact strategy version.
   const { data: btRows } = await sb
     .from("ticket_backtests")
@@ -249,6 +255,7 @@ export default async function StrategyDetailPage({
       family={family}
       backtests={backtests}
       pendingProposals={pendingProposals}
+      nextVersion={nextVersion}
     />
   );
 }
