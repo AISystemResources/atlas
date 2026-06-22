@@ -94,4 +94,16 @@ describe("Sprint 053.1 — clampProposedChange", () => {
     expect(r.applied_value).toBe(200);
     expect(r.was_clamped).toBe(false);
   });
+
+  it("Sprint 079H: no clamp_reason when proposal sits exactly at the step boundary", () => {
+    // Llama actually hit this case in 079D smoke test on the atr variant —
+    // proposed 0.35 against current 0.5 with max_step_pct 0.3. delta=0.15,
+    // maxDelta=0.15. Math.abs(delta) > maxDelta is false, so no clamp.
+    // clamp_reason should be "" (mirroring was_clamped=false), not "step".
+    const t: TunableParameter = { ...base, max_step_pct: 0.3 };
+    const r = clampProposedChange(t, 0.5, 0.35);
+    expect(r.applied_value).toBe(0.35);
+    expect(r.was_clamped).toBe(false);
+    expect(r.clamp_reason).toBe("");
+  });
 });

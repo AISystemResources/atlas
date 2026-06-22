@@ -421,7 +421,7 @@ export function StrategyDetailClient({
 
       {/* Sprint 053.3: pending promote-proposals (owner-only) */}
       {detail.is_mine && pendingProposals.length > 0 && (
-        <Section title={`Pending promote proposals (${pendingProposals.length})`}>
+        <Section title={`Proposed changes (${pendingProposals.length})`}>
           <div className="space-y-3">
             {pendingProposals.map((p) => (
               <PendingProposalCard
@@ -609,18 +609,18 @@ function PendingProposalCard({
                 style={{ color: "var(--bear)" }}
               >
                 <span
-                  className="inline-block px-1.5 py-0.5 rounded font-medium uppercase tracking-wide text-[10px]"
+                  className="inline-block px-1.5 py-0.5 rounded font-medium tracking-wide text-[10px]"
                   style={{
                     background: "var(--bear-bg)",
                     color: "var(--bear)",
                   }}
                 >
-                  clamped · {c.clamp_reason}
+                  Adjusted by safety cap
                 </span>
                 <span style={{ color: "var(--ghost)" }}>
-                  LLM asked {c.original_proposed_value}, ratchet allowed {c.applied_value}
+                  AI proposed {c.original_proposed_value}, kept at {c.applied_value}
                   {c.max_step_pct != null &&
-                    ` (cap ±${(c.max_step_pct * 100).toFixed(0)}%)`}
+                    ` (max ±${(c.max_step_pct * 100).toFixed(0)}% per change)`}
                 </span>
               </div>
             )}
@@ -668,11 +668,11 @@ function AbStatusBlock({ ab }: { ab: AbComparisonView }) {
         style={{ background: "var(--elevated)", color: "var(--ghost)" }}
       >
         <span className="font-medium" style={{ color: "var(--hold)" }}>
-          Forward-test deferred —{" "}
+          No out-of-sample data yet to validate this proposal —{" "}
         </span>
         {ab.reason}
         <div className="mt-0.5 font-mono" style={{ color: "var(--ghost)" }}>
-          window: {ab.forward_window.start_date} … {ab.forward_window.end_date}, bars={ab.bars_returned}
+          checked: {ab.forward_window.start_date} … {ab.forward_window.end_date}, bars={ab.bars_returned}
         </div>
       </div>
     );
@@ -687,8 +687,8 @@ function AbStatusBlock({ ab }: { ab: AbComparisonView }) {
       style={{ background: "var(--elevated)" }}
     >
       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-        <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--brand)" }}>
-          Out-of-sample forward-test
+        <span className="font-medium tracking-wide text-[11px]" style={{ color: "var(--brand)" }}>
+          Validated on data the AI hadn&apos;t seen
         </span>
         <span className="font-mono" style={{ color: "var(--ghost)" }}>
           {ab.forward_window.start_date} → {ab.forward_window.end_date}

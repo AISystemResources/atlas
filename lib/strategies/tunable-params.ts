@@ -83,11 +83,17 @@ export function clampProposedChange(
     reason = "min";
   }
 
+  // Sprint 079H: defend against the floating-point boundary case where
+  // val ends up bit-identical to the proposed value (e.g. a bounds-clamp
+  // happens to land back on the original, or the step boundary is exactly
+  // equal). The clamp_reason should mirror was_clamped — both true or
+  // both false — never report a reason on a no-op clamp.
+  const actuallyClamped = val !== proposed_value;
   return {
     applied_value: val,
-    was_clamped: val !== proposed_value,
+    was_clamped: actuallyClamped,
     original_proposed_value: proposed_value,
-    clamp_reason: reason,
+    clamp_reason: actuallyClamped ? reason : "",
   };
 }
 
