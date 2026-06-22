@@ -130,6 +130,23 @@ export const READ_TOOL_DEFS = [
       required: ["backtest_id"],
     },
   },
+  {
+    name: "list_pending_proposals",
+    description:
+      "List distillation insights that recommend a promote and haven't been promoted yet. " +
+      "Each row carries the source backtest's ticker + timeframe, the proposed parameter changes (with ratchet clamp metadata), trade-citation counts, and the A/B forward-test status. " +
+      "Use this when the user asks 'what should I review?' or 'what's pending?' — it's the natural next step after run_distillation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        strategy_id: {
+          type: "string",
+          description: "Optional: limit to pending proposals for one strategy version.",
+        },
+        limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      },
+    },
+  },
 ] as const;
 
 function textContent(payload: unknown) {
@@ -472,6 +489,95 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
           .maybeSingle();
 
         return textContent({ backtest: bt, trades: trades ?? [], insight });
+      }
+
+      case "list_pending_proposals": {
+        const strategy_id =
+          typeof args.strategy_id === "string" ? args.strategy_id : null;
+        const limit = Math.min(typeof args.limit === "number" ? args.limit : 20, 100);
+
+        const sb = getServiceClient();
+        // Two-step query: pull the caller's backtests first (optionally
+        // narrowed to one strategy), then their insights that recommend
+        // a not-yet-promoted change. Keeps ownership enforced.
+        let btQuery = sb
+          .from("ticket_backtests")
+          .select("id, ticker, timeframe, ticket_logic_id, start_date, end_date")
+          .eq("user_id", userId);
+        if (strategy_id) {
+          btQuery = btQuery.eq("ticket_logic_id", strategy_id);
+        }
+        const { data: btRows, error: btErr } = await btQuery;
+        if (btErr) return toolError(btErr.message);
+        const backtests = (btRows ?? []) as Array<{
+          id: string;
+          ticker: string;
+          timeframe: string;
+          ticket_logic_id: string;
+          start_date: string;
+          end_date: string;
+        }>;
+        if (backtests.length === 0) return textContent({ proposals: [] });
+
+        const btIds = backtests.map((b) => b.id);
+        const btMeta = new Map(backtests.map((b) => [b.id, b] as const));
+
+        const { data: insightRows, error: insErr } = await sb
+          .from("ticket_backtest_insights")
+          .select(
+            "id, backtest_id, rationale, proposed_changes, ab_comparison, winning_trade_ids, losing_trade_ids, created_at, model",
+          )
+          .in("backtest_id", btIds)
+          .eq("recommendation", "promote")
+          .is("promoted_to_version_id", null)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+        if (insErr) return toolError(insErr.message);
+
+        type InsightRow = {
+          id: string;
+          backtest_id: string;
+          rationale: string | null;
+          proposed_changes:
+            | Array<{
+                name: string;
+                current_value: number;
+                proposed_value: number;
+                reason: string;
+                supporting_trade_ids?: string[];
+                original_proposed_value?: number;
+                was_clamped?: boolean;
+                clamp_reason?: string;
+                max_step_pct?: number | null;
+              }>
+            | null;
+          ab_comparison: unknown;
+          winning_trade_ids: string[] | null;
+          losing_trade_ids: string[] | null;
+          created_at: string;
+          model: string;
+        };
+
+        const proposals = ((insightRows ?? []) as InsightRow[]).map((r) => {
+          const bt = btMeta.get(r.backtest_id)!;
+          return {
+            insight_id: r.id,
+            backtest_id: r.backtest_id,
+            strategy_id: bt.ticket_logic_id,
+            ticker: bt.ticker,
+            timeframe: bt.timeframe,
+            backtest_window: { start: bt.start_date, end: bt.end_date },
+            created_at: r.created_at,
+            model: r.model,
+            rationale: r.rationale,
+            proposed_changes: r.proposed_changes ?? [],
+            winning_trade_count: r.winning_trade_ids?.length ?? 0,
+            losing_trade_count: r.losing_trade_ids?.length ?? 0,
+            ab_comparison: r.ab_comparison,
+          };
+        });
+
+        return textContent({ proposals });
       }
 
       default:

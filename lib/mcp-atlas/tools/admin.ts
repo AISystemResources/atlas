@@ -92,7 +92,6 @@ export async function handleAdminTool(name: string, _args: Record<string, unknow
           free_count: freeCount,
           pro_count: proCount,
           max_count: maxCount,
-          signals_today: 0,
           executions_today: executionsToday,
         });
       }
