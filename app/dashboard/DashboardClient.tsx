@@ -47,14 +47,12 @@ function fmt(n: number | undefined | null, prefix = "$") {
 export function PortfolioTab({
   portfolio,
   tier,
-  philosophy,
-  boundaryMode,
+  boundaryMode: _boundaryMode,
   onPositionClick,
   onGoToSettings,
 }: {
   portfolio: Portfolio | null;
   tier: "free" | "pro" | "max";
-  philosophy: string;
   boundaryMode: string;
   onPositionClick: (ticker: string) => void;
   onGoToSettings: () => void;
@@ -434,40 +432,6 @@ function AlpacaConnectionSection({ onConnect }: { onConnect?: () => void }) {
 
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
-type PhilosophyMode = "balanced" | "buffett" | "soros" | "lynch";
-
-const PHILOSOPHY_OPTIONS: {
-  id: PhilosophyMode;
-  label: string;
-  desc: string;
-  color: string;
-}[] = [
-  {
-    id: "balanced",
-    label: "Balanced",
-    desc: "No overlay. Default multi-factor reasoning.",
-    color: "var(--dim)",
-  },
-  {
-    id: "buffett",
-    label: "Buffett",
-    desc: "Intrinsic value, margin of safety, durable competitive moat.",
-    color: "var(--bull)",
-  },
-  {
-    id: "soros",
-    label: "Soros",
-    desc: "Reflexivity, macro trends, exploiting market misconceptions.",
-    color: "var(--brand)",
-  },
-  {
-    id: "lynch",
-    label: "Lynch",
-    desc: "GARP — growth at a reasonable price, sector rotation.",
-    color: "var(--hold)",
-  },
-];
-
 function ManageBillingButton() {
   const [loading, setLoading] = useState(false);
 
@@ -503,28 +467,16 @@ function ManageBillingButton() {
 
 export function SettingsTab({
   tier,
-  initialPhilosophy = "balanced",
-  onPhilosophyChange,
   onBrokerConnect,
 }: {
   tier: "free" | "pro" | "max";
-  initialPhilosophy?: PhilosophyMode;
-  onPhilosophyChange?: (philosophy: PhilosophyMode) => void;
   onBrokerConnect?: () => void;
 }) {
-  const [settingsView, setSettingsView] = useState<"main" | "execution-mode" | "philosophy">("main");
+  const [settingsView, setSettingsView] = useState<"main" | "execution-mode">("main");
   const [mode, setMode] = useState<"advisory" | "autonomous" | "autonomous_guardrail">("advisory");
-  const [philosophy, setPhilosophy] = useState<PhilosophyMode>(initialPhilosophy);
   const [tempMode, setTempMode] = useState<"advisory" | "autonomous" | "autonomous_guardrail">("advisory");
-  const [tempPhilosophy, setTempPhilosophy] = useState<PhilosophyMode>(initialPhilosophy);
   const [ebcState, setEbcState] = useState<"green" | "yellow" | "red">("green");
   const [ebcResetting, setEbcResetting] = useState(false);
-
-  // Keep local state in sync if the prop changes (e.g. profile loaded after render)
-  useEffect(() => {
-    setPhilosophy(initialPhilosophy);
-    setTempPhilosophy(initialPhilosophy);
-  }, [initialPhilosophy]);
 
   const modes = [
     {
@@ -576,26 +528,9 @@ export function SettingsTab({
     setSettingsView("main");
   }
 
-  async function confirmPhilosophyChange() {
-    setPhilosophy(tempPhilosophy);
-    onPhilosophyChange?.(tempPhilosophy);
-    try {
-      await fetchWithAuth(`${API_URL}/v1/user/settings`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ investment_philosophy: tempPhilosophy }),
-      });
-    } catch {
-      // non-fatal
-    }
-    setSettingsView("main");
-  }
-
   const tierColor = tier === "pro" ? "var(--tier-pro)" : tier === "max" ? "var(--tier-max)" : "var(--dim)";
   const currentModeLabel = modes.find((m) => m.id === mode)?.label ?? "Advisory";
   const currentModeColor = modes.find((m) => m.id === mode)?.color ?? "var(--dim)";
-  const currentPhilosophyLabel = PHILOSOPHY_OPTIONS.find((p) => p.id === philosophy)?.label ?? "Balanced";
-  const currentPhilosophyColor = PHILOSOPHY_OPTIONS.find((p) => p.id === philosophy)?.color ?? "var(--dim)";
 
   // ─── Execution Mode sub-view ───────────────────────────────────────────────
   if (settingsView === "execution-mode") {
@@ -672,133 +607,6 @@ export function SettingsTab({
           </button>
           <button
             onClick={() => { setTempMode(mode); setSettingsView("main"); }}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 10,
-              border: "1px solid var(--line)",
-              background: "var(--surface)",
-              color: "var(--ghost)",
-              fontSize: 14,
-              fontFamily: "var(--font-nunito)",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Philosophy sub-view ───────────────────────────────────────────────────
-  if (settingsView === "philosophy") {
-    return (
-      <div className="flex flex-col">
-        <div className="flex items-center gap-3" style={{ marginBottom: 20 }}>
-          <button
-            onClick={() => { setTempPhilosophy(philosophy); setSettingsView("main"); }}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontSize: 20, padding: 0, lineHeight: 1 }}
-            aria-label="Back"
-          >
-            ←
-          </button>
-          <span style={{ color: "var(--ink)", fontSize: 16, fontFamily: "var(--font-nunito)", fontWeight: 700 }}>Investment Philosophy</span>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {PHILOSOPHY_OPTIONS.map((p) => {
-            const isSelected = tempPhilosophy === p.id;
-            return (
-              <button
-                key={p.id}
-                onClick={() => setTempPhilosophy(p.id)}
-                data-selected={isSelected ? "true" : "false"}
-                className="text-left w-full"
-                style={{
-                  background: isSelected ? "var(--elevated)" : "var(--surface)",
-                  border: `1px solid ${isSelected ? p.color : "var(--line)"}`,
-                  borderRadius: 10,
-                  padding: "14px 18px",
-                  cursor: "pointer",
-                  boxShadow: "var(--card-shadow)",
-                }}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-display font-bold" style={{ fontSize: 15, color: isSelected ? p.color : "var(--dim)" }}>
-                    {p.label}
-                  </span>
-                  {isSelected && <div style={{ width: 7, height: 7, borderRadius: "50%", background: p.color }} />}
-                </div>
-                <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>{p.desc}</p>
-              </button>
-            );
-          })}
-
-          {/* Create your philosophy — coming soon */}
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              padding: "14px 18px",
-              opacity: 0.45,
-              boxShadow: "var(--card-shadow)",
-            }}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-display font-bold" style={{ fontSize: 15, color: "var(--dim)" }}>
-                Create your philosophy
-              </span>
-              <span style={{
-                fontSize: 9,
-                fontFamily: "var(--font-jb)",
-                color: "var(--ghost)",
-                border: "1px solid var(--line)",
-                padding: "2px 6px",
-                borderRadius: 4,
-                textTransform: "uppercase" as const,
-                letterSpacing: "0.06em",
-                flexShrink: 0,
-              }}>
-                Coming Soon
-              </span>
-            </div>
-            <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>Define a custom investment style tailored to your strategy.</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2" style={{
-          position: "sticky",
-          bottom: 0,
-          background: "var(--bg)",
-          paddingTop: 16,
-          paddingBottom: 16,
-          marginTop: 24,
-          borderTop: "1px solid var(--line)",
-        }}>
-          <button
-            onClick={confirmPhilosophyChange}
-            disabled={tempPhilosophy === philosophy}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 10,
-              border: "none",
-              background: tempPhilosophy === philosophy ? "var(--line2)" : "var(--brand)",
-              color: tempPhilosophy === philosophy ? "var(--ghost)" : "#fff",
-              fontSize: 14,
-              fontFamily: "var(--font-nunito)",
-              fontWeight: 700,
-              cursor: tempPhilosophy === philosophy ? "default" : "pointer",
-              transition: "background 0.15s ease, color 0.15s ease",
-            }}
-          >
-            Confirm
-          </button>
-          <button
-            onClick={() => { setTempPhilosophy(philosophy); setSettingsView("main"); }}
             style={{
               width: "100%",
               padding: "12px",
@@ -1004,45 +812,6 @@ export function SettingsTab({
         <AtlasMcpConnectorCard />
       </div>
 
-      {/* Philosophy — tappable row */}
-      <div>
-        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>INVESTMENT PHILOSOPHY</div>
-        {tier === "free" ? (
-          <div style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: 10,
-            padding: "14px 18px",
-            boxShadow: "var(--card-shadow)",
-            opacity: 0.5,
-          }}>
-            <div style={{ height: 14, width: "40%", background: "var(--line2)", borderRadius: 4, marginBottom: 8 }} />
-            <div style={{ height: 12, width: "70%", background: "var(--line2)", borderRadius: 4, marginBottom: 8 }} />
-            <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>Upgrade to Pro or Max to select an investment philosophy</div>
-          </div>
-        ) : (
-          <button
-            onClick={() => { setTempPhilosophy(philosophy); setSettingsView("philosophy"); }}
-            className="text-left w-full"
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              padding: "14px 18px",
-              cursor: "pointer",
-              boxShadow: "var(--card-shadow)",
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div style={{ color: currentPhilosophyColor, fontSize: 14, fontFamily: "var(--font-nunito)", fontWeight: 700 }}>{currentPhilosophyLabel}</div>
-                <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)", marginTop: 2 }}>Tap to change</div>
-              </div>
-              <span style={{ color: "var(--ghost)", fontSize: 18, lineHeight: 1 }}>›</span>
-            </div>
-          </button>
-        )}
-      </div>
     </div>
   );
 }

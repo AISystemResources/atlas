@@ -69,7 +69,6 @@ export async function POST(req: Request): Promise<Response> {
       display_name: displayName,
       boundary_mode: "advisory",
       onboarding_completed: false,
-      investment_philosophy: "balanced",
     });
   } catch (err) {
     console.error("Failed to upsert profile for user_id=%s: %s", userId, err);

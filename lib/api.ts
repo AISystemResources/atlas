@@ -33,14 +33,11 @@ export async function fetchWithAuth(
 export type UserRole = "user" | "admin" | "superadmin";
 export type UserTier = "free" | "pro" | "max";
 
-export type InvestmentPhilosophy = "balanced" | "buffett" | "soros" | "lynch";
-
 export type MyProfile = {
   id: string;
   boundary_mode: string;
   display_name: string | null;
   email: string;
-  investment_philosophy: InvestmentPhilosophy;
   onboarding_completed: boolean;
   role: UserRole;
   tier: UserTier;

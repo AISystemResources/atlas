@@ -19,7 +19,7 @@ export const READ_TOOL_DEFS = [
   },
   {
     name: "get_profile",
-    description: "Get the user's profile: boundary_mode, investment_philosophy, tier, role.",
+    description: "Get the user's profile: boundary_mode, tier, role.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -269,7 +269,7 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         const sb = getServiceClient();
         const { data, error } = await sb
           .from("profiles")
-          .select("id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier")
+          .select("id, boundary_mode, display_name, email, onboarding_completed, role, tier")
           .eq("id", userId)
           .maybeSingle();
 

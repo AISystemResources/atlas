@@ -10,12 +10,10 @@ const API_URL = "/api";
 
 export function PortfolioPageClient({
   tier,
-  philosophy,
   boundaryMode,
   needsScalperStrategy = false,
 }: {
   tier: "free" | "pro" | "max";
-  philosophy: string;
   boundaryMode: string;
   needsScalperStrategy?: boolean;
 }) {
@@ -113,7 +111,6 @@ export function PortfolioPageClient({
       <PortfolioTab
         portfolio={portfolio}
         tier={tier}
-        philosophy={philosophy}
         boundaryMode={boundaryMode}
         onPositionClick={() => { /* per-position stock detail page removed in 078B */ }}
         onGoToSettings={() => router.push("/dashboard/settings")}

@@ -22,8 +22,6 @@ export interface UserSchedule {
   isEnabled: boolean
   /** Trading mode for this user */
   mode: "advisory" | "autonomous"
-  /** Investment philosophy profile key */
-  philosophy: string
 }
 
 export interface PipelineEvent {
@@ -31,7 +29,6 @@ export interface PipelineEvent {
   data: {
     userId: string
     ticker: string
-    philosophy: string
     mode: "advisory" | "autonomous"
     asOfDate: string
   }

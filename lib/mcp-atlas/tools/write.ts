@@ -10,17 +10,13 @@ export const WRITE_TOOL_DEFS = [
   {
     name: "update_settings",
     description:
-      "Update user profile settings: boundary_mode and/or investment_philosophy. Requires confirmation.",
+      "Update user profile settings: boundary_mode. Requires confirmation.",
     inputSchema: {
       type: "object",
       properties: {
         boundary_mode: {
           type: "string",
           enum: ["advisory", "autonomous_guardrail", "autonomous"],
-        },
-        investment_philosophy: {
-          type: "string",
-          enum: ["balanced", "buffett", "soros", "lynch"],
         },
         confirmed: { type: "boolean", default: false },
       },
@@ -202,21 +198,17 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
     switch (name) {
       case "update_settings": {
         const boundaryMode = typeof args.boundary_mode === "string" ? args.boundary_mode : undefined;
-        const investmentPhilosophy =
-          typeof args.investment_philosophy === "string" ? args.investment_philosophy : undefined;
         const confirmed = args.confirmed === true;
 
-        if (!boundaryMode && !investmentPhilosophy) {
+        if (!boundaryMode) {
           return toolError(
-            "At least one of boundary_mode or investment_philosophy must be provided.",
+            "boundary_mode must be provided.",
             "invalid_input",
           );
         }
 
         if (!confirmed) {
-          const changes: Record<string, string> = {};
-          if (boundaryMode) changes["boundary_mode"] = boundaryMode;
-          if (investmentPhilosophy) changes["investment_philosophy"] = investmentPhilosophy;
+          const changes: Record<string, string> = { boundary_mode: boundaryMode };
 
           return textContent({
             confirmation_required: true,
@@ -225,25 +217,16 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           });
         }
 
-        const updates: Record<string, string> = {};
-        if (boundaryMode) updates["boundary_mode"] = boundaryMode;
-        if (investmentPhilosophy) updates["investment_philosophy"] = investmentPhilosophy;
-
         const VALID_BOUNDARY_MODES = ["advisory", "autonomous_guardrail", "autonomous"];
-        const VALID_PHILOSOPHIES = ["balanced", "buffett", "soros", "lynch"];
 
-        if (boundaryMode && !VALID_BOUNDARY_MODES.includes(boundaryMode)) {
+        if (!VALID_BOUNDARY_MODES.includes(boundaryMode)) {
           return toolError(
             `Invalid boundary_mode. Must be one of: ${VALID_BOUNDARY_MODES.join(", ")}`,
             "invalid_input",
           );
         }
-        if (investmentPhilosophy && !VALID_PHILOSOPHIES.includes(investmentPhilosophy)) {
-          return toolError(
-            `Invalid investment_philosophy. Must be one of: ${VALID_PHILOSOPHIES.join(", ")}`,
-            "invalid_input",
-          );
-        }
+
+        const updates: Record<string, string> = { boundary_mode: boundaryMode };
 
         const sb = getServiceClient();
         const { error: updateError } = await sb
@@ -255,7 +238,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
 
         const { data, error } = await sb
           .from("profiles")
-          .select("id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier")
+          .select("id, boundary_mode, display_name, email, onboarding_completed, role, tier")
           .eq("id", userId)
           .maybeSingle();
 
