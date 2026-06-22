@@ -22,7 +22,7 @@ import {
 } from "./tunable-params";
 import type { TicketLogicBody } from "./types";
 
-export const BACKTEST_INSIGHT_PROMPT_VERSION = "backtest-insight-v3-ratchet";
+export const BACKTEST_INSIGHT_PROMPT_VERSION = "backtest-insight-v4-quantitative";
 
 // Sprint 053.0: forced attribution — every pattern + proposed change
 // must cite trade indices the LLM was shown (1-based, in the order the
@@ -155,6 +155,94 @@ function describeTunables(
     .join("\n");
 }
 
+/**
+ * Sprint 079C.3: quantitative forensics computed server-side and dropped
+ * into the prompt as the headline numbers. The Llama 70B class has been
+ * observed to pattern-match on exit-reason words rather than reason over
+ * the R:R asymmetry — a 55% win rate with avg_win < avg_loss is the
+ * actual diagnosis it kept missing. Pre-computing the numbers and forcing
+ * the LLM to reason FROM them (not toward them) is the cheaper fix vs
+ * model upgrade.
+ */
+export interface TradeForensics {
+  total: number;
+  wins: number;
+  losses: number;
+  scratches: number;
+  win_rate_pct: number | null;
+  avg_win_dollars: number | null;
+  avg_loss_dollars: number | null;
+  rr_ratio: number | null;
+  profit_factor: number | null;
+  largest_win: number | null;
+  largest_loss: number | null;
+  exit_reason_breakdown: Record<string, number>;
+}
+
+export function computeForensics(
+  trades: ReviewBacktestInput["trades"],
+): TradeForensics {
+  let wins = 0;
+  let losses = 0;
+  let scratches = 0;
+  let sumWins = 0;
+  let sumAbsLosses = 0;
+  let largestWin: number | null = null;
+  let largestLoss: number | null = null;
+  const exitReasons: Record<string, number> = {};
+  for (const t of trades) {
+    const pnl = t.pnl_dollars;
+    if (pnl == null) continue;
+    if (pnl > 0) {
+      wins++;
+      sumWins += pnl;
+      largestWin = largestWin == null ? pnl : Math.max(largestWin, pnl);
+    } else if (pnl < 0) {
+      losses++;
+      sumAbsLosses += Math.abs(pnl);
+      largestLoss = largestLoss == null ? pnl : Math.min(largestLoss, pnl);
+    } else {
+      scratches++;
+    }
+    const reason = t.exit_reason ?? "unknown";
+    exitReasons[reason] = (exitReasons[reason] ?? 0) + 1;
+  }
+  const decided = wins + losses;
+  const avgWin = wins > 0 ? sumWins / wins : null;
+  const avgLoss = losses > 0 ? sumAbsLosses / losses : null;
+  return {
+    total: trades.length,
+    wins,
+    losses,
+    scratches,
+    win_rate_pct: decided > 0 ? (wins / decided) * 100 : null,
+    avg_win_dollars: avgWin,
+    avg_loss_dollars: avgLoss,
+    rr_ratio: avgWin != null && avgLoss != null && avgLoss > 0 ? avgWin / avgLoss : null,
+    profit_factor: sumAbsLosses > 0 ? sumWins / sumAbsLosses : null,
+    largest_win: largestWin,
+    largest_loss: largestLoss,
+    exit_reason_breakdown: exitReasons,
+  };
+}
+
+function fmtNum(n: number | null, decimals = 2): string {
+  return n == null ? "—" : n.toFixed(decimals);
+}
+
+function describeForensics(f: TradeForensics): string {
+  const exitLines = Object.entries(f.exit_reason_breakdown)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
+  return `  total=${f.total}  wins=${f.wins}  losses=${f.losses}${f.scratches > 0 ? `  scratches=${f.scratches}` : ""}
+  win_rate=${fmtNum(f.win_rate_pct, 1)}%
+  avg_win=$${fmtNum(f.avg_win_dollars)}  avg_loss=$${fmtNum(f.avg_loss_dollars)}
+  R:R=${fmtNum(f.rr_ratio, 2)}  profit_factor=${fmtNum(f.profit_factor, 2)}
+  largest_win=$${fmtNum(f.largest_win)}  largest_loss=$${fmtNum(f.largest_loss)}
+  exit_reasons: ${exitLines || "—"}`;
+}
+
 function summarizeTrades(trades: ReviewBacktestInput["trades"]): string {
   // Cap at 50 trades in the prompt to keep within token budget on Groq.
   const cap = Math.min(trades.length, 50);
@@ -178,20 +266,24 @@ function buildPrompt(input: ReviewBacktestInput): string {
   const tunables = getTunables(input.strategy.body);
   const perf = input.performance;
   const visibleCount = Math.min(input.trades.length, 50);
+  const forensics = computeForensics(input.trades);
 
   return `You are an experienced systematic trader reviewing a complete backtest.
 Be skeptical, concrete, and concise. Your job is to recommend whether this strategy should be PROMOTED to a new version with parameter changes, KEPT as-is, or DEPRECATED.
 
+ANALYTICAL DISCIPLINE — read this before anything else:
+A high win rate does NOT mean a profitable strategy. A 55% win rate with avg_win < avg_loss is a STRUCTURAL FAILURE — the take-profit is being clipped tighter than the stop-loss, so winners barely cover the losers' damage. The single most important diagnostic is R:R (avg_win / avg_loss). If R:R < 1, propose a SPECIFIC parameter change that widens TP, tightens SL, or both — do NOT recommend "keep" just because win rate is above 50%. Conversely, R:R > 2 with win rate below 40% is fine — the strategy is a high-payoff low-frequency type.
+
+Reason FROM the forensics numbers below, not toward them.
+
 STRATEGY: ${input.strategy.name} v${input.strategy.version} on ${input.ticker} (${input.timeframe})
 DESCRIPTION: ${input.strategy.description}
 
-PERFORMANCE:
-  Total trades: ${perf.total_trades}
-  Wins / Losses: ${perf.winning_trades} / ${perf.losing_trades}
-  Win rate: ${perf.win_rate != null ? (perf.win_rate * 100).toFixed(1) + "%" : "—"}
-  Total PnL: $${perf.total_pnl_dollars?.toFixed(2) ?? "—"}
-  Avg / trade: $${perf.avg_pnl_dollars?.toFixed(2) ?? "—"}
-  Max drawdown: $${perf.max_drawdown_dollars?.toFixed(2) ?? "—"}
+QUANTITATIVE FORENSICS (computed server-side from all ${input.trades.length} trades — these are AUTHORITATIVE):
+${describeForensics(forensics)}
+
+AGGREGATE PERFORMANCE (also server-computed):
+  total_pnl=$${perf.total_pnl_dollars?.toFixed(2) ?? "—"}  avg_per_trade=$${perf.avg_pnl_dollars?.toFixed(2) ?? "—"}  max_drawdown=$${perf.max_drawdown_dollars?.toFixed(2) ?? "—"}
 
 TRADES (${visibleCount} shown, numbered 1–${visibleCount} for citation):
 ${summarizeTrades(input.trades)}
@@ -199,11 +291,12 @@ ${summarizeTrades(input.trades)}
 TUNABLE PARAMETERS YOU MAY PROPOSE CHANGES TO:
 ${describeTunables(tunables, input.strategy.body)}
 
-ANSWER ALL FOUR. You MUST cite specific trade numbers (1-${visibleCount}) for every claim:
-1. What's the strongest pattern in WINNING trades? List the trade numbers that exemplify it.
-2. What's the strongest pattern in LOSING trades? List the trade numbers that exemplify it.
-3. Recommend: promote / keep / deprecate. If you cannot articulate a *specific* parameter change that would improve the strategy, prefer KEEP — do not promote with empty changes.
-4. If PROMOTE, propose 1-3 parameter changes by name. Use ONLY names from the tunable list above. For each change, list the trade numbers whose behaviour would change for the better. RATCHET RULE: each proposed_value MUST fall within the per-promote cap shown next to the parameter (max ±N% from current). Proposals outside the cap are silently clamped server-side — don't waste a slot on a move you can't actually make in one promote.
+ANSWER ALL FIVE. You MUST cite specific trade numbers (1-${visibleCount}) for every pattern claim:
+1. RESTATE the headline diagnostic in one sentence — call out the R:R ratio and what it means for this strategy. (E.g. "R:R=${fmtNum(forensics.rr_ratio, 2)} with win rate ${fmtNum(forensics.win_rate_pct, 1)}% means winners are ${forensics.rr_ratio != null && forensics.rr_ratio < 1 ? "TOO SMALL to cover losses" : "doing meaningful work"}.")
+2. What's the strongest pattern in WINNING trades? List the trade numbers that exemplify it.
+3. What's the strongest pattern in LOSING trades? List the trade numbers that exemplify it.
+4. Recommend: promote / keep / deprecate. RULES: (a) if R:R < 1 you should NOT recommend "keep" without a corrective proposal — that's structural. (b) If you cannot articulate a *specific* parameter change that would improve the strategy, prefer KEEP — do not promote with empty changes. (c) Deprecate only if no parameter knob can fix the underlying problem (e.g. fundamentally wrong direction or unstable indicator).
+5. If PROMOTE, propose 1-3 parameter changes by name. Use ONLY names from the tunable list above. For each change, list the trade numbers whose behaviour would change for the better. RATCHET RULE: each proposed_value MUST fall within the per-promote cap shown next to the parameter (max ±N% from current). Proposals outside the cap are silently clamped server-side — don't waste a slot on a move you can't actually make in one promote.
 
 Return ONLY a JSON object with this exact shape (no prose before or after):
 {
