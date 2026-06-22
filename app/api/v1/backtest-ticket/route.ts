@@ -65,7 +65,27 @@ export async function POST(req: Request): Promise<Response> {
       userId: user.userId,
       notionalPerTrade: body.notional_per_trade,
     });
-    return Response.json(result);
+
+    // Sprint 079F: auto-trigger Llama distillation so the user gets a
+    // baseline review without having to remember to call it. Non-fatal —
+    // the backtest result returns regardless.
+    let autoDistillation: unknown = null;
+    if (result.total_trades > 0) {
+      try {
+        const { runLlamaDistillation } = await import(
+          "@/lib/strategies/auto-distill"
+        );
+        autoDistillation = await runLlamaDistillation(result.backtest_id);
+      } catch (err) {
+        console.error("[backtest-ticket] auto-distillation failed (non-fatal):", err);
+        autoDistillation = {
+          status: "failed",
+          reason: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+
+    return Response.json({ ...result, auto_distillation: autoDistillation });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[backtest-ticket] failed:", msg);
