@@ -81,6 +81,8 @@ const indicatorSpecSchema = z.object({
     "vwap", "volume_sma",
   ]),
   params: z.record(z.string(), z.number()),
+  // Sprint 080E: optional secondary timeframe for multi-timeframe indicators.
+  timeframe: z.enum(["1m", "5m", "15m", "1h", "1d"]).optional(),
 });
 
 const sizingSchema = z.object({

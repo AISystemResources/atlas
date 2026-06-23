@@ -25,16 +25,60 @@ export interface Bar {
 export type IndicatorArrays = Record<string, (number | null)[]>;
 
 /**
+ * Sprint 080E: keyed by Timeframe string. Callers (run.ts, ab-harness.ts)
+ * fetch and supply these when the strategy declares secondary-timeframe
+ * indicators; the engine aligns them to the primary timeline automatically.
+ */
+export type SecondaryBarsMap = Record<string, Bar[]>;
+
+/**
  * Compute all indicators declared in the strategy. Returns a map of indicator
  * id → parallel array of values (null during warmup).
+ *
+ * Sprint 080E: when `secondaryBarsMap` is provided and an indicator declares
+ * a `timeframe` override, that indicator is computed on the matching secondary
+ * bar series and re-indexed onto the primary timeline via last-known-value
+ * semantics (see `alignToTimeline`).
  */
 export function computeAllIndicators(
   specs: IndicatorSpec[],
-  bars: Bar[],
+  primaryBars: Bar[],
+  secondaryBarsMap?: SecondaryBarsMap,
 ): IndicatorArrays {
   const out: IndicatorArrays = {};
   for (const spec of specs) {
-    out[spec.id] = computeOne(spec, bars);
+    const secondary = spec.timeframe ? secondaryBarsMap?.[spec.timeframe] : undefined;
+    if (secondary && secondary.length > 0) {
+      const rawValues = computeOne(spec, secondary);
+      out[spec.id] = alignToTimeline(primaryBars, secondary, rawValues);
+    } else {
+      out[spec.id] = computeOne(spec, primaryBars);
+    }
+  }
+  return out;
+}
+
+/**
+ * Sprint 080E: re-index secondary indicator values onto the primary bar
+ * timeline using last-known-value semantics. For each primary bar at
+ * timestamp T, the output value is the most recent secondary bar's value
+ * where secondaryBar.timestamp ≤ T. Returns null before any secondary bar.
+ */
+function alignToTimeline(
+  primaryBars: Bar[],
+  secondaryBars: Bar[],
+  secondaryValues: (number | null)[],
+): (number | null)[] {
+  const out: (number | null)[] = new Array(primaryBars.length).fill(null);
+  let si = 0;
+  let lastValue: number | null = null;
+  for (let pi = 0; pi < primaryBars.length; pi++) {
+    const pTs = primaryBars[pi].timestamp ?? "";
+    while (si < secondaryBars.length && (secondaryBars[si].timestamp ?? "") <= pTs) {
+      lastValue = secondaryValues[si];
+      si++;
+    }
+    out[pi] = lastValue;
   }
   return out;
 }
