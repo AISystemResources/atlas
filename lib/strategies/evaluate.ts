@@ -280,6 +280,20 @@ function computeStopLossFromMethod(
     case "pct_of_entry": {
       return entryPrice * (1 + sign * method.value);
     }
+    // Sprint 080B: trailing variants. Initial stop at entry is identical to
+    // the static equivalent (atr_multiple / pct_of_entry). The ratchet logic
+    // lives in the backtest simulator which tracks peak/trough price per bar.
+    case "trailing_atr": {
+      const atrSeries = indicators[method.atr_indicator_id];
+      const atr = atrSeries?.[barIdx];
+      if (atr == null || !Number.isFinite(atr)) {
+        return direction === "long" ? Infinity : -Infinity;
+      }
+      return entryPrice + sign * method.value * atr;
+    }
+    case "trailing_pct": {
+      return entryPrice * (1 + sign * method.value);
+    }
   }
 }
 

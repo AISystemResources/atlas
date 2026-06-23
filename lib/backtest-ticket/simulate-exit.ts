@@ -42,6 +42,13 @@ export interface ExitSimulatorInput {
    * Evaluated after time-stop checks, before SL/TP (hard stops take priority).
    */
   exitConditionChecker?: (barIdx: number) => boolean;
+  /**
+   * Sprint 080B: optional trailing stop computer. When provided, the simulator
+   * tracks the extreme price (highest high for long; lowest low for short) since
+   * entry and calls this function each bar with (extremePrice, barIdx) to get
+   * the current stop level. Overrides the fixed `stopLossPrice` once set.
+   */
+  trailingStopFn?: (extremePrice: number, barIdx: number) => number;
 }
 
 export function simulateExit(input: ExitSimulatorInput): ExitResult {
@@ -53,7 +60,15 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
     bars,
     timeStop,
     exitConditionChecker,
+    trailingStopFn,
   } = input;
+
+  // Sprint 080B: track extreme price since entry for trailing stop ratchet.
+  // Initialised to the entry bar's own extreme so the stop starts at entry.
+  let extremePrice =
+    direction === "long"
+      ? bars[entryBarIndex].high
+      : bars[entryBarIndex].low;
 
   const entryBar = bars[entryBarIndex];
   if (!entryBar) throw new Error(`entryBarIndex ${entryBarIndex} out of range`);
@@ -62,6 +77,15 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
   for (let i = entryBarIndex + 1; i < bars.length; i++) {
     const bar = bars[i];
     const barDate = bar.timestamp?.slice(0, 10);
+
+    // Sprint 080B: compute effective stop from the extreme seen in PRIOR bars
+    // (not including this bar's high/low). The extreme updates at the END of
+    // the loop — after all exit checks — so a bar's new high can't immediately
+    // tighten the stop and trigger SL on the same bar. Consistent with the
+    // SL-first conservative-bias convention (tick ordering unknown intrabar).
+    const effectiveStop = trailingStopFn
+      ? trailingStopFn(extremePrice, i)
+      : stopLossPrice;
 
     // EOD time stop: trigger as soon as we observe a bar from a later trading day.
     if (timeStop === "eod" && entryDate && barDate && barDate !== entryDate) {
@@ -87,7 +111,7 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
     }
 
     if (direction === "long") {
-      const slHit = bar.low <= stopLossPrice;
+      const slHit = bar.low <= effectiveStop;
       const tpHit = bar.high >= takeProfitPrice;
       // SL-first on straddle (conservative-bias convention). SL also takes
       // priority over exit_conditions: a price-level breach is harder evidence
@@ -96,7 +120,7 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
         return {
           exitBarIndex: i,
           exitTimestamp: bar.timestamp!,
-          exitPrice: stopLossPrice,
+          exitPrice: effectiveStop,
           exitReason: "sl_hit",
         };
       }
@@ -119,13 +143,13 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
       }
     } else {
       // SHORT: SL above entry, TP below entry.
-      const slHit = bar.high >= stopLossPrice;
+      const slHit = bar.high >= effectiveStop;
       const tpHit = bar.low <= takeProfitPrice;
       if (slHit) {
         return {
           exitBarIndex: i,
           exitTimestamp: bar.timestamp!,
-          exitPrice: stopLossPrice,
+          exitPrice: effectiveStop,
           exitReason: "sl_hit",
         };
       }
@@ -146,6 +170,15 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
           exitReason: "tp_hit",
         };
       }
+    }
+
+    // Sprint 080B: ratchet extreme price AFTER all exit checks so this bar's
+    // new high/low feeds into the NEXT bar's stop computation only.
+    if (trailingStopFn) {
+      extremePrice =
+        direction === "long"
+          ? Math.max(extremePrice, bar.high)
+          : Math.min(extremePrice, bar.low);
     }
   }
 

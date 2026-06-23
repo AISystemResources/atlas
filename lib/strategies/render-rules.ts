@@ -198,6 +198,14 @@ export function renderSlMethodProse(
       const pct = (method.value * 100).toFixed(2);
       return `${pct}% ${dir} entry price (pct_of_entry)`;
     }
+    // Sprint 080B: trailing variants.
+    case "trailing_atr": {
+      return `trailing — stop trails ${method.value}× ${method.atr_indicator_id} ${dir} peak price (ratchets with price, never reverses)`;
+    }
+    case "trailing_pct": {
+      const pct = (method.value * 100).toFixed(2);
+      return `trailing — stop trails ${pct}% ${dir} peak price (ratchets with price, never reverses)`;
+    }
   }
 }
 

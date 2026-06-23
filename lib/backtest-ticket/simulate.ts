@@ -83,17 +83,35 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
   const { body, bars, notional, profile, asset } = opts;
   const entries = evaluate(body, bars);
 
-  // Sprint 080A: build exit condition checker once per backtest run.
-  // Indicators are computed here (separately from the entry evaluator's
-  // internal computation) so the checker has access to the full series.
+  // Sprint 080A/080B: compute indicators once for exit checkers.
+  const indicators =
+    (body.exit.exit_conditions && body.exit.exit_conditions.length > 0) ||
+    body.exit.sl_method?.type === "trailing_atr"
+      ? computeAllIndicators(body.indicators, bars)
+      : null;
+
   const exitConditionChecker =
-    body.exit.exit_conditions && body.exit.exit_conditions.length > 0
-      ? buildExitConditionChecker(
-          body.exit.exit_conditions,
-          bars,
-          computeAllIndicators(body.indicators, bars),
-        )
+    body.exit.exit_conditions && body.exit.exit_conditions.length > 0 && indicators
+      ? buildExitConditionChecker(body.exit.exit_conditions, bars, indicators)
       : undefined;
+
+  // Sprint 080B: build trailing stop function when sl_method is trailing.
+  const slMethod = body.exit.sl_method;
+  const trailingStopFn: ((extremePrice: number, barIdx: number) => number) | undefined =
+    slMethod?.type === "trailing_atr"
+      ? (extreme, i) => {
+          const atr = (indicators ?? computeAllIndicators(body.indicators, bars))[slMethod.atr_indicator_id]?.[i];
+          const sign = body.direction === "long" ? -1 : 1;
+          return Number.isFinite(atr) && atr != null
+            ? extreme + sign * slMethod.value * atr
+            : body.direction === "long" ? -Infinity : Infinity;
+        }
+      : slMethod?.type === "trailing_pct"
+        ? (extreme) => {
+            const sign = body.direction === "long" ? -1 : 1;
+            return extreme * (1 + sign * slMethod.value);
+          }
+        : undefined;
 
   const trades: SimulatedTrade[] = [];
   let cumulativePnl = 0;
@@ -114,6 +132,7 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
       bars,
       timeStop: body.exit.time_stop,
       exitConditionChecker,
+      trailingStopFn,
     });
 
     const qty = round5(notional / entry.entry_price);

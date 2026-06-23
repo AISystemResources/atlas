@@ -84,7 +84,19 @@ export type TimeStop = "eod" | { bars: number };
 export type StopLossMethod =
   | { type: "fixed_buffer"; value: number }
   | { type: "atr_multiple"; value: number; atr_indicator_id: string }
-  | { type: "pct_of_entry"; value: number };
+  | { type: "pct_of_entry"; value: number }
+  /**
+   * Sprint 080B: trailing stops. Stop ratchets with the best price seen
+   * since entry (highest high for long; lowest low for short). Initial stop
+   * at entry is equivalent to the static variant; thereafter it only moves
+   * in the profitable direction.
+   *
+   * trailing_atr: stop = peak_price − value × ATR (long) / trough + value × ATR (short).
+   * trailing_pct: stop = peak_price × (1 − value) (long) / trough × (1 + value) (short).
+   *   `value` is a fraction (e.g. 0.005 = 0.5%). Max 1 enforced by Zod.
+   */
+  | { type: "trailing_atr"; value: number; atr_indicator_id: string }
+  | { type: "trailing_pct"; value: number };
 
 // ── Tunable parameter (embedded in body) — Sprint 060B ───────────────────────
 
