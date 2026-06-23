@@ -110,6 +110,22 @@ export interface Sizing {
 export type TimeStop = "eod" | { bars: number };
 
 /**
+ * Sprint 080F: one tranche in a staged exit plan.
+ *
+ * `fraction` is the share of the original position closed at this TP
+ * (0 < fraction ≤ 1). The sum of all stage fractions must be ≤ 1.
+ * Any remainder is closed by the main exit (take_profit / SL / time_stop).
+ *
+ * Stages are evaluated in declaration order each bar. Hard stops (SL,
+ * time_stop, exit_conditions) close the FULL remaining position immediately,
+ * superseding any pending stages on that bar.
+ */
+export interface ExitStage {
+  fraction: number;
+  take_profit: Expression;
+}
+
+/**
  * Sprint 079G: declarative stop-loss methodology. Lifts SL geometry from
  * a hard-coded body expression to a first-class tunable concept.
  *
@@ -231,6 +247,13 @@ export interface TicketLogicBody {
      * exit must define at least one of stop_loss, sl_method, or exit_conditions.
      */
     exit_conditions?: ConditionNode[];
+    /**
+     * Sprint 080F: staged partial-exit plan. Each stage closes `fraction` of
+     * the original position when its `take_profit` expression is reached.
+     * Evaluated after hard stops each bar. If sum(fractions) < 1, the
+     * remaining position is closed by the main exit mechanics.
+     */
+    stages?: ExitStage[];
   };
   /**
    * Self-describing parameters that the AI Distillation may propose changes
