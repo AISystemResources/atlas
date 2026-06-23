@@ -5,7 +5,7 @@ import { getServiceClient } from "@/lib/supabase-server";
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
-  return new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
+  return new Stripe(key, { apiVersion: "2026-05-27.dahlia" });
 }
 
 // POST /api/v1/stripe/portal — create a Stripe billing portal session
