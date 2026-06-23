@@ -54,8 +54,8 @@ export const WRITE_TOOL_DEFS = [
       "with the new backtest_id, total trades, win rate, total PnL, and total friction cost under the chosen " +
       "broker profile, plus an `auto_distillation` field carrying the Llama review that fires automatically post-backtest " +
       "(Sprint 079F). For per-trade detail or to layer your own analysis, use get_backtest_for_distillation + " +
-      "submit_distillation_insight. Index tickers (e.g. ^DJI) and ETFs both supported. Yahoo intraday limits: 5m/15m → 60 days, " +
-      "1h → 730 days, 1d → effectively unlimited. Sprint 077B.1: `broker_profile_id` parameterises the fill engine " +
+      "submit_distillation_insight. Index tickers (e.g. ^DJI) and ETFs both supported. Yahoo intraday limits: 1m → 7 days (auto-clamped), " +
+      "2m/5m/15m → 60 days, 1h → 730 days, 1d → effectively unlimited. Sprint 077B.1: `broker_profile_id` parameterises the fill engine " +
       "with spread + commission + slippage. Same strategy under different profiles produces different PnL — that's " +
       "the academic comparison the final report is built around.",
     inputSchema: {
@@ -66,7 +66,7 @@ export const WRITE_TOOL_DEFS = [
         ticker: { type: "string", description: "Ticker symbol (e.g. '^DJI', 'TSLA', 'BTC/USD')." },
         start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "ISO date YYYY-MM-DD." },
         end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "ISO date YYYY-MM-DD." },
-        timeframe: { type: "string", enum: ["5m", "15m", "1h", "1d"] },
+        timeframe: { type: "string", enum: ["1m", "2m", "5m", "15m", "1h", "1d"] },
         notional_per_trade: {
           type: "number",
           minimum: 1,
@@ -398,7 +398,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             "invalid_request",
           );
         }
-        if (!["5m", "15m", "1h", "1d"].includes(timeframe)) {
+        if (!["1m", "2m", "5m", "15m", "1h", "1d"].includes(timeframe)) {
           return toolError(`unsupported timeframe '${timeframe}'`, "invalid_request");
         }
         if (new Date(endDate) <= new Date(startDate)) {
@@ -412,7 +412,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           ticker,
           start_date: startDate,
           end_date: endDate,
-          timeframe: timeframe as "5m" | "15m" | "1h" | "1d",
+          timeframe: timeframe as "1m" | "2m" | "5m" | "15m" | "1h" | "1d",
           userId,
           notionalPerTrade: notional,
           brokerProfileId,
