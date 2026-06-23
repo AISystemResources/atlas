@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import type { Expression, TicketLogicBody } from "./types";
+import type { ConditionNode, Expression, TicketLogicBody } from "./types";
 
 const ohlcField = z.enum(["open", "high", "low", "close"]);
 const binaryOp = z.enum(["+", "-", "*", "/"]);
@@ -44,6 +44,31 @@ const conditionSchema = z.object({
   left: expressionSchema,
   right: expressionSchema,
 });
+
+// Sprint 080D: recursive compound condition tree.
+// conditionNodeSchema accepts either a leaf Condition (has `op`) or a compound
+// node (has `type`). z.lazy() is required because the tree is self-referential.
+const conditionNodeSchema: z.ZodType<ConditionNode> = z.lazy(() =>
+  z.union([
+    // Leaf — backward compatible with all existing strategies.
+    conditionSchema,
+    // Compound AND: all children must hold.
+    z.object({
+      type: z.literal("and"),
+      children: z.array(conditionNodeSchema).min(1),
+    }),
+    // Compound OR: any child must hold.
+    z.object({
+      type: z.literal("or"),
+      children: z.array(conditionNodeSchema).min(1),
+    }),
+    // Compound NOT: child must not hold.
+    z.object({
+      type: z.literal("not"),
+      child: conditionNodeSchema,
+    }),
+  ]),
+);
 
 const indicatorSpecSchema = z.object({
   id: z.string().min(1),
@@ -125,9 +150,9 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
   timeframe: z.enum(["1m", "5m", "15m", "1h", "1d"]),
   direction: z.enum(["long", "short"]),
   indicators: z.array(indicatorSpecSchema).min(1),
-  regime_filter: conditionSchema.optional(),
+  regime_filter: conditionNodeSchema.optional(),
   entry: z.object({
-    conditions: z.array(conditionSchema).min(1),
+    conditions: z.array(conditionNodeSchema).min(1),
     sizing: sizingSchema,
   }),
   computed: z.record(z.string(), expressionSchema).optional(),
@@ -137,8 +162,8 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
       stop_loss: expressionSchema.optional(),
       sl_method: slMethodSchema.optional(),
       time_stop: timeStopSchema.optional(),
-      // Sprint 080A: indicator-based exit triggers (any fires → close position).
-      exit_conditions: z.array(conditionSchema).min(1).optional(),
+      // Sprint 080A/080D: indicator-based exit triggers (any fires → close position). Supports compound nodes.
+      exit_conditions: z.array(conditionNodeSchema).min(1).optional(),
     })
     .refine((e) => !!e.stop_loss || !!e.sl_method || !!e.exit_conditions, {
       message:

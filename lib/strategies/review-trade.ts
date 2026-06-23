@@ -92,13 +92,17 @@ function summarizeConditions(body: TicketLogicBody): string {
       return `(${renderExpr(e.left)} ${e.op} ${renderExpr(e.right)})`;
     return JSON.stringify(e);
   }
-  const conds = body.entry.conditions.map(
-    (c) => `  ${renderExpr(c.left)} ${c.op} ${renderExpr(c.right)}`,
-  );
+  function renderCondNode(node: unknown): string {
+    const n = node as Record<string, unknown>;
+    if ("op" in n) return `${renderExpr(n.left)} ${n.op} ${renderExpr(n.right)}`;
+    if (n.type === "and") return `(${(n.children as unknown[]).map(renderCondNode).join(" AND ")})`;
+    if (n.type === "or") return `(${(n.children as unknown[]).map(renderCondNode).join(" OR ")})`;
+    if (n.type === "not") return `NOT(${renderCondNode(n.child)})`;
+    return JSON.stringify(n);
+  }
+  const conds = body.entry.conditions.map((c) => `  ${renderCondNode(c)}`);
   if (body.regime_filter) {
-    conds.unshift(
-      `  (regime) ${renderExpr(body.regime_filter.left)} ${body.regime_filter.op} ${renderExpr(body.regime_filter.right)}`,
-    );
+    conds.unshift(`  (regime) ${renderCondNode(body.regime_filter)}`);
   }
   return conds.join("\n");
 }

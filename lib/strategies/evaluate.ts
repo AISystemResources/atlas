@@ -18,6 +18,7 @@ import { computeAllIndicators, type Bar, type IndicatorArrays } from "./indicato
 import { isBarInSession } from "./time-filter";
 import type {
   Condition,
+  ConditionNode,
   Direction,
   Expression,
   Sizing,
@@ -82,13 +83,13 @@ function evaluateAtBar(
   }
 
   if (logic.regime_filter) {
-    if (!evaluateCondition(logic.regime_filter, bars, indicators, computed, barIdx)) {
+    if (!evaluateConditionNode(logic.regime_filter, bars, indicators, computed, barIdx)) {
       return null;
     }
   }
 
-  for (const cond of logic.entry.conditions) {
-    if (!evaluateCondition(cond, bars, indicators, computed, barIdx)) return null;
+  for (const node of logic.entry.conditions) {
+    if (!evaluateConditionNode(node, bars, indicators, computed, barIdx)) return null;
   }
 
   const entryPrice = round4(
@@ -146,7 +147,7 @@ function evaluateAtBar(
 }
 
 /**
- * Sprint 080A: build a per-bar exit condition checker for use in the
+ * Sprint 080A/080D: build a per-bar exit condition checker for use in the
  * backtest simulator. Returns a function that, given a bar index, returns
  * true if ANY exit condition in `conditions` fires on that bar.
  *
@@ -154,14 +155,14 @@ function evaluateAtBar(
  * "condition not met" so they don't abort the simulation.
  */
 export function buildExitConditionChecker(
-  conditions: Condition[],
+  conditions: ConditionNode[],
   bars: Bar[],
   indicators: IndicatorArrays,
 ): (barIdx: number) => boolean {
   return (barIdx: number): boolean => {
     try {
-      return conditions.some((cond) =>
-        evaluateCondition(cond, bars, indicators, {}, barIdx),
+      return conditions.some((node) =>
+        evaluateConditionNode(node, bars, indicators, {}, barIdx),
       );
     } catch {
       return false;
@@ -169,7 +170,31 @@ export function buildExitConditionChecker(
   };
 }
 
-function evaluateCondition(
+/**
+ * Sprint 080D: evaluate a ConditionNode — either a leaf Condition (detected
+ * by presence of `op`) or a compound AND/OR/NOT node.
+ */
+function evaluateConditionNode(
+  node: ConditionNode,
+  bars: Bar[],
+  indicators: IndicatorArrays,
+  computed: Record<string, number>,
+  barIdx: number,
+): boolean {
+  if ("op" in node) {
+    return evaluateLeafCondition(node as Condition, bars, indicators, computed, barIdx);
+  }
+  switch (node.type) {
+    case "and":
+      return node.children.every((c) => evaluateConditionNode(c, bars, indicators, computed, barIdx));
+    case "or":
+      return node.children.some((c) => evaluateConditionNode(c, bars, indicators, computed, barIdx));
+    case "not":
+      return !evaluateConditionNode(node.child, bars, indicators, computed, barIdx);
+  }
+}
+
+function evaluateLeafCondition(
   cond: Condition,
   bars: Bar[],
   indicators: IndicatorArrays,
@@ -187,6 +212,7 @@ function evaluateCondition(
     case "neq": return L !== R;
   }
 }
+
 
 function evaluateExpression(
   expr: Expression,
