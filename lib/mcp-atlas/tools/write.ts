@@ -203,6 +203,25 @@ export const WRITE_TOOL_DEFS = [
       required: ["backtest_id", "model", "winning_pattern", "losing_pattern", "recommendation", "rationale"],
     },
   },
+  // ── Paper ingestion tools (Sprint 081A) ─────────────────────────────────
+  {
+    name: "fetch_papers",
+    description:
+      "Fetch recent trading-strategy papers from arXiv (q-fin.TR) and store new ones in the signal_papers " +
+      "table. Deduplicates by source_url — already-ingested papers are skipped. Returns counts and the list " +
+      "of newly inserted paper IDs for downstream extraction (081B). Call this daily to keep the paper library " +
+      "up to date.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sources: {
+          type: "array",
+          items: { type: "string", enum: ["arxiv"] },
+          description: "Sources to fetch from. Defaults to ['arxiv'].",
+        },
+      },
+    },
+  },
   {
     name: "create_ticket_logic",
     description:
@@ -910,6 +929,57 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           name: (inserted as { name: string }).name,
           version: (inserted as { version: number }).version,
           forked_from_id: source.id,
+        });
+      }
+
+      case "fetch_papers": {
+        const sources = Array.isArray(args.sources)
+          ? (args.sources as string[]).filter((s) => s === "arxiv")
+          : ["arxiv"];
+
+        const { fetchArxivPapers } = await import("@/lib/paper-ingest/fetch-arxiv");
+        const sb = getServiceClient();
+
+        let fetched = 0;
+        let inserted = 0;
+        const newPaperIds: string[] = [];
+
+        if (sources.includes("arxiv")) {
+          const papers = await fetchArxivPapers();
+          fetched += papers.length;
+
+          for (const paper of papers) {
+            // Dedup by source_url (UNIQUE constraint).
+            const { data: existing } = await sb
+              .from("signal_papers")
+              .select("id")
+              .eq("source_url", paper.source_url)
+              .maybeSingle();
+            if (existing) continue;
+
+            const { data: row, error } = await sb
+              .from("signal_papers")
+              .insert({
+                title: paper.title,
+                source: paper.source,
+                source_url: paper.source_url,
+                abstract: paper.abstract,
+              })
+              .select("id")
+              .single();
+
+            if (!error && row) {
+              newPaperIds.push((row as { id: string }).id);
+              inserted++;
+            }
+          }
+        }
+
+        return textContent({
+          fetched,
+          inserted,
+          skipped: fetched - inserted,
+          new_paper_ids: newPaperIds,
         });
       }
 
