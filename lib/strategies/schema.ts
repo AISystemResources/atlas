@@ -47,7 +47,14 @@ const conditionSchema = z.object({
 
 const indicatorSpecSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(["rsi", "ema", "sma", "atr", "kc_upper", "kc_lower"]),
+  type: z.enum([
+    "rsi", "ema", "sma", "atr", "kc_upper", "kc_lower",
+    // Sprint 080C
+    "macd", "macd_signal", "macd_histogram",
+    "bb_upper", "bb_lower", "bb_middle",
+    "stoch_k", "stoch_d",
+    "vwap", "volume_sma",
+  ]),
   params: z.record(z.string(), z.number()),
 });
 

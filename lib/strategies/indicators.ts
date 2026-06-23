@@ -18,6 +18,8 @@ export interface Bar {
   close: number;
   open?: number;
   timestamp?: string;
+  /** Sprint 080C: required by vwap and volume_sma indicators. */
+  volume?: number;
 }
 
 export type IndicatorArrays = Record<string, (number | null)[]>;
@@ -63,6 +65,41 @@ function computeOne(spec: IndicatorSpec, bars: Bar[]): (number | null)[] {
         reqMultiplier(spec.params.multiplier, spec.id),
         "lower",
       );
+    // Sprint 080C ─────────────────────────────────────────────────────────────
+    case "macd":
+      return macdLine(
+        bars.map((b) => b.close),
+        reqPeriod(spec.params.fast_period, spec.id),
+        reqPeriod(spec.params.slow_period, spec.id),
+      );
+    case "macd_signal":
+      return macdSignalLine(
+        bars.map((b) => b.close),
+        reqPeriod(spec.params.fast_period, spec.id),
+        reqPeriod(spec.params.slow_period, spec.id),
+        reqPeriod(spec.params.signal_period, spec.id),
+      );
+    case "macd_histogram":
+      return macdHist(
+        bars.map((b) => b.close),
+        reqPeriod(spec.params.fast_period, spec.id),
+        reqPeriod(spec.params.slow_period, spec.id),
+        reqPeriod(spec.params.signal_period, spec.id),
+      );
+    case "bb_upper":
+      return bbBand(bars.map((b) => b.close), reqPeriod(spec.params.period, spec.id), reqMultiplier(spec.params.std_dev, spec.id), "upper");
+    case "bb_lower":
+      return bbBand(bars.map((b) => b.close), reqPeriod(spec.params.period, spec.id), reqMultiplier(spec.params.std_dev, spec.id), "lower");
+    case "bb_middle":
+      return sma(bars.map((b) => b.close), reqPeriod(spec.params.period, spec.id));
+    case "stoch_k":
+      return stochK(bars, reqPeriod(spec.params.period, spec.id));
+    case "stoch_d":
+      return stochD(bars, reqPeriod(spec.params.k_period, spec.id), reqPeriod(spec.params.d_period, spec.id));
+    case "vwap":
+      return vwap(bars);
+    case "volume_sma":
+      return sma(bars.map((b) => b.volume ?? NaN), reqPeriod(spec.params.period, spec.id));
   }
 }
 
@@ -190,6 +227,127 @@ function kcBand(
     const a = atrArr[i];
     if (e === null || a === null) continue;
     out[i] = e + sign * multiplier * a;
+  }
+  return out;
+}
+
+// ── Sprint 080C: MACD ────────────────────────────────────────────────────────
+
+function macdLine(closes: number[], fast: number, slow: number): (number | null)[] {
+  const fastArr = ema(closes, fast);
+  const slowArr = ema(closes, slow);
+  return closes.map((_, i) => {
+    const f = fastArr[i];
+    const s = slowArr[i];
+    return f !== null && s !== null ? f - s : null;
+  });
+}
+
+function macdSignalLine(closes: number[], fast: number, slow: number, signal: number): (number | null)[] {
+  const line = macdLine(closes, fast, slow);
+  // EMA of the MACD line; treat nulls as gaps and seed once we have `signal` consecutive values.
+  const out: (number | null)[] = new Array(closes.length).fill(null);
+  const k = 2 / (signal + 1);
+  let seeded = false;
+  let e = 0;
+  let count = 0;
+  for (let i = 0; i < line.length; i++) {
+    const v = line[i];
+    if (v === null) { count = 0; e = 0; seeded = false; continue; }
+    if (!seeded) {
+      e += v;
+      count++;
+      if (count === signal) { e /= signal; out[i] = e; seeded = true; }
+    } else {
+      e = v * k + e * (1 - k);
+      out[i] = e;
+    }
+  }
+  return out;
+}
+
+function macdHist(closes: number[], fast: number, slow: number, signal: number): (number | null)[] {
+  const line = macdLine(closes, fast, slow);
+  const sig = macdSignalLine(closes, fast, slow, signal);
+  return closes.map((_, i) => {
+    const l = line[i];
+    const s = sig[i];
+    return l !== null && s !== null ? l - s : null;
+  });
+}
+
+// ── Sprint 080C: Bollinger Bands ─────────────────────────────────────────────
+
+function bbBand(closes: number[], period: number, stdDevMult: number, side: "upper" | "lower"): (number | null)[] {
+  const middle = sma(closes, period);
+  const sign = side === "upper" ? 1 : -1;
+  const out: (number | null)[] = new Array(closes.length).fill(null);
+  for (let i = period - 1; i < closes.length; i++) {
+    const m = middle[i];
+    if (m === null) continue;
+    let variance = 0;
+    for (let j = i - period + 1; j <= i; j++) variance += (closes[j] - m) ** 2;
+    out[i] = m + sign * stdDevMult * Math.sqrt(variance / period);
+  }
+  return out;
+}
+
+// ── Sprint 080C: Stochastic ──────────────────────────────────────────────────
+
+function stochK(bars: Bar[], period: number): (number | null)[] {
+  const out: (number | null)[] = new Array(bars.length).fill(null);
+  for (let i = period - 1; i < bars.length; i++) {
+    let highest = -Infinity;
+    let lowest = Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      highest = Math.max(highest, bars[j].high);
+      lowest = Math.min(lowest, bars[j].low);
+    }
+    const range = highest - lowest;
+    out[i] = range === 0 ? 50 : ((bars[i].close - lowest) / range) * 100;
+  }
+  return out;
+}
+
+function stochD(bars: Bar[], kPeriod: number, dPeriod: number): (number | null)[] {
+  const kArr = stochK(bars, kPeriod);
+  const out: (number | null)[] = new Array(bars.length).fill(null);
+  for (let i = 0; i < bars.length; i++) {
+    if (kArr[i] === null) continue;
+    // Require dPeriod consecutive non-null %K values; break on any gap.
+    let sum = 0;
+    let count = 0;
+    for (let j = i; j >= 0 && count < dPeriod; j--) {
+      if (kArr[j] === null) break;
+      sum += kArr[j]!;
+      count++;
+    }
+    if (count === dPeriod) out[i] = sum / dPeriod;
+  }
+  return out;
+}
+
+// ── Sprint 080C: VWAP (session, resets each calendar day) ───────────────────
+
+function vwap(bars: Bar[]): (number | null)[] {
+  const out: (number | null)[] = new Array(bars.length).fill(null);
+  let cumPV = 0;
+  let cumVol = 0;
+  let currentDay = "";
+  for (let i = 0; i < bars.length; i++) {
+    const bar = bars[i];
+    const day = bar.timestamp?.slice(0, 10) ?? "";
+    if (day !== currentDay) {
+      cumPV = 0;
+      cumVol = 0;
+      currentDay = day;
+    }
+    const vol = bar.volume;
+    if (vol === undefined || isNaN(vol) || vol <= 0) continue;
+    const typical = (bar.high + bar.low + bar.close) / 3;
+    cumPV += typical * vol;
+    cumVol += vol;
+    out[i] = cumPV / cumVol;
   }
   return out;
 }

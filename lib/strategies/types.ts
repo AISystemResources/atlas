@@ -21,7 +21,18 @@ export type IndicatorType =
   | "sma"
   | "atr"
   | "kc_upper"
-  | "kc_lower";
+  | "kc_lower"
+  // Sprint 080C: extended indicator vocabulary
+  | "macd"           // MACD line (EMA_fast − EMA_slow). Params: { fast_period, slow_period, signal_period }
+  | "macd_signal"    // MACD signal line (EMA of MACD line). Same params as macd.
+  | "macd_histogram" // MACD histogram (line − signal). Same params as macd.
+  | "bb_upper"       // Bollinger Band upper. Params: { period, std_dev }
+  | "bb_lower"       // Bollinger Band lower. Params: { period, std_dev }
+  | "bb_middle"      // Bollinger Band middle (SMA). Params: { period }
+  | "stoch_k"        // Stochastic %K (raw). Params: { period }
+  | "stoch_d"        // Stochastic %D (SMA of %K). Params: { k_period, d_period }
+  | "vwap"           // Session VWAP, resets each calendar day. No params. Requires volume in bars.
+  | "volume_sma";    // SMA of bar volume. Params: { period }. Requires volume in bars.
 
 export interface IndicatorSpec {
   /** Unique identifier within the strategy — referenced by expressions */

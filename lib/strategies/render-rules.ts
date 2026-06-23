@@ -61,6 +61,27 @@ function indicatorLabel(id: string, indicators: IndicatorSpec[]): string {
       return `upper Keltner band (${spec.params.multiplier}× ATR)`;
     case "kc_lower":
       return `lower Keltner band (${spec.params.multiplier}× ATR)`;
+    // Sprint 080C
+    case "macd":
+      return `MACD line (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`;
+    case "macd_signal":
+      return `MACD signal (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`;
+    case "macd_histogram":
+      return `MACD histogram (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`;
+    case "bb_upper":
+      return `BB upper (${spec.params.period}, ${spec.params.std_dev}σ)`;
+    case "bb_lower":
+      return `BB lower (${spec.params.period}, ${spec.params.std_dev}σ)`;
+    case "bb_middle":
+      return `BB middle / SMA(${spec.params.period})`;
+    case "stoch_k":
+      return `Stochastic %K(${spec.params.period})`;
+    case "stoch_d":
+      return `Stochastic %D(${spec.params.k_period}/${spec.params.d_period})`;
+    case "vwap":
+      return `VWAP (session)`;
+    case "volume_sma":
+      return `Volume SMA(${spec.params.period})`;
     default:
       return id;
   }
