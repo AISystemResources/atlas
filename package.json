@@ -61,7 +61,8 @@
     "@alpacahq/alpaca-trade-api": {
       "ws": "7.5.11",
       "flatted": "3.4.2",
-      "brace-expansion": "1.1.13"
+      "brace-expansion": "1.1.13",
+      "axios": "0.33.0"
     }
   },
   "devDependencies": {
