@@ -38,6 +38,7 @@
     "ws": "8.21.0",
     "langsmith": "0.6.0",
     "@babel/core": "7.29.6",
+    "js-yaml": "4.2.0",
     "@clerk/themes": {
       "@clerk/shared": "3.47.5",
       "js-cookie": "3.0.7"
