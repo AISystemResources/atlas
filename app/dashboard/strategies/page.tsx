@@ -27,6 +27,14 @@ interface StrategyRow {
   tags: string[] | null;
 }
 
+interface BacktestSummaryRow {
+  ticket_logic_id: string;
+  win_rate: number | null;
+  total_pnl_dollars: number | null;
+  total_trades: number;
+  created_at: string;
+}
+
 export default async function StrategiesPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
@@ -67,16 +75,19 @@ export default async function StrategiesPage() {
   }
   const latest = [...familyMap.values()];
 
-  // Backtest counts per strategy_id (for "N backtests" badge).
+  // Backtest counts + latest performance per strategy_id.
   const backtestCounts = new Map<string, number>();
+  const latestBtMap = new Map<string, BacktestSummaryRow>();
   if (latest.length > 0) {
     const ids = latest.map((s) => s.id);
     const { data: btRows } = await sb
       .from("ticket_backtests")
-      .select("ticket_logic_id")
-      .in("ticket_logic_id", ids);
-    for (const r of (btRows ?? []) as Array<{ ticket_logic_id: string }>) {
+      .select("ticket_logic_id, win_rate, total_pnl_dollars, total_trades, created_at")
+      .in("ticket_logic_id", ids)
+      .order("created_at", { ascending: false });
+    for (const r of (btRows ?? []) as BacktestSummaryRow[]) {
       backtestCounts.set(r.ticket_logic_id, (backtestCounts.get(r.ticket_logic_id) ?? 0) + 1);
+      if (!latestBtMap.has(r.ticket_logic_id)) latestBtMap.set(r.ticket_logic_id, r);
     }
   }
 
@@ -90,22 +101,32 @@ export default async function StrategiesPage() {
     (profile as { scalper_strategy_id: string | null } | null)
       ?.scalper_strategy_id ?? null;
 
-  const cards: StrategyCard[] = latest.map((s) => ({
-    id: s.id,
-    name: s.name,
-    version: s.version,
-    description: s.description,
-    visibility: s.visibility,
-    status: s.status,
-    forked_from_id: s.forked_from_id,
-    is_mine: s.created_by_user_id === userId,
-    owner_label: s.created_by_user_id === userId ? "you" : truncateUser(s.created_by_user_id),
-    backtest_count: backtestCounts.get(s.id) ?? 0,
-    is_my_scalper: s.id === myScalperId,
-    created_at: s.created_at,
-    ticker: s.ticker ?? null,
-    tags: s.tags ?? [],
-  }));
+  const cards: StrategyCard[] = latest.map((s) => {
+    const bt = latestBtMap.get(s.id);
+    return {
+      id: s.id,
+      name: s.name,
+      version: s.version,
+      description: s.description,
+      visibility: s.visibility,
+      status: s.status,
+      forked_from_id: s.forked_from_id,
+      is_mine: s.created_by_user_id === userId,
+      owner_label: s.created_by_user_id === userId ? "you" : truncateUser(s.created_by_user_id),
+      backtest_count: backtestCounts.get(s.id) ?? 0,
+      is_my_scalper: s.id === myScalperId,
+      created_at: s.created_at,
+      ticker: s.ticker ?? null,
+      tags: s.tags ?? [],
+      latest_backtest: bt
+        ? {
+            win_rate: bt.win_rate,
+            total_pnl_dollars: bt.total_pnl_dollars,
+            total_trades: bt.total_trades,
+          }
+        : undefined,
+    };
+  });
 
   return <StrategiesClient cards={cards} />;
 }
