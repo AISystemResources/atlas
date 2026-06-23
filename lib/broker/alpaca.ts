@@ -308,6 +308,25 @@ export class AlpacaAdapter implements BrokerAdapter {
   }
 
   /**
+   * Close an existing position using Alpaca's dedicated DELETE /v2/positions/{symbol}.
+   * More reliable than a notional SELL order — handles fractional shares and
+   * crypto without needing to infer TIF or notional rounding.
+   */
+  async closePosition(ticker: string): Promise<Order> {
+    try {
+      const symbol = ticker.toUpperCase();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await (this.client as any).closePosition(symbol);
+      return normaliseOrder(raw);
+    } catch (err) {
+      throw new BrokerError(
+        `closePosition failed for ${ticker}: ${errorMessage(err)}`,
+        err,
+      );
+    }
+  }
+
+  /**
    * List orders, optionally filtered by ticker and/or status.
    * Fetches up to 500 orders per call (SDK default).
    * For larger result sets a pagination loop would be added here.

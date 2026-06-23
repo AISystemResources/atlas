@@ -107,17 +107,14 @@ export async function POST(
     );
   }
 
-  // Submit the SELL order
+  // Close the position via Alpaca's dedicated endpoint (DELETE /v2/positions/{symbol}).
+  // This avoids the 422s from notional SELL orders on fractional / crypto positions.
   let orderId: string | undefined;
   let status = "rejected";
   let placedShares: number | null = null;
   let errorMessage: string | undefined;
   try {
-    const order = await broker.submitOrder({
-      ticker,
-      action: "SELL",
-      notional: position.marketValue,
-    });
+    const order = await broker.closePosition(ticker);
     orderId = order.orderId;
     placedShares = order.qty;
     status =
