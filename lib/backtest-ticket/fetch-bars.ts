@@ -6,12 +6,13 @@
  * and excludes indices, so Yahoo is the right source for index backtests.
  *
  * Yahoo intraday limits (as of 2026-06):
- *   5m, 15m, 30m → 60 days
+ *   1m           → 7 days (start date auto-clamped to max 7 days ago)
+ *   2m, 5m, 15m  → 60 days
  *   1h           → 730 days
  *   1d           → effectively unlimited
  *
- * The fetcher does NOT enforce these limits — Yahoo returns empty quotes
- * past the limit. The caller surfaces "no bars returned" as a user-facing error.
+ * The fetcher auto-clamps the 1m start date so callers never get a silent
+ * empty result — for other timeframes the caller surfaces "no bars returned".
  */
 
 import YahooFinance from "yahoo-finance2";
@@ -19,7 +20,7 @@ import type { Bar } from "@/lib/strategies/indicators";
 
 const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
-export type BacktestTimeframe = "5m" | "15m" | "1h" | "1d";
+export type BacktestTimeframe = "1m" | "2m" | "5m" | "15m" | "1h" | "1d";
 
 interface YahooQuote {
   date: Date | string | number;
@@ -36,18 +37,27 @@ export async function fetchHistoricalBars(
   endDate: Date,
   timeframe: BacktestTimeframe,
 ): Promise<Bar[]> {
-  // yahoo-finance2's chart() interval enum is literal-typed; cast to satisfy.
+  // 1m data is only available for the last 7 days from Yahoo Finance.
+  // Auto-clamp so callers always get data rather than a silent empty result.
+  let effectiveStart = startDate;
+  if (timeframe === "1m") {
+    const sevenDaysAgo = new Date(endDate);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    if (startDate < sevenDaysAgo) effectiveStart = sevenDaysAgo;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = (await yf.chart(ticker, {
-    period1: startDate,
+    period1: effectiveStart,
     period2: endDate,
-    interval: timeframe as "5m" | "15m" | "1h" | "1d",
+    interval: timeframe as "1m" | "2m" | "5m" | "15m" | "1h" | "1d",
   })) as { quotes?: YahooQuote[] };
 
   const quotes = result.quotes ?? [];
   if (quotes.length === 0) {
     throw new Error(
-      `No bars returned for ${ticker} ${timeframe} between ${startDate.toISOString().slice(0, 10)} and ${endDate.toISOString().slice(0, 10)}. ` +
-        `Check Yahoo intraday limits (5m/15m → 60 days, 1h → 730 days).`,
+      `No bars returned for ${ticker} ${timeframe} between ${effectiveStart.toISOString().slice(0, 10)} and ${endDate.toISOString().slice(0, 10)}. ` +
+        `Check Yahoo intraday limits (1m → 7 days auto-clamped, 2m/5m/15m → 60 days, 1h → 730 days).`,
     );
   }
 

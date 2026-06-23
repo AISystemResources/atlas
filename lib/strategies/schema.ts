@@ -82,7 +82,7 @@ const indicatorSpecSchema = z.object({
   ]),
   params: z.record(z.string(), z.number()),
   // Sprint 080E: optional secondary timeframe for multi-timeframe indicators.
-  timeframe: z.enum(["1m", "5m", "15m", "1h", "1d"]).optional(),
+  timeframe: z.enum(["1m", "2m", "5m", "15m", "1h", "1d"]).optional(),
 });
 
 const sizingSchema = z.object({
@@ -163,7 +163,7 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
     asset_class: z.enum(["equity", "crypto", "any"]),
     tickers: z.array(z.string().min(1)).optional(),
   }),
-  timeframe: z.enum(["1m", "5m", "15m", "1h", "1d"]),
+  timeframe: z.enum(["1m", "2m", "5m", "15m", "1h", "1d"]),
   direction: z.enum(["long", "short"]),
   indicators: z.array(indicatorSpecSchema).min(1),
   regime_filter: conditionNodeSchema.optional(),
