@@ -26,6 +26,11 @@ export interface StrategyCard {
   created_at: string;
   ticker: string | null;
   tags: string[];
+  latest_backtest?: {
+    win_rate: number | null;
+    total_pnl_dollars: number | null;
+    total_trades: number;
+  };
 }
 
 type Tab = "mine" | "public";
@@ -210,6 +215,45 @@ function StrategyCardView({ card }: { card: StrategyCard }) {
         )}
       </p>
 
+      {card.latest_backtest && (
+        <div
+          className="flex gap-4 mt-3 pt-3"
+          style={{ borderTop: "1px solid var(--line)" }}
+        >
+          <PerfStat
+            label="Win rate"
+            value={
+              card.latest_backtest.win_rate != null
+                ? `${(card.latest_backtest.win_rate * 100).toFixed(0)}%`
+                : "—"
+            }
+            positive={
+              card.latest_backtest.win_rate != null
+                ? card.latest_backtest.win_rate >= 0.5
+                : null
+            }
+          />
+          <PerfStat
+            label="PnL"
+            value={
+              card.latest_backtest.total_pnl_dollars != null
+                ? `${card.latest_backtest.total_pnl_dollars >= 0 ? "+" : ""}$${card.latest_backtest.total_pnl_dollars.toFixed(2)}`
+                : "—"
+            }
+            positive={
+              card.latest_backtest.total_pnl_dollars != null
+                ? card.latest_backtest.total_pnl_dollars >= 0
+                : null
+            }
+          />
+          <PerfStat
+            label="Trades"
+            value={String(card.latest_backtest.total_trades)}
+            positive={null}
+          />
+        </div>
+      )}
+
       {card.tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-3">
           {card.tags.map((t) => (
@@ -256,6 +300,33 @@ function VisibilityChip({ vis }: { vis: "private" | "unlisted" | "public" }) {
     >
       {s.label}
     </span>
+  );
+}
+
+function PerfStat({
+  label,
+  value,
+  positive,
+}: {
+  label: string;
+  value: string;
+  positive: boolean | null;
+}) {
+  const color =
+    positive === true
+      ? "var(--bull)"
+      : positive === false
+        ? "var(--bear)"
+        : "var(--dim)";
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] uppercase tracking-wide" style={{ color: "var(--ghost)" }}>
+        {label}
+      </span>
+      <span className="text-sm font-mono font-medium" style={{ color }}>
+        {value}
+      </span>
+    </div>
   );
 }
 
