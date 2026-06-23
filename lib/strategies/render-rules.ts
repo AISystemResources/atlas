@@ -197,6 +197,8 @@ export interface RenderedSections {
   whenItFires: string | null;
   /** Sprint 080A: human-readable exit conditions, one per array entry */
   exitConditions: string[];
+  /** Sprint 080F: staged partial-exit descriptions, one per stage */
+  stages: string[];
 }
 
 /**
@@ -305,5 +307,12 @@ export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
   if (body.valid_weekdays) parts.push(describeWeekdays(body.valid_weekdays));
   if (parts.length > 0) whenItFires = parts.join(" · ");
 
-  return { signalBar, entry: entryLines, stopLoss, takeProfit, timeStop, indicators, whenItFires, exitConditions };
+  // Sprint 080F: render each stage as "Stage N (X%): <TP expression>"
+  const stages: string[] = (body.exit.stages ?? []).map((stage, i) => {
+    const pct = Math.round(stage.fraction * 100);
+    const tp = renderExpressionProse(stage.take_profit, body.indicators, body.computed);
+    return `Stage ${i + 1} (${pct}%): TP = ${tp}`;
+  });
+
+  return { signalBar, entry: entryLines, stopLoss, takeProfit, timeStop, indicators, whenItFires, exitConditions, stages };
 }

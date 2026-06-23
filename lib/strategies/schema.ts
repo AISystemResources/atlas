@@ -122,6 +122,20 @@ const slMethodSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+// Sprint 080F: one tranche in a staged exit plan.
+const exitStageSchema = z.object({
+  fraction: z.number().positive().max(1),
+  take_profit: expressionSchema,
+});
+
+// Array of stages: each fraction > 0, sum ≤ 1.
+const stagesSchema = z
+  .array(exitStageSchema)
+  .min(1)
+  .refine((stages) => stages.reduce((s, t) => s + t.fraction, 0) <= 1 + 1e-9, {
+    message: "sum of stage fractions must not exceed 1",
+  });
+
 const tunableParameterSchema = z.object({
   name: z.string().min(1),
   path: z.array(z.string().min(1)).min(1),
@@ -166,6 +180,8 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
       time_stop: timeStopSchema.optional(),
       // Sprint 080A/080D: indicator-based exit triggers (any fires → close position). Supports compound nodes.
       exit_conditions: z.array(conditionNodeSchema).min(1).optional(),
+      // Sprint 080F: staged partial exits.
+      stages: stagesSchema.optional(),
     })
     .refine((e) => !!e.stop_loss || !!e.sl_method || !!e.exit_conditions, {
       message:

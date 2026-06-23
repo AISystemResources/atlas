@@ -151,6 +151,21 @@ function evaluateAtBar(
 }
 
 /**
+ * Sprint 080F: evaluate a single Expression at a given bar index.
+ * Used by simulate.ts to pre-compute staged TP prices at the entry bar.
+ * Throws when an indicator is not warmed up — callers should guard with try/catch.
+ */
+export function resolveExpression(
+  expr: import("./types").Expression,
+  bars: Bar[],
+  indicators: IndicatorArrays,
+  computed: Record<string, number>,
+  barIdx: number,
+): number {
+  return evaluateExpression(expr, bars, indicators, computed, barIdx);
+}
+
+/**
  * Sprint 080A/080D: build a per-bar exit condition checker for use in the
  * backtest simulator. Returns a function that, given a bar index, returns
  * true if ANY exit condition in `conditions` fires on that bar.
