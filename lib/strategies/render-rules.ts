@@ -20,6 +20,7 @@
 
 import type {
   Condition,
+  ConditionNode,
   Direction,
   Expression,
   IndicatorSpec,
@@ -148,16 +149,32 @@ const OP_WORDS: Record<string, string> = {
 };
 
 /**
- * Render a single condition as a sentence. Recognizes common idioms:
- *   - close[0] > open[0]              → "Bullish (close > open)"
- *   - close[0] < open[0]              → "Bearish (close < open)"
- *   - close[0] > kc_lower_inner[0]    → "Close is above the lower KC band"
+ * Render a ConditionNode as a prose sentence. Handles compound AND/OR/NOT
+ * nodes recursively (Sprint 080D) and leaf Condition idioms.
  */
 export function renderConditionProse(
-  cond: Condition,
+  node: ConditionNode,
   indicators: IndicatorSpec[],
   computed?: Record<string, Expression>,
 ): string {
+  // Compound node
+  if ("type" in node) {
+    switch (node.type) {
+      case "and": {
+        const parts = node.children.map((c) => renderConditionProse(c, indicators, computed));
+        return `(${parts.join(" AND ")})`;
+      }
+      case "or": {
+        const parts = node.children.map((c) => renderConditionProse(c, indicators, computed));
+        return `(${parts.join(" OR ")})`;
+      }
+      case "not":
+        return `NOT (${renderConditionProse(node.child, indicators, computed)})`;
+    }
+  }
+
+  // Leaf condition
+  const cond = node as Condition;
   const { op, left, right } = cond;
 
   // Idiom: bullish / bearish bar

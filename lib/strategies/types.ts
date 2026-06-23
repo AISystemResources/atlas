@@ -54,15 +54,35 @@ export type Expression =
   | { type: "computed"; id: string }
   | { type: "binary"; op: BinaryOp; left: Expression; right: Expression };
 
-// ── Conditions (implicit AND across an array; no AND/OR/NOT in v1) ───────────
+// ── Conditions ───────────────────────────────────────────────────────────────
 
 export type ComparisonOp = "gt" | "lt" | "gte" | "lte" | "eq" | "neq";
 
+/** Leaf comparison — the original v1 condition type. */
 export interface Condition {
   op: ComparisonOp;
   left: Expression;
   right: Expression;
 }
+
+/**
+ * Sprint 080D: compound condition tree.
+ *
+ * A ConditionNode is either a leaf Condition (backward-compatible; detected
+ * by the presence of the `op` field) or one of three compound nodes:
+ *   - and: ALL children must be true
+ *   - or:  ANY child must be true
+ *   - not: child must be false
+ *
+ * `entry.conditions`, `exit.exit_conditions`, and `regime_filter` now accept
+ * ConditionNode so strategies can express e.g. "(RSI < 30 OR price < BB_lower)
+ * AND volume > volume_sma" without extra entries in the conditions array.
+ */
+export type ConditionNode =
+  | Condition
+  | { type: "and"; children: ConditionNode[] }
+  | { type: "or"; children: ConditionNode[] }
+  | { type: "not"; child: ConditionNode };
 
 // ── Sizing ───────────────────────────────────────────────────────────────────
 
@@ -163,10 +183,10 @@ export interface TicketLogicBody {
   direction: Direction;
   indicators: IndicatorSpec[];
   /** Optional pre-condition that must hold on the signal bar */
-  regime_filter?: Condition;
+  regime_filter?: ConditionNode;
   entry: {
-    /** All conditions must hold on the signal bar (implicit AND) */
-    conditions: Condition[];
+    /** All nodes must hold on the signal bar (implicit AND across the array) */
+    conditions: ConditionNode[];
     sizing: Sizing;
   };
   /** Named intermediate values referenceable from exit expressions */
@@ -199,7 +219,7 @@ export interface TicketLogicBody {
      * may reference any indicator declared in the strategy's `indicators` array.
      * exit must define at least one of stop_loss, sl_method, or exit_conditions.
      */
-    exit_conditions?: Condition[];
+    exit_conditions?: ConditionNode[];
   };
   /**
    * Self-describing parameters that the AI Distillation may propose changes
