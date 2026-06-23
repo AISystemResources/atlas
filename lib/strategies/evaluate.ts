@@ -145,6 +145,30 @@ function evaluateAtBar(
   };
 }
 
+/**
+ * Sprint 080A: build a per-bar exit condition checker for use in the
+ * backtest simulator. Returns a function that, given a bar index, returns
+ * true if ANY exit condition in `conditions` fires on that bar.
+ *
+ * Errors (warmup bars, missing indicators) are caught and treated as
+ * "condition not met" so they don't abort the simulation.
+ */
+export function buildExitConditionChecker(
+  conditions: Condition[],
+  bars: Bar[],
+  indicators: IndicatorArrays,
+): (barIdx: number) => boolean {
+  return (barIdx: number): boolean => {
+    try {
+      return conditions.some((cond) =>
+        evaluateCondition(cond, bars, indicators, {}, barIdx),
+      );
+    } catch {
+      return false;
+    }
+  };
+}
+
 function evaluateCondition(
   cond: Condition,
   bars: Bar[],

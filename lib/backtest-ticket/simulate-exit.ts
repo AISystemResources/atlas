@@ -17,7 +17,8 @@ export type ExitReason =
   | "sl_hit"
   | "time_stop"
   | "eod"
-  | "open_at_end";
+  | "open_at_end"
+  | "exit_condition";
 
 export interface ExitResult {
   exitBarIndex: number;
@@ -35,6 +36,12 @@ export interface ExitSimulatorInput {
   bars: Bar[];
   /** "eod" closes at the end of the entry-bar's trading day. { bars: N } exits after N bars. */
   timeStop?: "eod" | { bars: number };
+  /**
+   * Sprint 080A: optional per-bar exit condition checker. When provided,
+   * called on each bar after entry; returns true if any exit condition fires.
+   * Evaluated after time-stop checks, before SL/TP (hard stops take priority).
+   */
+  exitConditionChecker?: (barIdx: number) => boolean;
 }
 
 export function simulateExit(input: ExitSimulatorInput): ExitResult {
@@ -45,6 +52,7 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
     direction,
     bars,
     timeStop,
+    exitConditionChecker,
   } = input;
 
   const entryBar = bars[entryBarIndex];
@@ -81,13 +89,24 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
     if (direction === "long") {
       const slHit = bar.low <= stopLossPrice;
       const tpHit = bar.high >= takeProfitPrice;
-      // SL-first on straddle (conservative-bias convention).
+      // SL-first on straddle (conservative-bias convention). SL also takes
+      // priority over exit_conditions: a price-level breach is harder evidence
+      // than an indicator crossing on the same bar.
       if (slHit) {
         return {
           exitBarIndex: i,
           exitTimestamp: bar.timestamp!,
           exitPrice: stopLossPrice,
           exitReason: "sl_hit",
+        };
+      }
+      // Sprint 080A: indicator-based exit (after SL, before TP).
+      if (exitConditionChecker?.(i)) {
+        return {
+          exitBarIndex: i,
+          exitTimestamp: bar.timestamp!,
+          exitPrice: bar.close,
+          exitReason: "exit_condition",
         };
       }
       if (tpHit) {
@@ -108,6 +127,15 @@ export function simulateExit(input: ExitSimulatorInput): ExitResult {
           exitTimestamp: bar.timestamp!,
           exitPrice: stopLossPrice,
           exitReason: "sl_hit",
+        };
+      }
+      // Sprint 080A: indicator-based exit (after SL, before TP).
+      if (exitConditionChecker?.(i)) {
+        return {
+          exitBarIndex: i,
+          exitTimestamp: bar.timestamp!,
+          exitPrice: bar.close,
+          exitReason: "exit_condition",
         };
       }
       if (tpHit) {
