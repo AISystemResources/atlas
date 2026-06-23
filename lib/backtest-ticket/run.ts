@@ -71,6 +71,25 @@ export async function backtestTicketLogic(
     input.timeframe,
   );
 
+  // Sprint 080E: fetch secondary bar series for any indicators with a
+  // timeframe override different from the primary timeframe.
+  const secondaryTimeframes = [
+    ...new Set(
+      logic.body.indicators
+        .filter((i) => i.timeframe && i.timeframe !== input.timeframe)
+        .map((i) => i.timeframe!),
+    ),
+  ];
+  const secondaryBarsMap: Record<string, import("@/lib/strategies/indicators").Bar[]> = {};
+  for (const tf of secondaryTimeframes) {
+    secondaryBarsMap[tf] = await fetchHistoricalBarsCached(
+      input.ticker,
+      startDate,
+      endDate,
+      tf as import("./fetch-bars").BacktestTimeframe,
+    );
+  }
+
   const notional =
     input.notionalPerTrade ?? logic.body.entry.sizing.value;
 
@@ -86,6 +105,7 @@ export async function backtestTicketLogic(
     notional,
     profile,
     asset,
+    secondaryBars: secondaryTimeframes.length > 0 ? secondaryBarsMap : undefined,
   });
 
   const sb = getServiceClient();

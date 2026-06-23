@@ -10,7 +10,7 @@
  */
 
 import { evaluate, buildExitConditionChecker } from "@/lib/strategies/evaluate";
-import { computeAllIndicators } from "@/lib/strategies/indicators";
+import { computeAllIndicators, type SecondaryBarsMap } from "@/lib/strategies/indicators";
 import type { TicketLogicBody } from "@/lib/strategies/types";
 import {
   applyFillFriction,
@@ -57,6 +57,8 @@ export interface SimulateOptions {
   notional: number;
   profile: BrokerProfile;
   asset: AssetClass;
+  /** Sprint 080E: secondary bar series for multi-timeframe indicators. */
+  secondaryBars?: SecondaryBarsMap;
 }
 
 export interface SimulateResult {
@@ -81,13 +83,15 @@ function round5(n: number): number {
 
 export function simulateBacktest(opts: SimulateOptions): SimulateResult {
   const { body, bars, notional, profile, asset } = opts;
-  const entries = evaluate(body, bars);
+  const entries = evaluate(body, bars, opts.secondaryBars);
 
-  // Sprint 080A/080B: compute indicators once for exit checkers.
+  // Sprint 080A/080B/080E: compute indicators once for exit checkers.
+  // Thread secondaryBars so trailing-atr and exit_condition indicators on
+  // secondary timeframes resolve correctly.
   const indicators =
     (body.exit.exit_conditions && body.exit.exit_conditions.length > 0) ||
     body.exit.sl_method?.type === "trailing_atr"
-      ? computeAllIndicators(body.indicators, bars)
+      ? computeAllIndicators(body.indicators, bars, opts.secondaryBars)
       : null;
 
   const exitConditionChecker =
@@ -100,7 +104,7 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
   const trailingStopFn: ((extremePrice: number, barIdx: number) => number) | undefined =
     slMethod?.type === "trailing_atr"
       ? (extreme, i) => {
-          const atr = (indicators ?? computeAllIndicators(body.indicators, bars))[slMethod.atr_indicator_id]?.[i];
+          const atr = (indicators ?? computeAllIndicators(body.indicators, bars, opts.secondaryBars))[slMethod.atr_indicator_id]?.[i];
           const sign = body.direction === "long" ? -1 : 1;
           return Number.isFinite(atr) && atr != null
             ? extreme + sign * slMethod.value * atr

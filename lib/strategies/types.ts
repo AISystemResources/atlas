@@ -40,6 +40,17 @@ export interface IndicatorSpec {
   type: IndicatorType;
   /** Params shape depends on type. rsi/ema/sma/atr: { period }. kc_*: { ema_period, atr_period, multiplier } */
   params: Record<string, number>;
+  /**
+   * Sprint 080E: optional timeframe override. When set, this indicator is
+   * computed on a secondary bar series of this timeframe instead of the
+   * strategy's primary timeframe. Values are re-indexed onto the primary
+   * timeline using last-known-value semantics (the most recent secondary
+   * bar at or before each primary bar's timestamp).
+   *
+   * Typical use: a 1h RSI as a trend filter on a 5m entry strategy — the
+   * 1h RSI value stays constant between 1h bar completions.
+   */
+  timeframe?: Timeframe;
 }
 
 // ── Expression tree ──────────────────────────────────────────────────────────

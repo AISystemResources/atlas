@@ -49,43 +49,29 @@ function ohlcLabel(field: "open" | "high" | "low" | "close"): string {
 function indicatorLabel(id: string, indicators: IndicatorSpec[]): string {
   const spec = indicators.find((i) => i.id === id);
   if (!spec) return id;
+  const tf = spec.timeframe ? ` [${spec.timeframe}]` : "";
+  let base: string;
   switch (spec.type) {
-    case "rsi":
-      return `RSI(${spec.params.period})`;
-    case "ema":
-      return `EMA(${spec.params.period})`;
-    case "sma":
-      return `SMA(${spec.params.period})`;
-    case "atr":
-      return `ATR(${spec.params.period})`;
-    case "kc_upper":
-      return `upper Keltner band (${spec.params.multiplier}× ATR)`;
-    case "kc_lower":
-      return `lower Keltner band (${spec.params.multiplier}× ATR)`;
+    case "rsi":      base = `RSI(${spec.params.period})`; break;
+    case "ema":      base = `EMA(${spec.params.period})`; break;
+    case "sma":      base = `SMA(${spec.params.period})`; break;
+    case "atr":      base = `ATR(${spec.params.period})`; break;
+    case "kc_upper": base = `upper Keltner band (${spec.params.multiplier}× ATR)`; break;
+    case "kc_lower": base = `lower Keltner band (${spec.params.multiplier}× ATR)`; break;
     // Sprint 080C
-    case "macd":
-      return `MACD line (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`;
-    case "macd_signal":
-      return `MACD signal (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`;
-    case "macd_histogram":
-      return `MACD histogram (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`;
-    case "bb_upper":
-      return `BB upper (${spec.params.period}, ${spec.params.std_dev}σ)`;
-    case "bb_lower":
-      return `BB lower (${spec.params.period}, ${spec.params.std_dev}σ)`;
-    case "bb_middle":
-      return `BB middle / SMA(${spec.params.period})`;
-    case "stoch_k":
-      return `Stochastic %K(${spec.params.period})`;
-    case "stoch_d":
-      return `Stochastic %D(${spec.params.k_period}/${spec.params.d_period})`;
-    case "vwap":
-      return `VWAP (session)`;
-    case "volume_sma":
-      return `Volume SMA(${spec.params.period})`;
-    default:
-      return id;
+    case "macd":          base = `MACD line (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`; break;
+    case "macd_signal":   base = `MACD signal (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`; break;
+    case "macd_histogram":base = `MACD histogram (${spec.params.fast_period}/${spec.params.slow_period}/${spec.params.signal_period})`; break;
+    case "bb_upper":  base = `BB upper (${spec.params.period}, ${spec.params.std_dev}σ)`; break;
+    case "bb_lower":  base = `BB lower (${spec.params.period}, ${spec.params.std_dev}σ)`; break;
+    case "bb_middle": base = `BB middle / SMA(${spec.params.period})`; break;
+    case "stoch_k":   base = `Stochastic %K(${spec.params.period})`; break;
+    case "stoch_d":   base = `Stochastic %D(${spec.params.k_period}/${spec.params.d_period})`; break;
+    case "vwap":      base = `VWAP (session)`; break;
+    case "volume_sma":base = `Volume SMA(${spec.params.period})`; break;
+    default:          return id;
   }
+  return base + tf;
 }
 
 export function renderExpressionProse(

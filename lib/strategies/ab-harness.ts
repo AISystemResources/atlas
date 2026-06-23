@@ -192,10 +192,13 @@ export async function runAbForwardTest(
     };
   }
 
+  const startDate = new Date(`${forward_window.start_date}T00:00:00Z`);
+  const endDate = new Date(`${forward_window.end_date}T23:59:59Z`);
+
   const bars = await fetchHistoricalBarsCached(
     backtest.ticker,
-    new Date(`${forward_window.start_date}T00:00:00Z`),
-    new Date(`${forward_window.end_date}T23:59:59Z`),
+    startDate,
+    endDate,
     backtest.timeframe,
   );
 
@@ -207,6 +210,25 @@ export async function runAbForwardTest(
       reason: `only ${bars.length} bars returned for ${forward_window.start_date}..${forward_window.end_date} (need ≥${MIN_BARS_TO_RUN})`,
     };
   }
+
+  // Sprint 080E: fetch secondary bar series for any indicators with a timeframe override.
+  const secondaryTimeframes = [
+    ...new Set(
+      logic.body.indicators
+        .filter((i) => i.timeframe && i.timeframe !== backtest.timeframe)
+        .map((i) => i.timeframe!),
+    ),
+  ];
+  const secondaryBarsMap: Record<string, import("@/lib/strategies/indicators").Bar[]> = {};
+  for (const tf of secondaryTimeframes) {
+    secondaryBarsMap[tf] = await fetchHistoricalBarsCached(
+      backtest.ticker,
+      startDate,
+      endDate,
+      tf as BacktestTimeframe,
+    );
+  }
+  const secondaryBars = secondaryTimeframes.length > 0 ? secondaryBarsMap : undefined;
 
   const profile = getBrokerProfile(backtest.broker_profile_id ?? "pure");
   const asset = inferAsset(backtest.ticker);
@@ -220,6 +242,7 @@ export async function runAbForwardTest(
     notional,
     profile,
     asset,
+    secondaryBars,
   }).stats;
   const treatment = simulateBacktest({
     body: treatmentBody,
@@ -227,6 +250,7 @@ export async function runAbForwardTest(
     notional,
     profile,
     asset,
+    secondaryBars,
   }).stats;
 
   return {

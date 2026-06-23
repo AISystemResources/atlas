@@ -14,7 +14,7 @@
  *     (equity = whole shares, crypto = fractional)
  */
 
-import { computeAllIndicators, type Bar, type IndicatorArrays } from "./indicators";
+import { computeAllIndicators, type Bar, type IndicatorArrays, type SecondaryBarsMap } from "./indicators";
 import { isBarInSession } from "./time-filter";
 import type {
   Condition,
@@ -41,9 +41,13 @@ export interface EntrySignal {
 /**
  * Run a Ticket Logic against a bar series. Returns one EntrySignal per
  * bar where the strategy fires. Empty array means no entries.
+ *
+ * Sprint 080E: pass `secondaryBarsMap` when the strategy declares indicators
+ * with timeframe overrides; `computeAllIndicators` aligns them to the primary
+ * bar timeline automatically.
  */
-export function evaluate(logic: TicketLogicBody, bars: Bar[]): EntrySignal[] {
-  const indicators = computeAllIndicators(logic.indicators, bars);
+export function evaluate(logic: TicketLogicBody, bars: Bar[], secondaryBarsMap?: SecondaryBarsMap): EntrySignal[] {
+  const indicators = computeAllIndicators(logic.indicators, bars, secondaryBarsMap);
   const entries: EntrySignal[] = [];
 
   for (let i = 0; i < bars.length; i++) {
