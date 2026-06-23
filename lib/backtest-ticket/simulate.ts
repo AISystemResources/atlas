@@ -9,7 +9,8 @@
  * summary statistics. backtestTicketLogic wraps this with DB writes.
  */
 
-import { evaluate } from "@/lib/strategies/evaluate";
+import { evaluate, buildExitConditionChecker } from "@/lib/strategies/evaluate";
+import { computeAllIndicators } from "@/lib/strategies/indicators";
 import type { TicketLogicBody } from "@/lib/strategies/types";
 import {
   applyFillFriction,
@@ -64,7 +65,8 @@ export interface SimulateResult {
 }
 
 function exitIsMarket(reason: ExitReason): boolean {
-  return reason === "sl_hit" || reason === "eod" || reason === "time_stop" || reason === "open_at_end";
+  // exit_condition exits at bar close — treated as a market exit (spread/slippage applied).
+  return reason === "sl_hit" || reason === "eod" || reason === "time_stop" || reason === "open_at_end" || reason === "exit_condition";
 }
 
 function round2(n: number): number {
@@ -80,6 +82,18 @@ function round5(n: number): number {
 export function simulateBacktest(opts: SimulateOptions): SimulateResult {
   const { body, bars, notional, profile, asset } = opts;
   const entries = evaluate(body, bars);
+
+  // Sprint 080A: build exit condition checker once per backtest run.
+  // Indicators are computed here (separately from the entry evaluator's
+  // internal computation) so the checker has access to the full series.
+  const exitConditionChecker =
+    body.exit.exit_conditions && body.exit.exit_conditions.length > 0
+      ? buildExitConditionChecker(
+          body.exit.exit_conditions,
+          bars,
+          computeAllIndicators(body.indicators, bars),
+        )
+      : undefined;
 
   const trades: SimulatedTrade[] = [];
   let cumulativePnl = 0;
@@ -99,6 +113,7 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
       direction: entry.direction,
       bars,
       timeStop: body.exit.time_stop,
+      exitConditionChecker,
     });
 
     const qty = round5(notional / entry.entry_price);

@@ -171,6 +171,8 @@ export interface RenderedSections {
   indicators: Array<{ id: string; label: string }>;
   /** Sprint 069: optional when-it-can-fire summary */
   whenItFires: string | null;
+  /** Sprint 080A: human-readable exit conditions, one per array entry */
+  exitConditions: string[];
 }
 
 /**
@@ -237,7 +239,14 @@ export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
           body.indicators,
           body.computed,
         )
-      : "(stop loss not defined)";
+      : body.exit.exit_conditions && body.exit.exit_conditions.length > 0
+        ? "(stop loss via exit conditions — see below)"
+        : "(stop loss not defined)";
+
+  // Sprint 080A: render each exit condition as a prose sentence.
+  const exitConditions: string[] = (body.exit.exit_conditions ?? []).map((c) =>
+    renderConditionProse(c, body.indicators, body.computed),
+  );
   const takeProfit = renderExpressionProse(
     body.exit.take_profit,
     body.indicators,
@@ -264,5 +273,5 @@ export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
   if (body.valid_weekdays) parts.push(describeWeekdays(body.valid_weekdays));
   if (parts.length > 0) whenItFires = parts.join(" · ");
 
-  return { signalBar, entry: entryLines, stopLoss, takeProfit, timeStop, indicators, whenItFires };
+  return { signalBar, entry: entryLines, stopLoss, takeProfit, timeStop, indicators, whenItFires, exitConditions };
 }

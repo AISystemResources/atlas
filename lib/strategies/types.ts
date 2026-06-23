@@ -165,6 +165,18 @@ export interface TicketLogicBody {
      */
     sl_method?: StopLossMethod;
     time_stop?: TimeStop;
+    /**
+     * Sprint 080A: indicator-based exit triggers. Evaluated bar-by-bar after
+     * entry; if ANY condition fires the position is closed at that bar's close.
+     * Checked after time-stops, before SL/TP (so hard stops still take priority).
+     * Enables RSI cross-back exits, EMA cross exits, and any indicator-triggered
+     * close — the primary exit mechanism for momentum strategies like S2.
+     *
+     * Each condition uses the same Condition type as entry.conditions and
+     * may reference any indicator declared in the strategy's `indicators` array.
+     * exit must define at least one of stop_loss, sl_method, or exit_conditions.
+     */
+    exit_conditions?: Condition[];
   };
   /**
    * Self-describing parameters that the AI Distillation may propose changes

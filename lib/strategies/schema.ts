@@ -120,9 +120,12 @@ export const ticketLogicBodySchema: z.ZodType<TicketLogicBody> = z.object({
       stop_loss: expressionSchema.optional(),
       sl_method: slMethodSchema.optional(),
       time_stop: timeStopSchema.optional(),
+      // Sprint 080A: indicator-based exit triggers (any fires → close position).
+      exit_conditions: z.array(conditionSchema).min(1).optional(),
     })
-    .refine((e) => !!e.stop_loss || !!e.sl_method, {
-      message: "exit must define either stop_loss expression or sl_method",
+    .refine((e) => !!e.stop_loss || !!e.sl_method || !!e.exit_conditions, {
+      message:
+        "exit must define either stop_loss expression, sl_method, or exit_conditions",
       path: ["sl_method"],
     }),
   tunable_parameters: z.array(tunableParameterSchema).optional(),
