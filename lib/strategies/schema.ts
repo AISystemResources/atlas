@@ -62,6 +62,7 @@ const timeStopSchema = z.union([
 ]);
 
 // Sprint 079G: discriminated union for the structured SL methodology.
+// Sprint 080B: trailing_atr and trailing_pct added.
 const slMethodSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("fixed_buffer"),
@@ -74,6 +75,15 @@ const slMethodSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("pct_of_entry"),
+    value: z.number().positive().max(1),
+  }),
+  z.object({
+    type: z.literal("trailing_atr"),
+    value: z.number().positive(),
+    atr_indicator_id: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("trailing_pct"),
     value: z.number().positive().max(1),
   }),
 ]);
