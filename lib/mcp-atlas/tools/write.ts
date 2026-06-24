@@ -22,30 +22,6 @@ export const WRITE_TOOL_DEFS = [
       },
     },
   },
-  {
-    name: "update_watchlist",
-    description:
-      "Replace the user's watchlist (full overwrite). Each entry needs a ticker and a schedule frequency. Requires confirmation.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        entries: {
-          type: "array",
-          description: "New watchlist entries.",
-          items: {
-            type: "object",
-            properties: {
-              ticker: { type: "string", description: "Stock ticker symbol (e.g. AAPL)." },
-              schedule: { type: "string", enum: ["1x", "3x", "6x"], description: "Analysis runs per trading day." },
-            },
-            required: ["ticker", "schedule"],
-          },
-        },
-        confirmed: { type: "boolean", default: false },
-      },
-      required: ["entries"],
-    },
-  },
   // ── Ticket Logic write tools (Sprint 066) ────────────────────────────────
   {
     name: "run_ticket_backtest",
@@ -368,67 +344,6 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         if (error || !data) return toolError("Settings updated but failed to re-fetch", "internal_error");
 
         return textContent(data);
-      }
-
-      case "update_watchlist": {
-        const entries = Array.isArray(args.entries) ? args.entries : [];
-        const confirmed = args.confirmed === true;
-
-        const parsed = entries.map((e) => {
-          const raw = e as Record<string, unknown>;
-          const ticker = String(raw["ticker"] ?? "").trim().toUpperCase();
-          const schedule = String(raw["schedule"] ?? "");
-          return { ticker, schedule };
-        });
-
-        const VALID_SCHEDULES = ["1x", "3x", "6x"];
-        for (const e of parsed) {
-          if (!/^[A-Z]{1,5}$/.test(e.ticker)) {
-            return toolError(`Invalid ticker: ${e.ticker}`, "invalid_input");
-          }
-          if (!VALID_SCHEDULES.includes(e.schedule)) {
-            return toolError(`Invalid schedule '${e.schedule}' for ${e.ticker} — must be 1x, 3x, or 6x`, "invalid_input");
-          }
-        }
-
-        if (!confirmed) {
-          return textContent({
-            confirmation_required: true,
-            description: `Replace watchlist with ${parsed.length} ticker(s)`,
-            details: { entries: parsed },
-          });
-        }
-
-        const sb = getServiceClient();
-
-        if (parsed.length > 5) {
-          const { data: prof } = await sb
-            .from("profiles")
-            .select("tier")
-            .eq("id", userId)
-            .maybeSingle();
-          const tier = (prof as Record<string, unknown> | null)?.["tier"] as string ?? "free";
-          if (tier === "free") {
-            return toolError("Free plan limited to 5 tickers", "forbidden");
-          }
-        }
-
-        await sb.from("watchlist").delete().eq("user_id", userId);
-
-        if (parsed.length > 0) {
-          const rows = parsed.map((e) => ({ user_id: userId, ticker: e.ticker, schedule: e.schedule }));
-          const { error } = await sb.from("watchlist").insert(rows);
-          if (error) return toolError(error.message);
-        }
-
-        const { data, error } = await sb
-          .from("watchlist")
-          .select("ticker, schedule")
-          .eq("user_id", userId)
-          .order("created_at");
-
-        if (error) return toolError(error.message);
-        return textContent(data ?? []);
       }
 
       // ── Ticket Logic write tools (Sprint 066) ──────────────────────────

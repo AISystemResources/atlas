@@ -87,16 +87,9 @@ function forbiddenResult() {
 
 // ─── Tools list ───────────────────────────────────────────────────────────────
 
-async function buildToolsList(ctx: AuthContext) {
-  const { READ_TOOL_DEFS, WRITE_TOOL_DEFS, ADMIN_TOOL_DEFS } = await import("@/lib/mcp-atlas");
-
-  const tools = [
-    ...READ_TOOL_DEFS,
-    ...WRITE_TOOL_DEFS,
-    ...(ctx.role === "superadmin" ? ADMIN_TOOL_DEFS : []),
-  ];
-
-  return tools;
+async function buildToolsList(_ctx: AuthContext) {
+  const { READ_TOOL_DEFS, WRITE_TOOL_DEFS } = await import("@/lib/mcp-atlas");
+  return [...READ_TOOL_DEFS, ...WRITE_TOOL_DEFS];
 }
 
 // ─── Tool call dispatch ───────────────────────────────────────────────────────
@@ -105,15 +98,12 @@ async function buildToolsList(ctx: AuthContext) {
 // backtest / read results / distill. Legacy multi-agent pipeline tools
 // (run_pipeline, get_signals, approve_signal, tournaments, schedule
 // windows, the old backtest_jobs surface) were removed.
+// Sprint 087: trimmed to strategy pipeline only. Broker/watchlist/admin tools removed.
 const READ_TOOL_NAMES = new Set([
-  "get_portfolio",
-  "get_positions",
   "get_profile",
   "health_check",
   "get_ticker_info",
   "get_ticker_metadata",
-  "get_trades",
-  "get_watchlist",
   // Ticket Logic read tools (Sprint 066)
   "list_ticket_logics",
   "get_ticket_logic",
@@ -127,7 +117,6 @@ const READ_TOOL_NAMES = new Set([
 
 const WRITE_TOOL_NAMES = new Set([
   "update_settings",
-  "update_watchlist",
   // Ticket Logic write tools (Sprint 066) + create (Sprint 073)
   "run_ticket_backtest",
   "run_distillation",
@@ -136,9 +125,10 @@ const WRITE_TOOL_NAMES = new Set([
   "create_ticket_logic",
   // Sprint 079C.2: external LLM submits its own distillation
   "submit_distillation_insight",
+  // Sprint 081B: paper → strategy extraction
+  "fetch_papers",
+  "extract_strategy_from_paper",
 ]);
-
-const ADMIN_TOOL_NAMES = new Set(["get_admin_stats", "list_users"]);
 
 async function handleToolCall(
   name: string,
@@ -155,12 +145,6 @@ async function handleToolCall(
     if (ctx.scope !== "write" && ctx.scope !== "read_write") return forbiddenResult();
     const { handleWriteTool } = await import("@/lib/mcp-atlas");
     return handleWriteTool(name, args, ctx.user_id);
-  }
-
-  if (ADMIN_TOOL_NAMES.has(name)) {
-    if (ctx.role !== "superadmin") return forbiddenResult();
-    const { handleAdminTool } = await import("@/lib/mcp-atlas");
-    return handleAdminTool(name, args);
   }
 
   return {
