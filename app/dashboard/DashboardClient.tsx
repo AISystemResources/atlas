@@ -6,191 +6,150 @@ import { fetchWithAuth } from "@/lib/api";
 import { AtlasMcpConnectorCard } from "./AtlasMcpConnectorCard";
 import { WatchlistStrip } from "./portfolio/WatchlistStrip";
 import { BottomTabs } from "./portfolio/BottomTabs";
-import { AutonomyBadge } from "./portfolio/AutonomyBadge";
+import type { StrategyHealth, BacktestTradeLite } from "./portfolio/page";
 
 const API_URL = "/api";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 
-type Position = {
-  ticker: string;
-  shares: number;
-  avg_cost: number;
-  current_price: number;
-  pnl: number;
-  // Override window fields — present on autonomous trades
-  trade_id?: string;
-  executed_at?: string;
-  boundary_mode?: string;
-  // Sprint 077A.6: where the position is held — sim portfolio vs Alpaca
-  venue?: "sim" | "alpaca";
-};
-
-type Portfolio = {
-  total_value: number;
-  cash: number;
-  pnl_today: number;
-  pnl_total: number;
-  positions: Position[];
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt(n: number | undefined | null, prefix = "$") {
-  if (n == null || isNaN(n)) return `${prefix}—`;
-  return prefix + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-
-// ─── Tab: Portfolio ───────────────────────────────────────────────────────────
+// ─── Tab: Dashboard (strategy-centric) ───────────────────────────────────────
 
 export function PortfolioTab({
-  portfolio,
   tier,
-  boundaryMode: _boundaryMode,
-  onPositionClick,
-  onGoToSettings,
+  strategies,
+  pendingCount,
+  recentTrades,
 }: {
-  portfolio: Portfolio | null;
   tier: "free" | "pro" | "max";
-  boundaryMode: string;
-  onPositionClick: (ticker: string) => void;
-  onGoToSettings: () => void;
+  strategies: StrategyHealth[];
+  pendingCount: number;
+  recentTrades: BacktestTradeLite[];
 }) {
   const router = useRouter();
-  const pnlPos = portfolio ? portfolio.pnl_today >= 0 : true;
-
-  const [mcpCalloutDismissed, setMcpCalloutDismissed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("mcp_callout_dismissed") === "1";
-  });
-  const [hasPats, setHasPats] = useState<boolean>(true); // optimistic: assume PATs exist, hide callout
-
-  useEffect(() => {
-    if (tier !== "pro" && tier !== "max") return;
-    if (mcpCalloutDismissed) return;
-    fetchWithAuth("/api/v1/pats")
-      .then((r) => r?.json())
-      .then((data: unknown) => {
-        if (Array.isArray(data) && data.length === 0) setHasPats(false);
-      })
-      .catch(() => {}); // ignore errors
-  }, [tier, mcpCalloutDismissed]);
 
   return (
     <div className="flex flex-col gap-3 pb-6">
-      {/* MCP callout — Pro/Max only, dismissed when PATs exist or user dismisses */}
-      {(tier === "pro" || tier === "max") && !hasPats && !mcpCalloutDismissed && (
-        <div style={{
-          background: "rgba(123,97,255,0.08)",
-          border: "1px solid rgba(123,97,255,0.25)",
-          borderRadius: 10,
-          padding: "12px 16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}>
-          <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.5, flex: 1 }}>
-            <strong>New:</strong> Connect Atlas to Claude — ask Claude to analyse your portfolio, run backtests, or summarise signals.{" "}
+      {/* Strategy health strip */}
+      <div>
+        <div
+          className="flex items-center justify-between"
+          style={{ marginBottom: 10 }}
+        >
+          <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", letterSpacing: "0.06em" }}>
+            ACTIVE STRATEGIES
+          </span>
+          <div className="flex items-center gap-3">
+            {pendingCount > 0 && (
+              <span
+                style={{
+                  fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.04em",
+                  color: "var(--brand)", background: "rgba(123,97,255,0.10)",
+                  border: "1px solid rgba(123,97,255,0.25)", borderRadius: 4,
+                  padding: "2px 7px",
+                }}
+              >
+                {pendingCount} pending proposal{pendingCount !== 1 ? "s" : ""}
+              </span>
+            )}
             <button
-              onClick={onGoToSettings}
-              style={{ background: "none", border: "none", color: "var(--tier-pro)", cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0 }}
+              onClick={() => router.push("/dashboard/strategies")}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)",
+                letterSpacing: "0.04em", textDecoration: "underline",
+              }}
             >
-              Set up connector →
+              All strategies →
             </button>
           </div>
-          <button
-            onClick={() => {
-              localStorage.setItem("mcp_callout_dismissed", "1");
-              setMcpCalloutDismissed(true);
+        </div>
+
+        {strategies.length === 0 ? (
+          <div
+            style={{
+              background: "var(--surface)", border: "1px solid var(--line)",
+              borderRadius: 10, padding: "20px 18px", textAlign: "center",
+              color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)",
             }}
-            style={{ background: "none", border: "none", color: "var(--ghost)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
-            aria-label="Dismiss"
           >
-            ×
-          </button>
-        </div>
-      )}
-
-      {/* Split header cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {/* Total Value */}
-        <button
-          onClick={() => router.push("/dashboard/equity-curve?range=all")}
-          style={{
-            background: "var(--surface)", border: "1px solid var(--line)",
-            borderRadius: 12, padding: "16px 14px", textAlign: "left",
-            cursor: "pointer", boxShadow: "var(--card-shadow)",
-          }}
-        >
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>TOTAL VALUE</div>
-          <div className="num font-display font-bold" style={{ fontSize: 22, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-            {portfolio?.total_value != null && !isNaN(portfolio.total_value) ? `$${(portfolio.total_value / 1000).toFixed(1)}k` : "—"}
+            No active strategies yet.{" "}
+            <button
+              onClick={() => router.push("/dashboard/strategies")}
+              style={{ background: "none", border: "none", color: "var(--brand)", cursor: "pointer", fontSize: 13, fontFamily: "var(--font-nunito)" }}
+            >
+              Browse the library →
+            </button>
           </div>
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>tap for curve →</div>
-        </button>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {strategies.map((s) => {
+              const wr = s.latestBacktest?.win_rate;
+              const pnl = s.latestBacktest?.total_pnl_dollars;
+              const pnlPos = (pnl ?? 0) >= 0;
+              return (
+                <div
+                  key={s.id}
+                  style={{
+                    background: "var(--surface)", border: "1px solid var(--line)",
+                    borderRadius: 10, padding: "14px 18px",
+                    boxShadow: "var(--card-shadow)",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto auto",
+                    gap: 16,
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <div
+                      className="font-display font-bold"
+                      style={{ fontSize: 14, color: "var(--ink)", marginBottom: 2 }}
+                    >
+                      {s.name}
+                      <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", fontWeight: 400, marginLeft: 6 }}>
+                        v{s.version}
+                      </span>
+                    </div>
+                    {s.latestBacktest && (
+                      <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>
+                        {s.latestBacktest.ticker} · {s.latestBacktest.total_trades} trades
+                      </div>
+                    )}
+                  </div>
 
-        {/* Today's Return */}
-        <button
-          onClick={() => router.push("/dashboard/equity-curve?range=1d")}
-          style={{
-            background: "var(--surface)", border: `1px solid ${pnlPos ? "var(--bull)" : "var(--bear)"}30`,
-            borderRadius: 12, padding: "16px 14px", textAlign: "left",
-            cursor: "pointer", boxShadow: pnlPos ? "0 0 14px rgba(0,200,150,0.08)" : "0 0 14px rgba(255,45,85,0.08)",
-          }}
-        >
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>TODAY</div>
-          <div className="num font-display font-bold" style={{ fontSize: 22, color: pnlPos ? "var(--bull)" : "var(--bear)", letterSpacing: "-0.02em" }}>
-            {portfolio ? `${pnlPos ? "+" : ""}${fmt(portfolio.pnl_today)}` : "—"}
-          </div>
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>tap for chart →</div>
-        </button>
+                  {wr != null && (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", letterSpacing: "0.06em", marginBottom: 3 }}>WIN RATE</div>
+                      <div
+                        className="num font-display font-bold"
+                        style={{ fontSize: 16, color: wr >= 0.5 ? "var(--bull)" : "var(--bear)" }}
+                      >
+                        {(wr * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  )}
 
-        {/* Cash — desktop only */}
-        <div
-          className="hidden md:block"
-          style={{
-            background: "var(--surface)", border: "1px solid var(--line)",
-            borderRadius: 12, padding: "16px 14px",
-            boxShadow: "var(--card-shadow)",
-          }}
-        >
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>CASH</div>
-          <div className="num font-display font-bold" style={{ fontSize: 22, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-            {portfolio?.cash != null ? fmt(portfolio.cash) : "—"}
+                  {pnl != null && (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", letterSpacing: "0.06em", marginBottom: 3 }}>BACKTEST P&amp;L</div>
+                      <div
+                        className="num font-display font-bold"
+                        style={{ fontSize: 16, color: pnlPos ? "var(--bull)" : "var(--bear)" }}
+                      >
+                        {pnlPos ? "+" : ""}${Math.abs(pnl).toFixed(0)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>buying power</div>
-        </div>
-
-        {/* Total P&L — desktop only */}
-        <div
-          className="hidden md:block"
-          style={{
-            background: "var(--surface)",
-            border: `1px solid ${(portfolio?.pnl_total ?? 0) >= 0 ? "var(--bull)" : "var(--bear)"}20`,
-            borderRadius: 12, padding: "16px 14px",
-            boxShadow: "var(--card-shadow)",
-          }}
-        >
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>TOTAL P&amp;L</div>
-          <div className="num font-display font-bold" style={{ fontSize: 22, color: (portfolio?.pnl_total ?? 0) >= 0 ? "var(--bull)" : "var(--bear)", letterSpacing: "-0.02em" }}>
-            {portfolio != null ? `${(portfolio.pnl_total ?? 0) >= 0 ? "+" : ""}${fmt(portfolio.pnl_total)}` : "—"}
-          </div>
-          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>since inception</div>
-        </div>
+        )}
       </div>
-
-      {/* Autonomy posture indicator — shows current 4-cell state, click to edit */}
-      <AutonomyBadge />
 
       {/* Watchlist strip — curated tickers + DJI anchor */}
       <WatchlistStrip />
 
-      {/* Tabbed activity panel — Positions / Signals / Recent trades / Insights */}
-      <BottomTabs portfolio={portfolio} onPositionClick={onPositionClick} />
+      {/* Backtest trade history */}
+      <BottomTabs trades={recentTrades} />
     </div>
   );
 }
@@ -817,4 +776,3 @@ export function SettingsTab({
 }
 
 
-export type { Portfolio, Position };
