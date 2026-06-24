@@ -8,16 +8,6 @@ function getServiceClient() {
 
 export const READ_TOOL_DEFS = [
   {
-    name: "get_portfolio",
-    description: "Get the user's full portfolio summary from Alpaca (total value, cash, P&L, positions).",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "get_positions",
-    description: "Get only the user's open positions and current cash balance.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
     name: "get_profile",
     description: "Get the user's profile: boundary_mode, tier, role.",
     inputSchema: { type: "object", properties: {} },
@@ -51,21 +41,6 @@ export const READ_TOOL_DEFS = [
       },
       required: ["ticker"],
     },
-  },
-  {
-    name: "get_trades",
-    description: "List the user's executed trade history, most recent first.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
-      },
-    },
-  },
-  {
-    name: "get_watchlist",
-    description: "Get the user's watchlist — tickers and their analysis schedule frequency (1x/3x/6x per day).",
-    inputSchema: { type: "object", properties: {} },
   },
   // ── Ticket Logic tools (Sprint 066) ────────────────────────────────────────
   {
@@ -181,104 +156,9 @@ function toolError(message: string, code = "internal_error") {
   };
 }
 
-async function fetchPortfolio(userId: string) {
-  const sb = getServiceClient();
-
-  const { data: conn } = await sb
-    .from("broker_connections")
-    .select("api_key, api_secret, environment")
-    .eq("user_id", userId)
-    .eq("broker", "alpaca")
-    .maybeSingle();
-
-  if (!conn) {
-    return { total_value: 0, cash: 0, pnl_today: 0, pnl_total: 0, positions: [] };
-  }
-
-  const connRow = conn as Record<string, unknown>;
-  const baseUrl =
-    connRow["environment"] === "paper"
-      ? "https://paper-api.alpaca.markets"
-      : "https://api.alpaca.markets";
-
-  const headers = {
-    "APCA-API-KEY-ID": String(connRow["api_key"]),
-    "APCA-API-SECRET-KEY": String(connRow["api_secret"]),
-  };
-
-  const [accountRes, positionsRes] = await Promise.all([
-    fetch(`${baseUrl}/v2/account`, { headers }),
-    fetch(`${baseUrl}/v2/positions`, { headers }),
-  ]);
-
-  if (!accountRes.ok || !positionsRes.ok) {
-    throw new Error("Failed to fetch from Alpaca");
-  }
-
-  const account = (await accountRes.json()) as Record<string, unknown>;
-  const rawPositions = (await positionsRes.json()) as Record<string, unknown>[];
-
-  let tradeByTicker: Record<string, Record<string, unknown>> = {};
-  try {
-    const { data: trades } = await sb
-      .from("trades")
-      .select("id, ticker, executed_at, boundary_mode")
-      .eq("user_id", userId)
-      .neq("status", "overridden")
-      .order("executed_at", { ascending: false });
-
-    for (const t of trades ?? []) {
-      const row = t as Record<string, unknown>;
-      const ticker = row["ticker"] as string;
-      if (!(ticker in tradeByTicker)) {
-        tradeByTicker = { ...tradeByTicker, [ticker]: row };
-      }
-    }
-  } catch {
-    // Graceful degradation
-  }
-
-  const positions = rawPositions.map((p) => {
-    const ticker = p["symbol"] as string;
-    const meta = tradeByTicker[ticker] ?? {};
-    return {
-      ticker,
-      shares: Number(p["qty"]),
-      avg_cost: Number(p["avg_entry_price"]),
-      current_price: Number(p["current_price"]),
-      pnl: Number(p["unrealized_pl"]),
-      trade_id: (meta["id"] as string | undefined) ?? null,
-      executed_at: (meta["executed_at"] as string | undefined) ?? null,
-      boundary_mode: (meta["boundary_mode"] as string | undefined) ?? null,
-    };
-  });
-
-  const BASE_CAPITAL = 100_000.0;
-  const totalUnrealizedPl = positions.reduce((sum, p) => sum + p.pnl, 0);
-  const equity = Number(account["equity"]);
-
-  return {
-    total_value: Number(account["portfolio_value"]),
-    cash: Number(account["cash"]),
-    pnl_today: totalUnrealizedPl,
-    pnl_total: equity - BASE_CAPITAL,
-    positions,
-  };
-}
-
 export async function handleReadTool(name: string, args: Record<string, unknown>, userId: string) {
   try {
     switch (name) {
-      case "get_portfolio": {
-        const portfolio = await fetchPortfolio(userId);
-        return textContent(portfolio);
-      }
-
-      case "get_positions": {
-        const portfolio = await fetchPortfolio(userId);
-        return textContent({ positions: portfolio.positions, cash: portfolio.cash });
-      }
-
       case "get_profile": {
         const sb = getServiceClient();
         const { data, error } = await sb
@@ -337,30 +217,6 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
           currency: meta.currency,
           description: meta.description,
         });
-      }
-
-      case "get_trades": {
-        const limit = Math.min(typeof args.limit === "number" ? args.limit : 20, 100);
-        const sb = getServiceClient();
-        const { data, error } = await sb
-          .from("trades")
-          .select("id, ticker, action, shares, price, status, boundary_mode, executed_at, order_id")
-          .eq("user_id", userId)
-          .order("executed_at", { ascending: false })
-          .limit(limit);
-        if (error) return toolError(error.message);
-        return textContent(data ?? []);
-      }
-
-      case "get_watchlist": {
-        const sb = getServiceClient();
-        const { data, error } = await sb
-          .from("watchlist")
-          .select("ticker, schedule")
-          .eq("user_id", userId)
-          .order("created_at");
-        if (error) return toolError(error.message);
-        return textContent(data ?? []);
       }
 
       // ── Ticket Logic read tools (Sprint 066) ───────────────────────────
