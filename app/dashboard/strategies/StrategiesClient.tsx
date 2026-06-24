@@ -1,15 +1,8 @@
 "use client";
 
-/**
- * Strategy Library — Sprint 061B.
- *
- * Tabs: Mine / Public. Card grid per tab. Click into a card → strategy
- * detail page (Sprint 061C). "My scalper" badge shown on the strategy
- * currently in profiles.scalper_strategy_id.
- */
-
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export interface StrategyCard {
   id: string;
@@ -34,9 +27,24 @@ export interface StrategyCard {
   };
 }
 
-type Tab = "mine" | "public";
+export interface PaperRow {
+  id: string;
+  title: string;
+  source: string;
+  source_url: string;
+  abstract: string | null;
+  ingested_at: string;
+}
 
-export function StrategiesClient({ cards }: { cards: StrategyCard[] }) {
+type Tab = "mine" | "public" | "papers";
+
+export function StrategiesClient({
+  cards,
+  papers,
+}: {
+  cards: StrategyCard[];
+  papers: PaperRow[];
+}) {
   const [tab, setTab] = useState<Tab>("mine");
 
   const mine = useMemo(() => cards.filter((c) => c.is_mine), [cards]);
@@ -44,18 +52,15 @@ export function StrategiesClient({ cards }: { cards: StrategyCard[] }) {
     () => cards.filter((c) => !c.is_mine && c.visibility === "public"),
     [cards],
   );
-  const visible = tab === "mine" ? mine : publik;
 
   return (
     <div className="mx-auto p-6" style={{ maxWidth: 1100, color: "var(--ink)" }}>
       <h1 className="text-2xl font-bold mb-1">Strategies</h1>
-      <p
-        className="text-sm mb-6"
-        style={{ color: "var(--dim)" }}
-      >
+      <p className="text-sm mb-6" style={{ color: "var(--dim)" }}>
         A Ticket Logic is a rule set for entering and exiting trades. Yours
         evolves through AI distillation; public strategies are read-only until
-        you fork them into your library.
+        you fork them into your library. The Papers tab surfaces arXiv research
+        you can turn into a strategy in one click.
       </p>
 
       {/* Tabs */}
@@ -69,12 +74,22 @@ export function StrategiesClient({ cards }: { cards: StrategyCard[] }) {
         <TabButton active={tab === "public"} onClick={() => setTab("public")}>
           Public ({publik.length})
         </TabButton>
+        <TabButton active={tab === "papers"} onClick={() => setTab("papers")}>
+          Papers {papers.length > 0 && `(${papers.length})`}
+        </TabButton>
       </div>
 
-      {visible.length === 0 ? (
-        <EmptyState tab={tab} />
+      {tab === "papers" ? (
+        <PapersTab papers={papers} />
       ) : (
-        <TickerGroupedGrid cards={visible} />
+        (() => {
+          const visible = tab === "mine" ? mine : publik;
+          return visible.length === 0 ? (
+            <EmptyState tab={tab} />
+          ) : (
+            <TickerGroupedGrid cards={visible} />
+          );
+        })()
       )}
     </div>
   );
@@ -339,6 +354,205 @@ function PerfStat({
   );
 }
 
+function PapersTab({ papers }: { papers: PaperRow[] }) {
+  const router = useRouter();
+  const [fetching, setFetching] = useState(false);
+  const [fetchMsg, setFetchMsg] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState<string | null>(null);
+
+  async function onFetchPapers() {
+    setFetching(true);
+    setFetchMsg(null);
+    try {
+      const res = await fetch("/api/v1/papers/fetch", { method: "POST" });
+      const data = await res.json() as { inserted?: number; fetched?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setFetchMsg(`Fetched ${data.fetched ?? 0} papers, ${data.inserted ?? 0} new.`);
+      router.refresh();
+    } catch (err) {
+      setFetchMsg(err instanceof Error ? err.message : "Fetch failed");
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  async function onExtract(paperId: string, ticker: string) {
+    setExtracting(paperId);
+    try {
+      const res = await fetch("/api/v1/papers/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paper_id: paperId, ticker }),
+      });
+      const data = await res.json() as { strategy_id?: string; error?: string; validation_errors?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      router.push(`/dashboard/strategies/${data.strategy_id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Extraction failed");
+    } finally {
+      setExtracting(null);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <p className="text-sm" style={{ color: "var(--dim)" }}>
+          arXiv q-fin.TR papers · click Extract to generate a draft strategy
+        </p>
+        <div className="flex items-center gap-3">
+          {fetchMsg && (
+            <span style={{ fontSize: 12, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>
+              {fetchMsg}
+            </span>
+          )}
+          <button
+            onClick={onFetchPapers}
+            disabled={fetching}
+            style={{
+              fontSize: 12,
+              fontFamily: "var(--font-jb)",
+              padding: "6px 14px",
+              borderRadius: 6,
+              border: "1px solid var(--line)",
+              background: "var(--surface)",
+              color: fetching ? "var(--ghost)" : "var(--ink)",
+              cursor: fetching ? "default" : "pointer",
+            }}
+          >
+            {fetching ? "Fetching…" : "Fetch papers"}
+          </button>
+        </div>
+      </div>
+
+      {papers.length === 0 ? (
+        <div
+          className="p-10 rounded-lg border text-center"
+          style={{ borderColor: "var(--line)", background: "var(--surface)" }}
+        >
+          <p className="text-sm mb-2" style={{ color: "var(--dim)" }}>
+            No papers yet. Click &ldquo;Fetch papers&rdquo; to pull the latest arXiv q-fin.TR feed.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {papers.map((p) => (
+            <PaperCard
+              key={p.id}
+              paper={p}
+              extracting={extracting === p.id}
+              onExtract={onExtract}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaperCard({
+  paper,
+  extracting,
+  onExtract,
+}: {
+  paper: PaperRow;
+  extracting: boolean;
+  onExtract: (id: string, ticker: string) => void;
+}) {
+  const [ticker, setTicker] = useState("SPY");
+  const date = new Date(paper.ingested_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 10,
+        padding: "16px 18px",
+        boxShadow: "var(--card-shadow)",
+      }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <a
+              href={paper.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-sm font-mono hover:underline"
+              style={{ color: "var(--ink)" }}
+            >
+              {paper.title}
+            </a>
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded uppercase"
+              style={{ background: "var(--elevated)", color: "var(--ghost)", flexShrink: 0 }}
+            >
+              {paper.source}
+            </span>
+          </div>
+          {paper.abstract && (
+            <p
+              className="text-xs line-clamp-2 mt-1"
+              style={{ color: "var(--ghost)", lineHeight: 1.55 }}
+            >
+              {paper.abstract}
+            </p>
+          )}
+          <span
+            className="text-[10px] font-mono mt-1 block"
+            style={{ color: "var(--ghost)" }}
+          >
+            {date}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <input
+            type="text"
+            value={ticker}
+            onChange={(e) => setTicker(e.target.value.toUpperCase())}
+            placeholder="SPY"
+            maxLength={6}
+            style={{
+              width: 60,
+              padding: "5px 8px",
+              borderRadius: 6,
+              border: "1px solid var(--line)",
+              background: "var(--elevated)",
+              color: "var(--ink)",
+              fontSize: 12,
+              fontFamily: "var(--font-jb)",
+              textAlign: "center",
+            }}
+          />
+          <button
+            onClick={() => onExtract(paper.id, ticker || "SPY")}
+            disabled={extracting}
+            style={{
+              fontSize: 12,
+              fontFamily: "var(--font-jb)",
+              padding: "6px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: extracting ? "var(--line)" : "var(--brand)",
+              color: "#fff",
+              cursor: extracting ? "default" : "pointer",
+              fontWeight: 600,
+              whiteSpace: "nowrap" as const,
+            }}
+          >
+            {extracting ? "Extracting…" : "Extract →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptyState({ tab }: { tab: Tab }) {
   return (
     <div
@@ -351,7 +565,9 @@ function EmptyState({ tab }: { tab: Tab }) {
       <p className="text-sm mb-2" style={{ color: "var(--dim)" }}>
         {tab === "mine"
           ? "You haven't authored or forked any strategies yet."
-          : "No public strategies available."}
+          : tab === "public"
+          ? "No public strategies available."
+          : "No papers yet."}
       </p>
       {tab === "mine" && (
         <p className="text-xs" style={{ color: "var(--ghost)" }}>
