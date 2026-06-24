@@ -322,7 +322,6 @@ Indexes: `job_id` (unique), `{ user_id: 1, created_at: -1 }`
 | `INNGEST_EVENT_KEY` | Yes | Inngest event key |
 | `INNGEST_SIGNING_KEY` | Yes | Inngest signing key |
 | `ATLAS_MCP_TOKEN` | Yes | Bearer token for MCP docs server |
-| `NEXT_PUBLIC_USE_TS_API` | No | `true` to route frontend calls to TS API (default: `false` during 014 soak) |
 | `NEXT_PUBLIC_API_URL` | No | Python backend URL (used while Python API is still active) |
 
 ---
