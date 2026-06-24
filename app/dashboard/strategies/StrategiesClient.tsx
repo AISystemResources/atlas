@@ -26,6 +26,7 @@ export interface StrategyCard {
   created_at: string;
   ticker: string | null;
   tags: string[];
+  paper_extracted: boolean;
   latest_backtest?: {
     win_rate: number | null;
     total_pnl_dollars: number | null;
@@ -173,6 +174,14 @@ function StrategyCardView({ card }: { card: StrategyCard }) {
             >
               v{card.version}
             </span>
+            {card.paper_extracted && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
+                style={{ background: "var(--brand-bg, #e8f4fd)", color: "var(--brand)" }}
+              >
+                arXiv
+              </span>
+            )}
             {card.is_my_scalper && (
               <span
                 className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded ring-1 ring-inset uppercase"

@@ -1112,7 +1112,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           created_by_user_id: userId,
           ticker,
           tags: ["paper-extracted"],
-          visibility: "private",
+          visibility: "unlisted",
           parent_paper_id: paperId,
         };
 

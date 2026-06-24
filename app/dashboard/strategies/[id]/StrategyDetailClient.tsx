@@ -129,6 +129,7 @@ export interface StrategyDetail {
   direction: string;
   ticker: string | null;
   tags: string[];
+  paper_extracted: boolean;
   shares: StrategyShareEntry[];
 }
 
@@ -150,9 +151,6 @@ export function StrategyDetailClient({
   const [scalperBusy, setScalperBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
-  const myIdx = family.findIndex((f) => f.is_current);
-  const prev = myIdx > 0 ? family[myIdx - 1] : null;
-  const next = myIdx >= 0 && myIdx < family.length - 1 ? family[myIdx + 1] : null;
 
   async function onFork() {
     setForkBusy(true);
@@ -218,12 +216,15 @@ export function StrategyDetailClient({
                 {detail.ticker}
               </span>
             )}
-            <VersionNav
-              prev={prev}
-              next={next}
-              current={detail.version}
-              strategyName={detail.name}
-            />
+            <VersionTimeline family={family} strategyName={detail.name} />
+            {detail.paper_extracted && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
+                style={{ background: "var(--brand-bg, #e8f4fd)", color: "var(--brand)" }}
+              >
+                arXiv
+              </span>
+            )}
             {detail.is_my_scalper && (
               <span
                 className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded uppercase"
@@ -878,53 +879,49 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function VersionNav({
-  prev,
-  next,
-  current,
+function VersionTimeline({
+  family,
   strategyName,
 }: {
-  prev: VersionFamilyEntry | null;
-  next: VersionFamilyEntry | null;
-  current: number;
+  family: VersionFamilyEntry[];
   strategyName: string;
 }) {
+  if (family.length <= 1) return null;
   return (
-    <div className="flex items-center gap-1 text-xs font-mono">
-      {prev ? (
-        <Link
-          href={`/dashboard/strategies/${prev.id}`}
-          className="px-1.5 py-0.5 rounded hover:bg-[var(--elevated)]"
-          style={{ color: "var(--dim)" }}
-          title={`${strategyName} v${prev.version}`}
-        >
-          ◀ v{prev.version}
-        </Link>
-      ) : (
-        <span className="px-1.5 py-0.5" style={{ color: "var(--ghost)", opacity: 0.4 }}>
-          ◀
-        </span>
-      )}
-      <span
-        className="px-1.5 py-0.5 font-semibold"
-        style={{ color: "var(--ink)" }}
-      >
-        v{current}
-      </span>
-      {next ? (
-        <Link
-          href={`/dashboard/strategies/${next.id}`}
-          className="px-1.5 py-0.5 rounded hover:bg-[var(--elevated)]"
-          style={{ color: "var(--dim)" }}
-          title={`${strategyName} v${next.version}`}
-        >
-          v{next.version} ▶
-        </Link>
-      ) : (
-        <span className="px-1.5 py-0.5" style={{ color: "var(--ghost)", opacity: 0.4 }}>
-          ▶
-        </span>
-      )}
+    <div className="flex items-center gap-1 text-xs font-mono flex-wrap">
+      {family.map((entry, i) => (
+        <div key={entry.id} className="flex items-center gap-1">
+          {i > 0 && (
+            <span style={{ color: "var(--ghost)", fontSize: 10, opacity: 0.5 }}>→</span>
+          )}
+          {entry.is_current ? (
+            <span
+              className="px-1.5 py-0.5 rounded font-semibold"
+              style={{
+                background: "var(--elevated)",
+                color: "var(--ink)",
+                border: "1px solid var(--brand)",
+              }}
+              title={`${strategyName} v${entry.version} (current)`}
+            >
+              v{entry.version}
+            </span>
+          ) : (
+            <Link
+              href={`/dashboard/strategies/${entry.id}`}
+              className="px-1.5 py-0.5 rounded hover:bg-[var(--elevated)]"
+              style={{
+                color: entry.status === "archived" ? "var(--ghost)" : "var(--dim)",
+                textDecoration: entry.status === "archived" ? "line-through" : "none",
+                opacity: entry.status === "archived" ? 0.6 : 1,
+              }}
+              title={`${strategyName} v${entry.version}${entry.status === "archived" ? " (archived)" : ""}`}
+            >
+              v{entry.version}
+            </Link>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
