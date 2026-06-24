@@ -118,6 +118,7 @@ export default async function StrategiesPage() {
       created_at: s.created_at,
       ticker: s.ticker ?? null,
       tags: s.tags ?? [],
+      paper_extracted: (s.tags ?? []).includes("paper-extracted"),
       latest_backtest: bt
         ? {
             win_rate: bt.win_rate,

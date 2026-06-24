@@ -246,6 +246,7 @@ export default async function StrategyDetailPage({
     direction: body.direction,
     ticker: row.ticker ?? null,
     tags: row.tags ?? [],
+    paper_extracted: (row.tags ?? []).includes("paper-extracted"),
     shares,
   };
 
