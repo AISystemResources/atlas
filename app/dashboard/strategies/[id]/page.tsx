@@ -97,7 +97,7 @@ export default async function StrategyDetailPage({
   const { data: btRows } = await sb
     .from("ticket_backtests")
     .select(
-      "id, ticker, timeframe, start_date, end_date, total_trades, win_rate, total_pnl_dollars, created_at",
+      "id, ticker, timeframe, start_date, end_date, total_trades, win_rate, total_pnl_points, created_at",
     )
     .eq("ticket_logic_id", id)
     .order("created_at", { ascending: false })
@@ -111,7 +111,7 @@ export default async function StrategyDetailPage({
     end_date: string;
     total_trades: number;
     win_rate: number | null;
-    total_pnl_dollars: number | null;
+    total_pnl_points: number | null;
     created_at: string;
   }>).map((r) => r);
 

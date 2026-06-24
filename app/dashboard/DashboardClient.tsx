@@ -83,7 +83,7 @@ export function PortfolioTab({
           <div className="flex flex-col gap-2">
             {strategies.map((s) => {
               const wr = s.latestBacktest?.win_rate;
-              const pnl = s.latestBacktest?.total_pnl_dollars;
+              const pnl = s.latestBacktest?.total_pnl_points;
               const pnlPos = (pnl ?? 0) >= 0;
               return (
                 <div
@@ -129,12 +129,12 @@ export function PortfolioTab({
 
                   {pnl != null && (
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", letterSpacing: "0.06em", marginBottom: 3 }}>BACKTEST P&amp;L</div>
+                      <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", letterSpacing: "0.06em", marginBottom: 3 }}>BACKTEST PTS</div>
                       <div
                         className="num font-display font-bold"
                         style={{ fontSize: 16, color: pnlPos ? "var(--bull)" : "var(--bear)" }}
                       >
-                        {pnlPos ? "+" : ""}${Math.abs(pnl).toFixed(0)}
+                        {pnlPos ? "+" : ""}{Math.abs(pnl).toFixed(1)} pts
                       </div>
                     </div>
                   )}

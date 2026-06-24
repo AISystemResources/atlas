@@ -30,7 +30,7 @@ interface StrategyRow {
 interface BacktestSummaryRow {
   ticket_logic_id: string;
   win_rate: number | null;
-  total_pnl_dollars: number | null;
+  total_pnl_points: number | null;
   total_trades: number;
   created_at: string;
 }
@@ -82,7 +82,7 @@ export default async function StrategiesPage() {
     const ids = latest.map((s) => s.id);
     const { data: btRows } = await sb
       .from("ticket_backtests")
-      .select("ticket_logic_id, win_rate, total_pnl_dollars, total_trades, created_at")
+      .select("ticket_logic_id, win_rate, total_pnl_points, total_trades, created_at")
       .in("ticket_logic_id", ids)
       .order("created_at", { ascending: false });
     for (const r of (btRows ?? []) as BacktestSummaryRow[]) {
@@ -122,7 +122,7 @@ export default async function StrategiesPage() {
       latest_backtest: bt
         ? {
             win_rate: bt.win_rate,
-            total_pnl_dollars: bt.total_pnl_dollars,
+            total_pnl_points: bt.total_pnl_points,
             total_trades: bt.total_trades,
           }
         : undefined,

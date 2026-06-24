@@ -25,6 +25,8 @@ const baseStats: SimulatedStats = {
   avg_pnl_dollars: null,
   max_drawdown_dollars: 0,
   total_friction_dollars: 0,
+  total_pnl_points: 0,
+  avg_pnl_points: null,
 };
 
 describe("Sprint 053.2 — A/B harness pure helpers", () => {

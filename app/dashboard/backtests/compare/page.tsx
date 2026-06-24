@@ -26,8 +26,8 @@ interface BacktestRow {
   winning_trades: number;
   losing_trades: number;
   win_rate: number | null;
-  total_pnl_dollars: number | null;
-  avg_pnl_dollars: number | null;
+  total_pnl_points: number | null;
+  avg_pnl_points: number | null;
   max_drawdown_dollars: number | null;
   notional_per_trade: number;
   created_at: string;
@@ -37,7 +37,7 @@ interface BacktestRow {
 interface TradePnlRow {
   backtest_id: string;
   entry_bar_index: number;
-  pnl_dollars: number | null;
+  pnl_points: number | null;
 }
 
 export default async function ComparePage({
@@ -76,7 +76,7 @@ export default async function ComparePage({
   const { data: rows } = await sb
     .from("ticket_backtests")
     .select(
-      "id, user_id, ticker, timeframe, start_date, end_date, total_trades, winning_trades, losing_trades, win_rate, total_pnl_dollars, avg_pnl_dollars, max_drawdown_dollars, notional_per_trade, created_at, ticket_logics(name, version)",
+      "id, user_id, ticker, timeframe, start_date, end_date, total_trades, winning_trades, losing_trades, win_rate, total_pnl_points, avg_pnl_points, max_drawdown_dollars, notional_per_trade, created_at, ticket_logics(name, version)",
     )
     .in("id", ids);
 
@@ -103,7 +103,7 @@ export default async function ComparePage({
 
   const { data: tradeRows } = await sb
     .from("ticket_backtest_trades")
-    .select("backtest_id, entry_bar_index, pnl_dollars")
+    .select("backtest_id, entry_bar_index, pnl_points")
     .in(
       "backtest_id",
       rowsTyped.map((r) => r.id),
@@ -115,7 +115,7 @@ export default async function ComparePage({
   const tradesByBacktest = new Map<string, number[]>();
   for (const t of trades) {
     const arr = tradesByBacktest.get(t.backtest_id) ?? [];
-    arr.push(t.pnl_dollars != null ? Number(t.pnl_dollars) : 0);
+    arr.push(t.pnl_points != null ? Number(t.pnl_points) : 0);
     tradesByBacktest.set(t.backtest_id, arr);
   }
 
@@ -134,8 +134,8 @@ export default async function ComparePage({
       winning_trades: r.winning_trades,
       losing_trades: r.losing_trades,
       win_rate: r.win_rate,
-      total_pnl_dollars: r.total_pnl_dollars,
-      avg_pnl_dollars: r.avg_pnl_dollars,
+      total_pnl_points: r.total_pnl_points,
+      avg_pnl_points: r.avg_pnl_points,
       max_drawdown_dollars: r.max_drawdown_dollars,
       notional_per_trade: r.notional_per_trade,
       created_at: r.created_at,

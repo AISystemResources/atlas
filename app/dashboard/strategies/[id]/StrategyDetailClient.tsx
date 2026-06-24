@@ -36,7 +36,7 @@ export interface BacktestListEntry {
   end_date: string;
   total_trades: number;
   win_rate: number | null;
-  total_pnl_dollars: number | null;
+  total_pnl_points: number | null;
   created_at: string;
 }
 
@@ -468,7 +468,7 @@ export function StrategyDetailClient({
         ) : (
           <div className="space-y-1">
             {backtests.map((b) => {
-              const pnl = b.total_pnl_dollars ?? 0;
+              const pnl = b.total_pnl_points ?? 0;
               return (
                 <Link
                   key={b.id}
@@ -501,7 +501,7 @@ export function StrategyDetailClient({
                               : "var(--dim)",
                       }}
                     >
-                      ${pnl.toFixed(2)}
+                      {pnl >= 0 ? "+" : ""}{pnl.toFixed(1)} pts
                     </span>
                   </div>
                 </Link>
