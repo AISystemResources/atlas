@@ -26,6 +26,7 @@ interface StrategyRow {
   version: number;
   parent_version_id: string | null;
   forked_from_id: string | null;
+  parent_paper_id: string | null;
   description: string;
   body: unknown;
   status: "draft" | "active" | "archived";
@@ -50,7 +51,7 @@ export default async function StrategyDetailPage({
   const { data: rowData } = await sb
     .from("ticket_logics")
     .select(
-      "id, name, version, parent_version_id, forked_from_id, description, body, status, visibility, created_by_user_id, created_at, ticker, tags",
+      "id, name, version, parent_version_id, forked_from_id, parent_paper_id, description, body, status, visibility, created_by_user_id, created_at, ticker, tags",
     )
     .eq("id", id)
     .maybeSingle();
@@ -210,6 +211,17 @@ export default async function StrategyDetailPage({
     ((profile as { scalper_strategy_id: string | null } | null)
       ?.scalper_strategy_id ?? null) === row.id;
 
+  // If this strategy was extracted from a paper, fetch the source URL for the badge link.
+  let paperSourceUrl: string | null = null;
+  if (row.parent_paper_id) {
+    const { data: paperRow } = await sb
+      .from("signal_papers")
+      .select("source_url")
+      .eq("id", row.parent_paper_id)
+      .maybeSingle();
+    paperSourceUrl = (paperRow as { source_url: string } | null)?.source_url ?? null;
+  }
+
   // Render the body to structured prose server-side.
   const body = parseTicketLogicBody(row.body);
   const rendered = renderTicketLogicBody(body);
@@ -247,6 +259,7 @@ export default async function StrategyDetailPage({
     ticker: row.ticker ?? null,
     tags: row.tags ?? [],
     paper_extracted: (row.tags ?? []).includes("paper-extracted"),
+    paper_source_url: paperSourceUrl,
     shares,
   };
 

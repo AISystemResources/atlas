@@ -130,6 +130,7 @@ export interface StrategyDetail {
   ticker: string | null;
   tags: string[];
   paper_extracted: boolean;
+  paper_source_url: string | null;
   shares: StrategyShareEntry[];
 }
 
@@ -218,12 +219,24 @@ export function StrategyDetailClient({
             )}
             <VersionTimeline family={family} strategyName={detail.name} />
             {detail.paper_extracted && (
-              <span
-                className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
-                style={{ background: "var(--brand-bg, #e8f4fd)", color: "var(--brand)" }}
-              >
-                arXiv
-              </span>
+              detail.paper_source_url ? (
+                <a
+                  href={detail.paper_source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
+                  style={{ background: "var(--brand-bg, #e8f4fd)", color: "var(--brand)", textDecoration: "none" }}
+                >
+                  arXiv ↗
+                </a>
+              ) : (
+                <span
+                  className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
+                  style={{ background: "var(--brand-bg, #e8f4fd)", color: "var(--brand)" }}
+                >
+                  arXiv
+                </span>
+              )
             )}
             {detail.is_my_scalper && (
               <span

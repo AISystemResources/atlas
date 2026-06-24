@@ -24,30 +24,30 @@ function postureMeta(p: Posture): PostureMeta {
     case "auto":
       return {
         label: "Autonomous",
-        detail: "AI executes both entries and exits autonomously, gated by the EBC circuit breaker.",
+        detail: "AI initiates and closes positions on your behalf. Both legs of each trade are managed by the system.",
         warning: null,
         level: "neutral",
       };
     case "manual":
       return {
         label: "Manual",
-        detail: "AI signals are advisory. You manually approve every entry and every exit.",
+        detail: "You control both entries and exits. AI signals are surfaced as suggestions; nothing executes without your action.",
         warning: null,
         level: "neutral",
       };
     case "optimal":
       return {
         label: "Asymmetric — recommended",
-        detail: "You decide when to open positions; AI handles exits mechanically. The combination most resistant to disposition-effect losses.",
+        detail: "You decide when to open a position; AI closes it according to the strategy rules. The combination most resistant to disposition-effect losses.",
         warning: null,
         level: "good",
       };
     case "high-risk":
       return {
         label: "Asymmetric — high risk",
-        detail: "AI opens positions autonomously, but you must close each one manually.",
+        detail: "AI opens positions on your behalf, but every close requires your manual action.",
         warning:
-          "This is the highest-risk configuration. AI can accumulate positions faster than you can manage exits, and unrealized losses can compound. Consider 'Autonomous' or 'Asymmetric — recommended' instead.",
+          "This configuration lets open positions build up faster than you can exit them. Unrealized losses may compound. Consider Autonomous or Asymmetric — recommended instead.",
         level: "caution",
       };
   }
@@ -145,7 +145,7 @@ export function AutonomySection() {
           className="font-display font-bold"
           style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em", marginBottom: 4 }}
         >
-          Where AI manages your trades
+          AI Intervention Matrix
         </h2>
         <p
           style={{
@@ -156,21 +156,21 @@ export function AutonomySection() {
             maxWidth: 580,
           }}
         >
-          Independently choose whether AI handles the OPEN of a trade, the CLOSE, both, or neither.
-          Atlas changes its execution behavior based on these toggles.
+          Choose independently whether AI handles the OPEN leg, the CLOSE leg, both, or neither.
+          The two toggles combine into one of four postures below.
         </p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ marginBottom: 18 }}>
         <ToggleCard
-          label="Open trades"
-          description="AI executes BUY signals above the confidence gate without your approval."
+          label="AI open"
+          description="AI initiates entries on your behalf when a strategy signal fires."
           on={stagedOpen}
           onChange={setStagedOpen}
         />
         <ToggleCard
-          label="Close trades"
-          description="AI executes SELL signals — exits, stop-losses, target hits — without your approval."
+          label="AI close"
+          description="AI exits positions on your behalf when a strategy's exit rules are met."
           on={stagedClose}
           onChange={setStagedClose}
         />
@@ -461,10 +461,10 @@ function HighRiskConfirmation({
             marginBottom: 18,
           }}
         >
-          This is the highest-risk configuration in Atlas. AI may accumulate more positions than you
-          can actively manage, and unrealized losses can compound while waiting for your manual exit
-          decisions. Most users get better outcomes from <strong>Autonomous</strong> or the
-          <strong> Asymmetric — recommended</strong> configuration (Human-open + AI-close).
+          This configuration lets open positions build up faster than you can exit them. Unrealized
+          losses may compound until you manually close each position. Most users get better outcomes
+          from <strong>Autonomous</strong> (AI open + AI close) or{" "}
+          <strong>Asymmetric — recommended</strong> (Human open + AI close).
         </p>
         <div className="flex items-center justify-end gap-3">
           <button
