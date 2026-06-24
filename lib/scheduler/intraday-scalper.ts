@@ -303,7 +303,7 @@ async function runUserScalper(
             user_id: userId,
             ticker,
             action: "SELL",
-            shares: 0,
+            shares: pos.qty ?? 0,
             price: lastClose,
             status: order.status === "filled" ? "filled" : "pending",
             boundary_mode: "autonomous",
