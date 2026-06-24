@@ -10,7 +10,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
 import { buildAccessContext } from "@/lib/strategies/access";
-import { StrategiesClient, type StrategyCard } from "./StrategiesClient";
+import { StrategiesClient, type StrategyCard, type PaperRow } from "./StrategiesClient";
 
 interface StrategyRow {
   id: string;
@@ -129,7 +129,20 @@ export default async function StrategiesPage() {
     };
   });
 
-  return <StrategiesClient cards={cards} />;
+  // Fetch arXiv papers — graceful empty fallback if migration not yet applied
+  let papers: PaperRow[] = [];
+  try {
+    const { data: paperRows } = await sb
+      .from("signal_papers")
+      .select("id, title, source, source_url, abstract, ingested_at")
+      .order("ingested_at", { ascending: false })
+      .limit(50);
+    papers = (paperRows ?? []) as PaperRow[];
+  } catch {
+    // signal_papers table not yet created — show empty Papers tab
+  }
+
+  return <StrategiesClient cards={cards} papers={papers} />;
 }
 
 function truncateUser(userId: string | null): string {

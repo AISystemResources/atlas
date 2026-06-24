@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
 import { SettingsTab } from "../DashboardClient";
 import { AutonomySection } from "./AutonomySection";
-import { ExecutionModeSection } from "./ExecutionModeSection";
 
 export default async function SettingsPage() {
   const { userId } = await auth();
@@ -24,7 +23,6 @@ export default async function SettingsPage() {
   return (
     <div>
       <AutonomySection />
-      <ExecutionModeSection />
       <SettingsTab tier={tier} />
     </div>
   );
