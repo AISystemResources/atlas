@@ -39,8 +39,8 @@ export interface BacktestDetail {
   winning_trades: number;
   losing_trades: number;
   win_rate: number | null;
-  total_pnl_dollars: number | null;
-  avg_pnl_dollars: number | null;
+  total_pnl_points: number | null;
+  avg_pnl_points: number | null;
   max_drawdown_dollars: number | null;
   notional_per_trade: number;
   total_bars: number;
@@ -90,7 +90,7 @@ export interface Trade {
     | "eod"
     | "open_at_end"
     | null;
-  pnl_dollars: number | null;
+  pnl_points: number | null;
   pnl_pct: number | null;
   qty: number | null;
 }
@@ -126,7 +126,7 @@ function cumulativePoints(trades: Trade[]): { idx: number; value: number }[] {
   const out: { idx: number; value: number }[] = [];
   let cum = 0;
   for (let i = 0; i < trades.length; i++) {
-    cum += trades[i].pnl_dollars ?? 0;
+    cum += trades[i].pnl_points ?? 0;
     out.push({ idx: i + 1, value: Math.round(cum * 100) / 100 });
   }
   return out;
@@ -176,7 +176,7 @@ function EquityChart({ trades }: { trades: Trade[] }) {
           padding: 8,
           callbacks: {
             label: (ctx: { raw: unknown }) =>
-              ` Cum PnL: $${(ctx.raw as number).toFixed(2)}`,
+              ` Cum PnL: ${(ctx.raw as number).toFixed(2)} pts`,
           },
         },
       },
@@ -189,7 +189,7 @@ function EquityChart({ trades }: { trades: Trade[] }) {
           ticks: {
             color: tokens.ghost,
             font: { size: 10 },
-            callback: (v: unknown) => `$${Number(v).toFixed(0)}`,
+            callback: (v: unknown) => `${Number(v).toFixed(0)} pts`,
           },
           grid: { color: tokens.line },
         },
@@ -307,7 +307,7 @@ export function BacktestDetailClient({
   const totalPages = Math.max(1, Math.ceil(trades.length / PAGE_SIZE));
   const pageTrades = trades.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  const pnl = detail.total_pnl_dollars ?? 0;
+  const pnl = detail.total_pnl_points ?? 0;
   const pnlColor = pnl > 0 ? "text-[var(--bull)]" : pnl < 0 ? "text-[var(--bear)]" : "text-[var(--ink)]";
 
   return (
@@ -344,20 +344,20 @@ export function BacktestDetailClient({
         />
         <SummaryStat
           label="Total PnL"
-          value={`$${pnl.toFixed(2)}`}
+          value={`${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)} pts`}
           tone={pnl > 0 ? "good" : pnl < 0 ? "bad" : "neutral"}
         />
         <SummaryStat
           label="Avg / trade"
           value={
-            detail.avg_pnl_dollars != null
-              ? `$${detail.avg_pnl_dollars.toFixed(2)}`
+            detail.avg_pnl_points != null
+              ? `${detail.avg_pnl_points >= 0 ? "+" : ""}${detail.avg_pnl_points.toFixed(1)} pts`
               : "—"
           }
           tone={
-            (detail.avg_pnl_dollars ?? 0) > 0
+            (detail.avg_pnl_points ?? 0) > 0
               ? "good"
-              : (detail.avg_pnl_dollars ?? 0) < 0
+              : (detail.avg_pnl_points ?? 0) < 0
                 ? "bad"
                 : "neutral"
           }
@@ -376,7 +376,7 @@ export function BacktestDetailClient({
         </h2>
         <EquityChart trades={trades} />
         <p className="mt-2 text-[11px] text-[var(--ghost)]">
-          Last value: <span className={pnlColor}>${pnl.toFixed(2)}</span>. Trade
+          Last value: <span className={pnlColor}>{pnl >= 0 ? "+" : ""}{pnl.toFixed(1)} pts</span>. Trade
           index on x-axis — not real time.
         </p>
       </div>
@@ -423,13 +423,13 @@ export function BacktestDetailClient({
                 <th className="py-2 pr-2 text-right" title="Raw price move in points (Exit − Entry). Multiplied by qty to give PnL $.">
                   PnL pts
                 </th>
-                <th className="py-2 pr-2 text-right">PnL $</th>
+                <th className="py-2 pr-2 text-right">PnL pts</th>
                 <th className="py-2 pr-2 text-right">PnL %</th>
               </tr>
             </thead>
             <tbody>
               {pageTrades.map((t, i) => {
-                const tradePnl = t.pnl_dollars ?? 0;
+                const tradePnl = t.pnl_points ?? 0;
                 const idx = page * PAGE_SIZE + i + 1;
                 return (
                   <tr
@@ -461,21 +461,18 @@ export function BacktestDetailClient({
                     <td className="py-2 pr-2">
                       <ExitChip reason={t.exit_reason} />
                     </td>
-                    <td className="py-2 pr-2 text-right font-mono text-xs text-[var(--dim)]">
-                      {t.exit_price != null
-                        ? (t.exit_price - t.entry_price).toFixed(2)
-                        : "—"}
-                    </td>
                     <td
                       className={`py-2 pr-2 text-right font-mono ${
                         tradePnl > 0
                           ? "text-[var(--bull)]"
                           : tradePnl < 0
                             ? "text-[var(--bear)]"
-                            : ""
+                            : "text-[var(--dim)]"
                       }`}
                     >
-                      {tradePnl.toFixed(2)}
+                      {t.pnl_points != null
+                        ? `${tradePnl >= 0 ? "+" : ""}${tradePnl.toFixed(2)}`
+                        : "—"}
                     </td>
                     <td className="py-2 pr-2 text-right text-xs text-[var(--dim)]">
                       {t.pnl_pct != null

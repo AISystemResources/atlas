@@ -19,7 +19,7 @@ export interface BacktestRow {
   end_date: string;
   total_trades: number;
   win_rate: number | null;
-  total_pnl_dollars: number | null;
+  total_pnl_points: number | null;
   max_drawdown_dollars: number | null;
   created_at: string;
   ticket_logics: { name: string; version: number } | null;
@@ -215,14 +215,14 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
               <th className="py-2 pr-2">Tf</th>
               <th className="py-2 pr-2 text-right">Trades</th>
               <th className="py-2 pr-2 text-right">Win rate</th>
-              <th className="py-2 pr-2 text-right">PnL</th>
-              <th className="py-2 pr-2 text-right">Max DD</th>
+              <th className="py-2 pr-2 text-right">PnL (pts)</th>
+              <th className="py-2 pr-2 text-right">Max DD ($)</th>
               <th className="py-2 pr-2">When</th>
             </tr>
           </thead>
           <tbody>
             {initialRows.map((row) => {
-              const pnl = row.total_pnl_dollars ?? 0;
+              const pnl = row.total_pnl_points ?? 0;
               const isSelected = selected.has(row.id);
               return (
                 <tr
@@ -267,7 +267,7 @@ export function BacktestsClient({ initialRows }: { initialRows: BacktestRow[] })
                       pnl > 0 ? "text-[var(--bull)]" : pnl < 0 ? "text-[var(--bear)]" : ""
                     }`}
                   >
-                    ${pnl.toFixed(2)}
+                    {pnl >= 0 ? "+" : ""}{pnl.toFixed(1)} pts
                   </td>
                   <td className="py-2 pr-2 text-right font-mono text-[var(--dim)]">
                     ${(row.max_drawdown_dollars ?? 0).toFixed(2)}

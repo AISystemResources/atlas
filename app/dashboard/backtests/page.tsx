@@ -16,7 +16,7 @@ export default async function BacktestsPage() {
   const { data } = await sb
     .from("ticket_backtests")
     .select(
-      "id, ticker, timeframe, start_date, end_date, total_trades, win_rate, total_pnl_dollars, max_drawdown_dollars, created_at, ticket_logics(name, version)",
+      "id, ticker, timeframe, start_date, end_date, total_trades, win_rate, total_pnl_points, max_drawdown_dollars, created_at, ticket_logics(name, version)",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })

@@ -142,6 +142,7 @@ export async function backtestTicketLogic(
     exit_price: t.exit_price,
     exit_reason: t.exit_reason,
     pnl_dollars: t.pnl_dollars,
+    pnl_points: t.pnl_points,
     pnl_pct: t.pnl_pct,
     qty: t.qty,
     indicator_snapshot: t.indicator_snapshot,
@@ -171,6 +172,8 @@ export async function backtestTicketLogic(
         avg_pnl_dollars: stats.avg_pnl_dollars,
         max_drawdown_dollars: stats.max_drawdown_dollars,
         total_friction_dollars: stats.total_friction_dollars,
+        total_pnl_points: stats.total_pnl_points,
+        avg_pnl_points: stats.avg_pnl_points,
       })
       .eq("id", backtestId);
     if (upErr) {

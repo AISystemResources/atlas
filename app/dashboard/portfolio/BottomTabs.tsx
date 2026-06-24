@@ -64,7 +64,7 @@ function BacktestTradesContent({ trades }: { trades: BacktestTradeLite[] }) {
   return (
     <div className="flex flex-col gap-1">
       {trades.map((t) => {
-        const positive = (t.pnl_dollars ?? 0) >= 0;
+        const positive = (t.pnl_points ?? 0) >= 0;
         const dt = t.entry_ts ? new Date(t.entry_ts) : null;
         const isOpen = t.exit_ts == null;
 
@@ -141,20 +141,20 @@ function BacktestTradesContent({ trades }: { trades: BacktestTradeLite[] }) {
               {fmt(t.entry_price)}{t.exit_price != null ? ` → ${fmt(t.exit_price)}` : ""}
             </span>
 
-            {/* P&L */}
+            {/* P&L in points */}
             <span
               className="num"
               style={{
                 fontSize: 13,
                 fontFamily: "var(--font-jb)",
                 fontWeight: 700,
-                color: t.pnl_dollars != null
+                color: t.pnl_points != null
                   ? positive ? "var(--bull)" : "var(--bear)"
                   : "var(--ghost)",
               }}
             >
-              {t.pnl_dollars != null
-                ? `${positive ? "+" : ""}$${fmt(t.pnl_dollars)}`
+              {t.pnl_points != null
+                ? `${positive ? "+" : ""}${fmt(t.pnl_points)} pts`
                 : "—"}
             </span>
 

@@ -20,8 +20,8 @@ interface BacktestRowRaw {
   winning_trades: number;
   losing_trades: number;
   win_rate: number | null;
-  total_pnl_dollars: number | null;
-  avg_pnl_dollars: number | null;
+  total_pnl_points: number | null;
+  avg_pnl_points: number | null;
   max_drawdown_dollars: number | null;
   notional_per_trade: number;
   total_bars: number;
@@ -43,7 +43,7 @@ export default async function BacktestDetailPage({
   const { data: row } = await sb
     .from("ticket_backtests")
     .select(
-      "id, ticket_logic_id, user_id, ticker, timeframe, start_date, end_date, total_trades, winning_trades, losing_trades, win_rate, total_pnl_dollars, avg_pnl_dollars, max_drawdown_dollars, notional_per_trade, total_bars, created_at, ticket_logics(name, version, description)",
+      "id, ticket_logic_id, user_id, ticker, timeframe, start_date, end_date, total_trades, winning_trades, losing_trades, win_rate, total_pnl_points, avg_pnl_points, max_drawdown_dollars, notional_per_trade, total_bars, created_at, ticket_logics(name, version, description)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -55,7 +55,7 @@ export default async function BacktestDetailPage({
   const { data: tradeRows } = await sb
     .from("ticket_backtest_trades")
     .select(
-      "id, entry_bar_index, entry_ts, entry_price, take_profit_price, stop_loss_price, exit_bar_index, exit_ts, exit_price, exit_reason, pnl_dollars, pnl_pct, qty",
+      "id, entry_bar_index, entry_ts, entry_price, take_profit_price, stop_loss_price, exit_bar_index, exit_ts, exit_price, exit_reason, pnl_points, pnl_pct, qty",
     )
     .eq("backtest_id", id)
     .order("entry_bar_index", { ascending: true });
@@ -72,8 +72,8 @@ export default async function BacktestDetailPage({
     winning_trades: backtest.winning_trades,
     losing_trades: backtest.losing_trades,
     win_rate: backtest.win_rate,
-    total_pnl_dollars: backtest.total_pnl_dollars,
-    avg_pnl_dollars: backtest.avg_pnl_dollars,
+    total_pnl_points: backtest.total_pnl_points,
+    avg_pnl_points: backtest.avg_pnl_points,
     max_drawdown_dollars: backtest.max_drawdown_dollars,
     notional_per_trade: backtest.notional_per_trade,
     total_bars: backtest.total_bars,

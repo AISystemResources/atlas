@@ -42,8 +42,8 @@ export interface ComparedBacktest {
   winning_trades: number;
   losing_trades: number;
   win_rate: number | null;
-  total_pnl_dollars: number | null;
-  avg_pnl_dollars: number | null;
+  total_pnl_points: number | null;
+  avg_pnl_points: number | null;
   max_drawdown_dollars: number | null;
   notional_per_trade: number;
   created_at: string;
@@ -137,7 +137,7 @@ export function CompareClient({
           padding: 8,
           callbacks: {
             label: (ctx: { dataset: { label?: string }; raw: unknown }) =>
-              ` ${ctx.dataset.label}: $${(ctx.raw as number).toFixed(2)}`,
+              ` ${ctx.dataset.label}: ${(ctx.raw as number).toFixed(2)} pts`,
           },
         },
       },
@@ -156,12 +156,12 @@ export function CompareClient({
           ticks: {
             color: tokens.ghost,
             font: { size: 10 },
-            callback: (v: unknown) => `$${Number(v).toFixed(0)}`,
+            callback: (v: unknown) => `${Number(v).toFixed(0)} pts`,
           },
           grid: { color: tokens.line },
           title: {
             display: true,
-            text: "Cumulative PnL ($)",
+            text: "Cumulative PnL (pts)",
             color: tokens.dim,
             font: { size: 10 },
           },
@@ -262,31 +262,31 @@ export function CompareClient({
               deltaFormat={(v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)} pts`}
             />
             <StatRow
-              label="Total PnL"
+              label="Total PnL (pts)"
               values={backtests.map((b) =>
-                b.total_pnl_dollars != null
-                  ? `$${b.total_pnl_dollars.toFixed(2)}`
+                b.total_pnl_points != null
+                  ? `${b.total_pnl_points >= 0 ? "+" : ""}${b.total_pnl_points.toFixed(1)} pts`
                   : "—",
               )}
               delta={
-                baseline?.total_pnl_dollars != null
+                baseline?.total_pnl_points != null
                   ? backtests
                       .slice(1)
                       .map((b) =>
-                        b.total_pnl_dollars != null
-                          ? b.total_pnl_dollars - (baseline!.total_pnl_dollars ?? 0)
+                        b.total_pnl_points != null
+                          ? b.total_pnl_points - (baseline!.total_pnl_points ?? 0)
                           : null,
                       )
                   : undefined
               }
-              deltaFormat={(v) => `${v >= 0 ? "+" : ""}$${v.toFixed(2)}`}
+              deltaFormat={(v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)} pts`}
               deltaColor
             />
             <StatRow
-              label="Avg / trade"
+              label="Avg / trade (pts)"
               values={backtests.map((b) =>
-                b.avg_pnl_dollars != null
-                  ? `$${b.avg_pnl_dollars.toFixed(2)}`
+                b.avg_pnl_points != null
+                  ? `${b.avg_pnl_points >= 0 ? "+" : ""}${b.avg_pnl_points.toFixed(1)} pts`
                   : "—",
               )}
             />

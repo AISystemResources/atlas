@@ -10,7 +10,7 @@ export type StrategyHealth = {
   latestBacktest: {
     ticker: string;
     win_rate: number | null;
-    total_pnl_dollars: number | null;
+    total_pnl_points: number | null;
     total_trades: number;
     created_at: string;
   } | null;
@@ -23,7 +23,7 @@ export type BacktestTradeLite = {
   exit_ts: string | null;
   exit_price: number | null;
   exit_reason: string | null;
-  pnl_dollars: number | null;
+  pnl_points: number | null;
   qty: number | null;
   ticker: string;
   strategy_name: string;
@@ -39,7 +39,7 @@ export default async function PortfolioPage() {
     sb.from("profiles").select("tier").eq("id", userId).maybeSingle(),
 
     sb.from("ticket_logics")
-      .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_dollars, total_trades, created_at)")
+      .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_points, total_trades, created_at)")
       .eq("status", "active")
       .order("created_at", { ascending: false }),
 
@@ -48,7 +48,7 @@ export default async function PortfolioPage() {
       .eq("status", "proposed"),
 
     sb.from("ticket_backtest_trades")
-      .select("id, entry_ts, entry_price, exit_ts, exit_price, exit_reason, pnl_dollars, qty, ticket_backtests(ticker, ticket_logics(name))")
+      .select("id, entry_ts, entry_price, exit_ts, exit_price, exit_reason, pnl_points, qty, ticket_backtests(ticker, ticket_logics(name))")
       .order("entry_ts", { ascending: false })
       .limit(20),
   ]);
@@ -71,7 +71,7 @@ export default async function PortfolioPage() {
       latestBacktest: latest ? {
         ticker: latest["ticker"] as string,
         win_rate: latest["win_rate"] as number | null,
-        total_pnl_dollars: latest["total_pnl_dollars"] as number | null,
+        total_pnl_points: latest["total_pnl_points"] as number | null,
         total_trades: latest["total_trades"] as number,
         created_at: latest["created_at"] as string,
       } : null,
@@ -91,7 +91,7 @@ export default async function PortfolioPage() {
       exit_ts: row["exit_ts"] as string | null,
       exit_price: row["exit_price"] as number | null,
       exit_reason: row["exit_reason"] as string | null,
-      pnl_dollars: row["pnl_dollars"] as number | null,
+      pnl_points: row["pnl_points"] as number | null,
       qty: row["qty"] as number | null,
       ticker: (bt?.["ticker"] as string) ?? "—",
       strategy_name: (tl?.["name"] as string) ?? "—",

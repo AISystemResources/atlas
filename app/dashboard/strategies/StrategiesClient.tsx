@@ -22,7 +22,7 @@ export interface StrategyCard {
   paper_extracted: boolean;
   latest_backtest?: {
     win_rate: number | null;
-    total_pnl_dollars: number | null;
+    total_pnl_points: number | null;
     total_trades: number;
   };
 }
@@ -261,15 +261,15 @@ function StrategyCardView({ card }: { card: StrategyCard }) {
             }
           />
           <PerfStat
-            label="PnL"
+            label="Points"
             value={
-              card.latest_backtest.total_pnl_dollars != null
-                ? `${card.latest_backtest.total_pnl_dollars >= 0 ? "+" : ""}$${card.latest_backtest.total_pnl_dollars.toFixed(2)}`
+              card.latest_backtest.total_pnl_points != null
+                ? `${card.latest_backtest.total_pnl_points >= 0 ? "+" : ""}${card.latest_backtest.total_pnl_points.toFixed(1)} pts`
                 : "—"
             }
             positive={
-              card.latest_backtest.total_pnl_dollars != null
-                ? card.latest_backtest.total_pnl_dollars >= 0
+              card.latest_backtest.total_pnl_points != null
+                ? card.latest_backtest.total_pnl_points >= 0
                 : null
             }
           />

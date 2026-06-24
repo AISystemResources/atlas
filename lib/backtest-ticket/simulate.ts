@@ -33,6 +33,8 @@ export interface SimulatedTrade {
   exit_price: number;
   exit_reason: string;
   pnl_dollars: number;
+  /** Direction-adjusted raw price movement in index points (exit − entry for longs, entry − exit for shorts). */
+  pnl_points: number;
   pnl_pct: number;
   qty: number;
   indicator_snapshot: Record<string, number>;
@@ -49,6 +51,8 @@ export interface SimulatedStats {
   avg_pnl_dollars: number | null;
   max_drawdown_dollars: number;
   total_friction_dollars: number;
+  total_pnl_points: number;
+  avg_pnl_points: number | null;
 }
 
 export interface SimulateOptions {
@@ -125,6 +129,7 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
   let losing = 0;
   let totalPnl = 0;
   let totalFriction = 0;
+  let totalPoints = 0;
 
   // allIndicators is guaranteed non-null when stages/exit_conditions/trailing_atr are present.
   const allIndicators = indicators ?? computeAllIndicators(body.indicators, bars, opts.secondaryBars);
@@ -208,8 +213,10 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
     }
 
     const pnlPct = round4((entry.direction === "long" ? adjExitPrice - adjEntryPrice : adjEntryPrice - adjExitPrice) / adjEntryPrice);
+    const pnlPoints = round4(entry.direction === "long" ? adjExitPrice - adjEntryPrice : adjEntryPrice - adjExitPrice);
 
     totalPnl += pnlDollars;
+    totalPoints += pnlPoints;
     totalFriction += tradeFriction;
     cumulativePnl += pnlDollars;
     peakPnl = Math.max(peakPnl, cumulativePnl);
@@ -233,6 +240,7 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
       exit_price: adjExitPrice,
       exit_reason: exit.exitReason,
       pnl_dollars: pnlDollars,
+      pnl_points: pnlPoints,
       pnl_pct: pnlPct,
       qty,
       indicator_snapshot: entry.indicator_snapshot,
@@ -243,6 +251,7 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
   const winRate =
     winning + losing > 0 ? round4(winning / (winning + losing)) : null;
   const avgPnl = trades.length > 0 ? round2(totalPnl / trades.length) : null;
+  const avgPoints = trades.length > 0 ? round4(totalPoints / trades.length) : null;
 
   return {
     trades,
@@ -256,6 +265,8 @@ export function simulateBacktest(opts: SimulateOptions): SimulateResult {
       avg_pnl_dollars: avgPnl,
       max_drawdown_dollars: round2(maxDrawdown),
       total_friction_dollars: round2(totalFriction),
+      total_pnl_points: round4(totalPoints),
+      avg_pnl_points: avgPoints,
     },
   };
 }
