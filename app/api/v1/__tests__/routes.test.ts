@@ -21,11 +21,6 @@ jest.mock("@supabase/supabase-js", () => ({
   })),
 }));
 
-// Inngest mock
-jest.mock("@/lib/inngest", () => ({
-  inngest: { send: jest.fn().mockResolvedValue(undefined) },
-}));
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeReq(method = "GET", body?: unknown): Request {
