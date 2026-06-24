@@ -131,6 +131,7 @@ export default async function StrategiesPage() {
 
   // Fetch arXiv papers — graceful empty fallback if migration not yet applied
   let papers: PaperRow[] = [];
+  const extractedPaperIds = new Set<string>();
   try {
     const { data: paperRows } = await sb
       .from("signal_papers")
@@ -138,11 +139,25 @@ export default async function StrategiesPage() {
       .order("ingested_at", { ascending: false })
       .limit(50);
     papers = (paperRows ?? []) as PaperRow[];
+
+    // Which of these papers has the user already extracted into a strategy?
+    if (papers.length > 0) {
+      const paperIds = papers.map((p) => p.id);
+      const { data: extractedRows } = await sb
+        .from("ticket_logics")
+        .select("parent_paper_id")
+        .in("parent_paper_id", paperIds)
+        .eq("created_by_user_id", userId)
+        .neq("status", "archived");
+      for (const r of (extractedRows ?? []) as { parent_paper_id: string }[]) {
+        if (r.parent_paper_id) extractedPaperIds.add(r.parent_paper_id);
+      }
+    }
   } catch {
     // signal_papers table not yet created — show empty Papers tab
   }
 
-  return <StrategiesClient cards={cards} papers={papers} />;
+  return <StrategiesClient cards={cards} papers={papers} extractedPaperIds={[...extractedPaperIds]} />;
 }
 
 function truncateUser(userId: string | null): string {

@@ -41,11 +41,14 @@ type Tab = "mine" | "public" | "papers";
 export function StrategiesClient({
   cards,
   papers,
+  extractedPaperIds,
 }: {
   cards: StrategyCard[];
   papers: PaperRow[];
+  extractedPaperIds: string[];
 }) {
   const [tab, setTab] = useState<Tab>("mine");
+  const extractedSet = useMemo(() => new Set(extractedPaperIds), [extractedPaperIds]);
 
   const mine = useMemo(() => cards.filter((c) => c.is_mine), [cards]);
   const publik = useMemo(
@@ -80,7 +83,7 @@ export function StrategiesClient({
       </div>
 
       {tab === "papers" ? (
-        <PapersTab papers={papers} />
+        <PapersTab papers={papers} extractedSet={extractedSet} />
       ) : (
         (() => {
           const visible = tab === "mine" ? mine : publik;
@@ -354,7 +357,7 @@ function PerfStat({
   );
 }
 
-function PapersTab({ papers }: { papers: PaperRow[] }) {
+function PapersTab({ papers, extractedSet }: { papers: PaperRow[]; extractedSet: Set<string> }) {
   const router = useRouter();
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState<string | null>(null);
@@ -440,6 +443,7 @@ function PapersTab({ papers }: { papers: PaperRow[] }) {
             <PaperCard
               key={p.id}
               paper={p}
+              alreadyExtracted={extractedSet.has(p.id)}
               extracting={extracting === p.id}
               onExtract={onExtract}
             />
@@ -452,10 +456,12 @@ function PapersTab({ papers }: { papers: PaperRow[] }) {
 
 function PaperCard({
   paper,
+  alreadyExtracted,
   extracting,
   onExtract,
 }: {
   paper: PaperRow;
+  alreadyExtracted: boolean;
   extracting: boolean;
   onExtract: (id: string, ticker: string) => void;
 }) {
@@ -493,6 +499,14 @@ function PaperCard({
             >
               {paper.source}
             </span>
+            {alreadyExtracted && (
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded uppercase"
+                style={{ background: "rgba(0,200,150,0.10)", color: "var(--bull)", flexShrink: 0 }}
+              >
+                ✓ Extracted
+              </span>
+            )}
           </div>
           {paper.abstract && (
             <p
@@ -531,21 +545,21 @@ function PaperCard({
           />
           <button
             onClick={() => onExtract(paper.id, ticker || "SPY")}
-            disabled={extracting}
+            disabled={extracting || alreadyExtracted}
             style={{
               fontSize: 12,
               fontFamily: "var(--font-jb)",
               padding: "6px 14px",
               borderRadius: 6,
               border: "none",
-              background: extracting ? "var(--line)" : "var(--brand)",
-              color: "#fff",
-              cursor: extracting ? "default" : "pointer",
+              background: alreadyExtracted ? "var(--line)" : extracting ? "var(--line)" : "var(--brand)",
+              color: alreadyExtracted ? "var(--ghost)" : "#fff",
+              cursor: extracting || alreadyExtracted ? "default" : "pointer",
               fontWeight: 600,
               whiteSpace: "nowrap" as const,
             }}
           >
-            {extracting ? "Extracting…" : "Extract →"}
+            {extracting ? "Extracting…" : alreadyExtracted ? "Extracted" : "Extract →"}
           </button>
         </div>
       </div>
