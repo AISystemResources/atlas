@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createRouteMatcher } from "@clerk/nextjs/server";
 
-const isPublicRoute = createRouteMatcher(["/", "/login(.*)", "/api/inngest(.*)"]);
+const isPublicRoute = createRouteMatcher(["/", "/login(.*)"]);
 
 describe("isPublicRoute matcher", () => {
   it("marks / as public", () => {
