@@ -12,7 +12,9 @@ import type { ReactNode } from "react";
 // user view stays clean even when a superadmin is signed in.
 const PUBLIC_TABS = [
   { id: "portfolio",  label: "Dashboard", icon: "◈", href: "/dashboard/portfolio" },
+  { id: "research",   label: "Research",  icon: "◎", href: "/dashboard/research" },
   { id: "strategies", label: "Strategy",  icon: "✧", href: "/dashboard/strategies" },
+  { id: "execution",  label: "Execution", icon: "⊳", href: "/dashboard/execution" },
   { id: "settings",   label: "Settings",  icon: "⊙", href: "/dashboard/settings" },
 ];
 
@@ -97,7 +99,7 @@ export function DashboardShell({
 
       {/* ── Mobile bottom nav ── */}
       <nav
-        className="sticky bottom-0 z-20 grid grid-cols-3 md:hidden"
+        className="sticky bottom-0 z-20 grid grid-cols-5 md:hidden"
         style={{
           background: "var(--nav-bg)",
           backdropFilter: "blur(12px)",
