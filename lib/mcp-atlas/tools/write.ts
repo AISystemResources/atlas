@@ -79,6 +79,16 @@ export const WRITE_TOOL_DEFS = [
           description:
             "Apply this broker's spread + commission + slippage during fill simulation. 'pure' = frictionless reference. Run the same strategy under multiple profiles to isolate raw edge vs friction-dependent edge.",
         },
+        auto_promote_threshold: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description:
+            "Sprint 085: if set, and the backtest win_rate >= this value AND total_trades >= 5, " +
+            "the strategy is automatically promoted from draft → active. " +
+            "Useful after extract_strategy_from_paper to validate and activate in one step. " +
+            "Ignored if the strategy is already active or archived.",
+        },
       },
       required: ["logic_name", "ticker", "start_date", "end_date", "timeframe"],
     },
@@ -208,7 +218,8 @@ export const WRITE_TOOL_DEFS = [
     name: "fetch_papers",
     description:
       "Fetch recent trading-strategy papers from arXiv (q-fin.TR) and store new ones in the signal_papers " +
-      "table. Deduplicates by source_url — already-ingested papers are skipped. Returns counts and the list " +
+      "table. Deduplicates by source_url (primary) and normalised title (secondary, Sprint 085) — " +
+      "already-ingested papers are skipped. Returns counts and the list " +
       "of newly inserted paper IDs for downstream extraction (081B). Call this daily to keep the paper library " +
       "up to date.",
     inputSchema: {
@@ -479,7 +490,35 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           }
         }
 
-        return textContent({ ...result, auto_distillation: autoDistillation });
+        // Sprint 085: auto-promote draft → active if threshold met.
+        let autoPromoted = false;
+        const autoPromoteThreshold =
+          typeof args.auto_promote_threshold === "number" ? args.auto_promote_threshold : null;
+        if (
+          autoPromoteThreshold !== null &&
+          typeof result.win_rate === "number" &&
+          result.win_rate >= autoPromoteThreshold &&
+          result.total_trades >= 5
+        ) {
+          // Resolve ticket_logic_id via the backtest row (backtest runner stores it there).
+          const sb2 = getServiceClient();
+          const { data: btRow } = await sb2
+            .from("ticket_backtests")
+            .select("ticket_logic_id")
+            .eq("id", result.backtest_id)
+            .maybeSingle();
+          const logicId = (btRow as { ticket_logic_id?: string } | null)?.ticket_logic_id;
+          if (logicId) {
+            const { error: promoteErr } = await sb2
+              .from("ticket_logics")
+              .update({ status: "active" })
+              .eq("id", logicId)
+              .eq("status", "draft");
+            if (!promoteErr) autoPromoted = true;
+          }
+        }
+
+        return textContent({ ...result, auto_distillation: autoDistillation, auto_promoted: autoPromoted });
       }
 
       case "run_distillation": {
@@ -972,13 +1011,23 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           fetched += papers.length;
 
           for (const paper of papers) {
-            // Dedup by source_url (UNIQUE constraint).
+            // Dedup by source_url (UNIQUE constraint) — primary guard.
             const { data: existing } = await sb
               .from("signal_papers")
               .select("id")
               .eq("source_url", paper.source_url)
               .maybeSingle();
             if (existing) continue;
+
+            // Sprint 085 (081C): secondary title dedup — normalise whitespace + case,
+            // skip if an entry with the same normalised title already exists.
+            const normTitle = paper.title.toLowerCase().replace(/\s+/g, " ").trim();
+            const { data: titleMatch } = await sb
+              .from("signal_papers")
+              .select("id")
+              .ilike("title", normTitle)
+              .maybeSingle();
+            if (titleMatch) continue;
 
             const { data: row, error } = await sb
               .from("signal_papers")
