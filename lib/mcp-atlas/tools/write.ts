@@ -222,6 +222,29 @@ export const WRITE_TOOL_DEFS = [
       },
     },
   },
+  // ── Paper extraction tools (Sprint 081B) ────────────────────────────────
+  {
+    name: "extract_strategy_from_paper",
+    description:
+      "Given a signal_papers row ID, call Groq to extract a TicketLogicBody from the paper's title and abstract " +
+      "and save it as a draft ticket_logic linked back to the source paper. Returns strategy_id and name on success, " +
+      "or validation_errors if the LLM output doesn't satisfy the strategy schema. " +
+      "The created strategy has status='draft' — review and run a backtest before promoting to active.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        paper_id: {
+          type: "string",
+          description: "UUID of a signal_papers row.",
+        },
+        ticker: {
+          type: "string",
+          description: "Ticker to calibrate the strategy for (e.g. 'SPY', '^DJI', 'TSLA'). Defaults to 'SPY'.",
+        },
+      },
+      required: ["paper_id"],
+    },
+  },
   {
     name: "create_ticket_logic",
     description:
@@ -981,6 +1004,93 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           skipped: fetched - inserted,
           new_paper_ids: newPaperIds,
         });
+      }
+
+      case "extract_strategy_from_paper": {
+        const paperId = typeof args.paper_id === "string" ? args.paper_id.trim() : "";
+        if (!paperId) return toolError("paper_id is required", "invalid_request");
+        const ticker = typeof args.ticker === "string" ? args.ticker.trim().toUpperCase() : "SPY";
+
+        const sb = getServiceClient();
+
+        const { data: paper, error: paperErr } = await sb
+          .from("signal_papers")
+          .select("id, title, abstract")
+          .eq("id", paperId)
+          .maybeSingle();
+
+        if (paperErr || !paper) {
+          return toolError("paper_not_found", "not_found");
+        }
+
+        const p = paper as { id: string; title: string; abstract: string | null };
+
+        const { extractStrategyFromPaper } = await import("@/lib/paper-ingest/extract-strategy");
+        const result = await extractStrategyFromPaper({
+          title: p.title,
+          abstract: p.abstract ?? "",
+          ticker,
+        });
+
+        if (!result.ok) {
+          return toolError(
+            result.validationErrors
+              ? `${result.error}: ${result.validationErrors}`
+              : result.error,
+            "extraction_failed",
+          );
+        }
+
+        // Deduplicate name: if a v1 already exists, append a short suffix.
+        let finalName = result.suggestedName;
+        const { data: nameConflict } = await sb
+          .from("ticket_logics")
+          .select("id")
+          .eq("name", finalName)
+          .eq("version", 1)
+          .maybeSingle();
+        if (nameConflict) {
+          finalName = `${finalName}-${paperId.slice(0, 6)}`;
+        }
+
+        const insertPayload: Record<string, unknown> = {
+          name: finalName,
+          version: 1,
+          description: `Extracted from arXiv paper: ${p.title}`,
+          body: result.body,
+          status: "draft",
+          created_by: "distillation",
+          created_by_user_id: userId,
+          ticker,
+          tags: ["paper-extracted"],
+          visibility: "private",
+          parent_paper_id: paperId,
+        };
+
+        const { data: inserted, error: insErr } = await sb
+          .from("ticket_logics")
+          .insert(insertPayload)
+          .select("id, name, version")
+          .single();
+
+        if (insErr) {
+          // parent_paper_id column not yet applied — retry without it
+          if (insErr.message?.includes("parent_paper_id")) {
+            const { parent_paper_id: _drop, ...withoutPaperId } = insertPayload;
+            const { data: retried, error: retryErr } = await sb
+              .from("ticket_logics")
+              .insert(withoutPaperId)
+              .select("id, name, version")
+              .single();
+            if (retryErr || !retried) return toolError(`insert failed: ${retryErr?.message ?? "no row"}`);
+            const r = retried as { id: string; name: string; version: number };
+            return textContent({ strategy_id: r.id, name: r.name, version: r.version, paper_id: paperId });
+          }
+          return toolError(`insert failed: ${insErr.message}`);
+        }
+
+        const ins = inserted as { id: string; name: string; version: number };
+        return textContent({ strategy_id: ins.id, name: ins.name, version: ins.version, paper_id: paperId });
       }
 
       case "create_ticket_logic": {
