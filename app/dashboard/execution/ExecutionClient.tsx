@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 declare global {
   interface Window {
@@ -24,11 +24,41 @@ interface WalletState {
   isArbitrumSepolia: boolean;
 }
 
+interface Strategy {
+  id: string;
+  name: string;
+  version: number;
+  ticker: string | null;
+  status: string;
+}
+
+interface SignalResult {
+  signal: "BUY" | "SELL" | "HOLD";
+  direction: "long" | "short" | null;
+  entry_price: number | null;
+  take_profit: number | null;
+  stop_loss: number | null;
+  current_price: number | null;
+  last_bar_ts: string | null;
+  bars_evaluated: number;
+  strategy: { id: string; name: string; version: number; ticker: string; timeframe: string };
+}
+
 export function ExecutionClient() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState("");
+  const [walletError, setWalletError] = useState("");
   const [switching, setSwitching] = useState(false);
+
+  // Strategy selector
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [loadingStrategies, setLoadingStrategies] = useState(false);
+
+  // Signal evaluation
+  const [evaluating, setEvaluating] = useState(false);
+  const [signal, setSignal] = useState<SignalResult | null>(null);
+  const [signalError, setSignalError] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.ethereum) return;
@@ -51,14 +81,33 @@ export function ExecutionClient() {
       .catch(() => {});
   }, []);
 
+  const loadStrategies = useCallback(async () => {
+    setLoadingStrategies(true);
+    try {
+      const res = await fetch("/api/v1/ticket-logics?scope=mine&status=active&limit=50");
+      if (res.ok) {
+        const json = (await res.json()) as { strategies?: Strategy[] };
+        const list = json.strategies ?? [];
+        setStrategies(list);
+        if (list.length > 0 && !selectedId) setSelectedId(list[0].id);
+      }
+    } finally {
+      setLoadingStrategies(false);
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    loadStrategies();
+  }, [loadStrategies]);
+
   async function connect() {
     if (!window.ethereum) {
-      setError("MetaMask not detected. Please install the MetaMask browser extension.");
+      setWalletError("MetaMask not detected. Please install the MetaMask browser extension.");
       return;
     }
     const eth = window.ethereum;
     setConnecting(true);
-    setError("");
+    setWalletError("");
     try {
       const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
       const chainId = (await eth.request({ method: "eth_chainId" })) as string;
@@ -68,7 +117,7 @@ export function ExecutionClient() {
         isArbitrumSepolia: chainId === ARBITRUM_SEPOLIA.chainId,
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Connection rejected");
+      setWalletError(e instanceof Error ? e.message : "Connection rejected");
     } finally {
       setConnecting(false);
     }
@@ -84,7 +133,6 @@ export function ExecutionClient() {
         params: [{ chainId: ARBITRUM_SEPOLIA.chainId }],
       });
     } catch (e: unknown) {
-      // Chain not added yet — add it
       if ((e as { code?: number }).code === 4902) {
         try {
           await eth.request({
@@ -92,7 +140,7 @@ export function ExecutionClient() {
             params: [ARBITRUM_SEPOLIA],
           });
         } catch {
-          setError("Could not add Arbitrum Sepolia to MetaMask.");
+          setWalletError("Could not add Arbitrum Sepolia to MetaMask.");
         }
       }
     } finally {
@@ -104,9 +152,40 @@ export function ExecutionClient() {
     }
   }
 
+  async function checkSignal() {
+    if (!selectedId) return;
+    setEvaluating(true);
+    setSignalError("");
+    setSignal(null);
+    try {
+      const res = await fetch("/api/v1/execution/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy_id: selectedId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setSignalError((json as { error?: string }).error ?? "Evaluation failed");
+      } else {
+        setSignal(json as SignalResult);
+      }
+    } catch {
+      setSignalError("Network error");
+    } finally {
+      setEvaluating(false);
+    }
+  }
+
   function disconnect() {
     setWallet(null);
   }
+
+  const signalColor =
+    signal?.signal === "BUY"
+      ? "var(--bull)"
+      : signal?.signal === "SELL"
+        ? "var(--bear)"
+        : "var(--ghost)";
 
   return (
     <div className="mx-auto" style={{ maxWidth: 720 }}>
@@ -115,7 +194,7 @@ export function ExecutionClient() {
           Execution
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>
-          Deploy strategies to live markets via gTrade on Arbitrum
+          Evaluate live signals from your strategies and deploy via gTrade on Arbitrum
         </p>
       </div>
 
@@ -129,11 +208,7 @@ export function ExecutionClient() {
             Wallet
           </h2>
           {wallet && (
-            <button
-              onClick={disconnect}
-              className="text-xs"
-              style={{ color: "var(--ghost)" }}
-            >
+            <button onClick={disconnect} className="text-xs" style={{ color: "var(--ghost)" }}>
               Disconnect
             </button>
           )}
@@ -152,9 +227,9 @@ export function ExecutionClient() {
             >
               {connecting ? "Connecting…" : "Connect MetaMask"}
             </button>
-            {error && (
+            {walletError && (
               <p className="text-xs mt-2" style={{ color: "var(--bear)" }}>
-                {error}
+                {walletError}
               </p>
             )}
           </div>
@@ -191,6 +266,125 @@ export function ExecutionClient() {
               )}
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Live signal evaluator */}
+      <div
+        className="rounded-lg p-5 border mb-5"
+        style={{ borderColor: "var(--line)", background: "var(--surface)" }}
+      >
+        <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--ink)" }}>
+          Live Signal
+        </h2>
+
+        <div className="flex items-center gap-3 mb-4">
+          <select
+            value={selectedId}
+            onChange={(e) => {
+              setSelectedId(e.target.value);
+              setSignal(null);
+              setSignalError("");
+            }}
+            disabled={loadingStrategies}
+            className="flex-1 text-xs px-3 py-2 rounded-md border"
+            style={{
+              borderColor: "var(--line)",
+              background: "var(--elevated)",
+              color: "var(--ink)",
+            }}
+          >
+            {loadingStrategies && <option value="">Loading strategies…</option>}
+            {!loadingStrategies && strategies.length === 0 && (
+              <option value="">No active strategies</option>
+            )}
+            {strategies.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} v{s.version} {s.ticker ? `· ${s.ticker}` : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={checkSignal}
+            disabled={evaluating || !selectedId}
+            className="text-xs px-4 py-2 rounded-md font-medium transition-colors"
+            style={{
+              background: evaluating || !selectedId ? "var(--elevated)" : "var(--brand)",
+              color: evaluating || !selectedId ? "var(--ghost)" : "#fff",
+            }}
+          >
+            {evaluating ? "Evaluating…" : "Check Signal"}
+          </button>
+        </div>
+
+        {signalError && (
+          <p className="text-xs mb-3" style={{ color: "var(--bear)" }}>
+            {signalError}
+          </p>
+        )}
+
+        {signal && (
+          <div className="flex flex-col gap-3">
+            {/* Signal badge */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                Signal
+              </span>
+              <span
+                className="text-sm font-bold font-mono px-3 py-1 rounded-full"
+                style={{ background: `${signalColor}22`, color: signalColor }}
+              >
+                {signal.signal}
+              </span>
+            </div>
+
+            {/* Price levels */}
+            <div
+              className="rounded-md p-3 grid grid-cols-2 gap-2"
+              style={{ background: "var(--elevated)" }}
+            >
+              {[
+                ["Current price", signal.current_price],
+                ["Entry level", signal.entry_price],
+                ["Take profit", signal.take_profit],
+                ["Stop loss", signal.stop_loss],
+              ].map(([label, val]) => (
+                <div key={label as string}>
+                  <p className="text-xs mb-0.5" style={{ color: "var(--ghost)" }}>
+                    {label}
+                  </p>
+                  <p className="text-xs font-mono" style={{ color: "var(--ink)" }}>
+                    {val != null ? Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Meta */}
+            <p className="text-xs" style={{ color: "var(--ghost)" }}>
+              {signal.bars_evaluated.toLocaleString()} bars evaluated ·{" "}
+              {signal.strategy.ticker} {signal.strategy.timeframe}
+              {signal.last_bar_ts && (
+                <> · last bar {new Date(signal.last_bar_ts).toLocaleString()}</>
+              )}
+            </p>
+
+            {/* Place trade button — 094B */}
+            <button
+              disabled
+              className="w-full py-2.5 rounded-lg text-sm font-medium mt-1"
+              style={{ background: "var(--elevated)", color: "var(--ghost)", cursor: "not-allowed" }}
+              title="gTrade contract submission coming in Sprint 094B"
+            >
+              Place Trade on gTrade (coming soon)
+            </button>
+          </div>
+        )}
+
+        {!signal && !signalError && !evaluating && (
+          <p className="text-xs" style={{ color: "var(--ghost)" }}>
+            Select a strategy and click Check Signal to evaluate the latest market bar.
+          </p>
         )}
       </div>
 
@@ -248,7 +442,7 @@ export function ExecutionClient() {
           No open positions
         </p>
         <p className="text-xs" style={{ color: "var(--ghost)" }}>
-          Live gTrade execution coming in the next sprint.{" "}
+          gTrade on-chain positions will appear here once Sprint 094B ships.{" "}
           {!wallet && "Connect your wallet to get started."}
         </p>
       </div>
