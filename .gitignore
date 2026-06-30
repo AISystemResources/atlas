@@ -92,3 +92,8 @@ yarn-error.log*
 .superpowers/
 .playwright-mcp/
 verify-playwright-landing.png
+
+# ─── Experiment outputs ───────────────────────────────────────────────────────
+# Per-run JSON outputs from scripts/experiment-*.ts — ephemeral. The
+# academically-evidential "headline" runs are committed under docs/experiments/.
+experiment-results/
