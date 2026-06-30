@@ -2,7 +2,13 @@
  * POST /api/v1/execution/evaluate
  *
  * Evaluates a strategy's entry conditions against the most recent market bars
- * and returns the current signal (BUY / SELL / HOLD).
+ * and returns the current trade signal.
+ *
+ * Sprint 104B: vocabulary aligned with CFD trading. The system now returns
+ * "LONG" / "SHORT" / null (no signal active). Stocks-trader vocab (BUY /
+ * SELL / HOLD) lives on the Alpaca paper-broker side and stays there;
+ * gTrade is a short-term CFD venue where the only trade states are LONG
+ * and SHORT, and the absence of a signal is `null`, not "HOLD".
  *
  * This is the bridge between the strategy DSL and live execution:
  * paper → extracted strategy → backtested → live signal here.
@@ -10,8 +16,8 @@
  * Body: { strategy_id: string }
  *
  * Response:
- *   signal:         "BUY" | "SELL" | "HOLD"
- *   direction:      "long" | "short" | null
+ *   signal:         "LONG" | "SHORT" | null   (null = no setup right now)
+ *   direction:      "long" | "short" | null   (kept for back-compat)
  *   entry_price:    number | null   (strategy's computed entry level)
  *   take_profit:    number | null
  *   stop_loss:      number | null
@@ -111,9 +117,9 @@ export async function POST(req: Request): Promise<Response> {
   return Response.json({
     signal: currentSignal
       ? currentSignal.direction === "long"
-        ? "BUY"
-        : "SELL"
-      : "HOLD",
+        ? "LONG"
+        : "SHORT"
+      : null,
     direction: currentSignal?.direction ?? null,
     entry_price: currentSignal?.entry_price ?? null,
     take_profit: currentSignal?.take_profit ?? null,

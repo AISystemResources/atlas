@@ -46,7 +46,9 @@ interface Strategy {
 }
 
 interface SignalResult {
-  signal: "BUY" | "SELL" | "HOLD";
+  // Sprint 104B: aligned with CFD trading vocabulary. null = no setup
+  // currently active (no badge rendered, no entry/TP/SL shown).
+  signal: "LONG" | "SHORT" | null;
   direction: "long" | "short" | null;
   entry_price: number | null;
   take_profit: number | null;
@@ -271,7 +273,7 @@ export function ExecutionClient() {
 
   async function placeTrade() {
     if (!signal || !wallet || !provider) return;
-    if (signal.signal === "HOLD") return;
+    if (signal.signal === null) return;
 
     setTradeStage({ kind: "approving" });
     try {
@@ -295,7 +297,7 @@ export function ExecutionClient() {
       setTradeStage({ kind: "trading" });
       const tradeTx = await sendOpenTrade(provider, {
         from: wallet.address,
-        long: signal.signal === "BUY",
+        long: signal.signal === "LONG",
         collateralUsdc,
         leverage,
         openPrice: gtradeOpenPrice,
@@ -314,9 +316,9 @@ export function ExecutionClient() {
   }
 
   const signalColor =
-    signal?.signal === "BUY"
+    signal?.signal === "LONG"
       ? "var(--bull)"
-      : signal?.signal === "SELL"
+      : signal?.signal === "SHORT"
         ? "var(--bear)"
         : "var(--ghost)";
 
@@ -327,7 +329,7 @@ export function ExecutionClient() {
 
   const tradePanelDisabled =
     !signal ||
-    signal.signal === "HOLD" ||
+    signal.signal === null ||
     !wallet ||
     !wallet.isOnBase ||
     tradeStage.kind === "approving" ||
@@ -542,45 +544,78 @@ export function ExecutionClient() {
 
         {signal && (
           <div className="flex flex-col gap-3">
-            {/* Signal badge */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
-                Signal
-              </span>
-              <span
-                className="text-sm font-bold font-mono px-3 py-1 rounded-full"
-                style={{ background: `${signalColor}22`, color: signalColor }}
-              >
-                {signal.signal}
-              </span>
-            </div>
+            {/* Signal badge — only render when there's an actual trade signal.
+                Sprint 104B: a null signal means "no setup currently active",
+                which is the absence of a trade, not a trade state. */}
+            {signal.signal !== null ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                    Signal
+                  </span>
+                  <span
+                    className="text-sm font-bold font-mono px-3 py-1 rounded-full"
+                    style={{ background: `${signalColor}22`, color: signalColor }}
+                  >
+                    {signal.signal}
+                  </span>
+                </div>
 
-            {/* Price levels */}
-            <div
-              className="rounded-md p-3 grid grid-cols-2 gap-2"
-              style={{ background: "var(--elevated)" }}
-            >
-              {[
-                ["Current price", signal.current_price],
-                ["Entry level", signal.entry_price],
-                ["Take profit", signal.take_profit],
-                ["Stop loss", signal.stop_loss],
-              ].map(([label, val]) => (
-                <div key={label as string}>
-                  <p className="text-xs mb-0.5" style={{ color: "var(--ghost)" }}>
-                    {label}
-                  </p>
-                  <p className="text-xs font-mono" style={{ color: "var(--ink)" }}>
-                    {val != null
-                      ? Number(val).toLocaleString(undefined, {
+                {/* Price levels — full grid when a trade signal is active */}
+                <div
+                  className="rounded-md p-3 grid grid-cols-2 gap-2"
+                  style={{ background: "var(--elevated)" }}
+                >
+                  {[
+                    ["Current price", signal.current_price],
+                    ["Entry level", signal.entry_price],
+                    ["Take profit", signal.take_profit],
+                    ["Stop loss", signal.stop_loss],
+                  ].map(([label, val]) => (
+                    <div key={label as string}>
+                      <p className="text-xs mb-0.5" style={{ color: "var(--ghost)" }}>
+                        {label}
+                      </p>
+                      <p className="text-xs font-mono" style={{ color: "var(--ink)" }}>
+                        {val != null
+                          ? Number(val).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          : "—"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              // No-signal state: show current price only + a clear waiting message.
+              <>
+                <div
+                  className="rounded-md p-3 flex items-center justify-between"
+                  style={{ background: "var(--elevated)" }}
+                >
+                  <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                    Current price
+                  </span>
+                  <span className="text-sm font-mono" style={{ color: "var(--ink)" }}>
+                    {signal.current_price != null
+                      ? Number(signal.current_price).toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })
                       : "—"}
-                  </p>
+                  </span>
                 </div>
-              ))}
-            </div>
+                <p
+                  className="text-xs leading-relaxed px-1"
+                  style={{ color: "var(--dim)" }}
+                >
+                  No setup fired on the last bar. Strategy is sitting flat —
+                  check back next bar or pick a different strategy.
+                </p>
+              </>
+            )}
 
             {/* Meta */}
             <p className="text-xs" style={{ color: "var(--ghost)" }}>
@@ -600,8 +635,8 @@ export function ExecutionClient() {
         )}
       </div>
 
-      {/* Trade panel — visible when signal is BUY or SELL */}
-      {signal && signal.signal !== "HOLD" && (
+      {/* Trade panel — visible when a LONG or SHORT signal is active */}
+      {signal && signal.signal !== null && (
         <div
           className="rounded-lg p-4 border"
           style={{ borderColor: "var(--line)", background: "var(--surface)" }}
