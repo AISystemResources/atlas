@@ -16,6 +16,7 @@ import {
   positionSizeUsd,
   dollarsPerPoint,
 } from "@/lib/execution/gtrade";
+import { connectSmartWallet } from "@/lib/execution/smart-wallet";
 
 declare global {
   interface Window {
@@ -25,10 +26,17 @@ declare global {
   }
 }
 
+interface EthereumProvider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+}
+
+type WalletKind = "metamask" | "smart";
+
 interface WalletState {
   address: string;
   chainId: string;
   isOnBase: boolean;
+  kind: WalletKind;
 }
 
 interface Strategy {
@@ -70,7 +78,8 @@ function scaleSignalToGtrade(signalTicker: string, signalPrice: number): number 
 
 export function ExecutionClient() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
-  const [connecting, setConnecting] = useState(false);
+  const [provider, setProvider] = useState<EthereumProvider | null>(null);
+  const [connecting, setConnecting] = useState<WalletKind | null>(null);
   const [walletError, setWalletError] = useState("");
   const [switching, setSwitching] = useState(false);
 
@@ -92,6 +101,8 @@ export function ExecutionClient() {
   const [tradeStage, setTradeStage] = useState<TradeStage>({ kind: "idle" });
   const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
 
+  // Auto-reconnect to MetaMask if the user previously approved it.
+  // Smart Wallet doesn't auto-reconnect — users explicitly click "Sign in with Base".
   useEffect(() => {
     if (typeof window === "undefined" || !window.ethereum) return;
     const eth = window.ethereum;
@@ -102,10 +113,12 @@ export function ExecutionClient() {
         if (accounts.length > 0) {
           eth.request({ method: "eth_chainId" }).then((c) => {
             const chainId = c as string;
+            setProvider(eth);
             setWallet({
               address: accounts[0],
               chainId,
               isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
+              kind: "metamask",
             });
           });
         }
@@ -115,15 +128,14 @@ export function ExecutionClient() {
 
   // Pull USDC balance whenever the wallet is on Base.
   useEffect(() => {
-    if (!wallet?.isOnBase || !window.ethereum) {
+    if (!wallet?.isOnBase || !provider) {
       setUsdcBalance(null);
       return;
     }
-    const eth = window.ethereum;
-    readUsdcBalance(eth, wallet.address)
+    readUsdcBalance(provider, wallet.address)
       .then(setUsdcBalance)
       .catch(() => setUsdcBalance(null));
-  }, [wallet]);
+  }, [wallet, provider]);
 
   const loadStrategies = useCallback(async () => {
     setLoadingStrategies(true);
@@ -144,38 +156,65 @@ export function ExecutionClient() {
     loadStrategies();
   }, [loadStrategies]);
 
-  async function connect() {
+  async function connectMetaMask() {
     if (!window.ethereum) {
-      setWalletError("MetaMask not detected. Please install the MetaMask browser extension.");
+      setWalletError(
+        "No browser wallet detected. Install MetaMask or Coinbase Wallet, or sign in with Base instead.",
+      );
       return;
     }
     const eth = window.ethereum;
-    setConnecting(true);
+    setConnecting("metamask");
     setWalletError("");
     try {
       const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
       const chainId = (await eth.request({ method: "eth_chainId" })) as string;
+      setProvider(eth);
       setWallet({
         address: accounts[0],
         chainId,
         isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
+        kind: "metamask",
       });
     } catch (e: unknown) {
       setWalletError(e instanceof Error ? e.message : "Connection rejected");
     } finally {
-      setConnecting(false);
+      setConnecting(null);
+    }
+  }
+
+  async function connectSmart() {
+    setConnecting("smart");
+    setWalletError("");
+    try {
+      const { provider: sp, address } = await connectSmartWallet();
+      setProvider(sp);
+      // Smart Wallet's wallet_connect already sets chainId via the
+      // capabilities; if it doesn't, eth_chainId will tell us.
+      const chainId = ((await sp.request({ method: "eth_chainId" }).catch(
+        () => BASE_MAINNET.chainId,
+      )) as string) ?? BASE_MAINNET.chainId;
+      setWallet({
+        address,
+        chainId,
+        isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
+        kind: "smart",
+      });
+    } catch (e: unknown) {
+      setWalletError(e instanceof Error ? e.message : "Sign-in failed");
+    } finally {
+      setConnecting(null);
     }
   }
 
   async function switchToBase() {
-    if (!window.ethereum) return;
-    const eth = window.ethereum;
+    if (!provider) return;
     setSwitching(true);
     setWalletError("");
     try {
-      await ensureBaseMainnet(eth);
-      const onBase = await isOnBase(eth);
-      const chainId = (await eth.request({ method: "eth_chainId" })) as string;
+      await ensureBaseMainnet(provider);
+      const onBase = await isOnBase(provider);
+      const chainId = (await provider.request({ method: "eth_chainId" })) as string;
       setWallet((w) => (w ? { ...w, chainId, isOnBase: onBase } : w));
     } catch (e: unknown) {
       setWalletError(e instanceof Error ? e.message : "Could not switch to Base.");
@@ -212,6 +251,7 @@ export function ExecutionClient() {
 
   function disconnect() {
     setWallet(null);
+    setProvider(null);
   }
 
   // Computed: default openPrice in gTrade scale.
@@ -232,31 +272,30 @@ export function ExecutionClient() {
   }, [signal]);
 
   async function placeTrade() {
-    if (!signal || !wallet || !window.ethereum) return;
+    if (!signal || !wallet || !provider) return;
     if (signal.signal === "HOLD") return;
-    const eth = window.ethereum;
 
     setTradeStage({ kind: "approving" });
     try {
       const required = usdcAmount(collateralUsdc);
 
       // 1. Check allowance, approve if needed.
-      const allowance = await readUsdcAllowance(eth, wallet.address);
+      const allowance = await readUsdcAllowance(provider, wallet.address);
       if (allowance < required) {
-        const approveTx = await sendUsdcApprove(eth, wallet.address, required);
+        const approveTx = await sendUsdcApprove(provider, wallet.address, required);
         setTradeStage({ kind: "approving", tx: approveTx });
         // Poll allowance until it confirms (Base confirms ~2s/block).
         const deadline = Date.now() + 60_000;
         while (Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 2000));
-          const a = await readUsdcAllowance(eth, wallet.address);
+          const a = await readUsdcAllowance(provider, wallet.address);
           if (a >= required) break;
         }
       }
 
       // 2. Submit the trade.
       setTradeStage({ kind: "trading" });
-      const tradeTx = await sendOpenTrade(eth, {
+      const tradeTx = await sendOpenTrade(provider, {
         from: wallet.address,
         long: signal.signal === "BUY",
         collateralUsdc,
@@ -269,7 +308,7 @@ export function ExecutionClient() {
       setTradeStage({ kind: "success", tx: tradeTx });
 
       // Refresh balance.
-      readUsdcBalance(eth, wallet.address).then(setUsdcBalance).catch(() => {});
+      readUsdcBalance(provider, wallet.address).then(setUsdcBalance).catch(() => {});
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Trade failed";
       setTradeStage({ kind: "error", message: msg });
@@ -328,18 +367,36 @@ export function ExecutionClient() {
         </div>
 
         {!wallet ? (
-          <div>
+          <div className="flex flex-col gap-2">
             <button
-              onClick={connect}
-              disabled={connecting}
+              onClick={connectSmart}
+              disabled={connecting !== null}
               className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors"
               style={{
-                background: connecting ? "var(--elevated)" : "var(--brand)",
-                color: connecting ? "var(--ghost)" : "#fff",
+                background: connecting === "smart" ? "var(--elevated)" : "var(--brand)",
+                color: connecting === "smart" ? "var(--ghost)" : "#fff",
               }}
+              title="Email + passkey sign-in. No browser extension required. Recommended."
             >
-              {connecting ? "Connecting…" : "Connect MetaMask"}
+              {connecting === "smart" ? "Opening sign-in…" : "Sign in with Base (email + passkey)"}
             </button>
+            <button
+              onClick={connectMetaMask}
+              disabled={connecting !== null}
+              className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors border"
+              style={{
+                borderColor: "var(--line)",
+                background: "transparent",
+                color: connecting !== null ? "var(--ghost)" : "var(--ink)",
+              }}
+              title="Use MetaMask, Coinbase Wallet, or any browser EVM wallet"
+            >
+              {connecting === "metamask" ? "Connecting…" : "Connect browser wallet (MetaMask / Coinbase)"}
+            </button>
+            <p className="text-xs mt-1" style={{ color: "var(--ghost)" }}>
+              Sign in with Base uses Coinbase&apos;s Smart Wallet — sign in with email + passkey,
+              no seed phrase. Works on Base mainnet by default.
+            </p>
             {walletError && (
               <p className="text-xs mt-2" style={{ color: "var(--bear)" }}>
                 {walletError}
@@ -348,6 +405,20 @@ export function ExecutionClient() {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                Wallet
+              </span>
+              <span
+                className="text-xs px-2 py-0.5 rounded-full"
+                style={{
+                  background: wallet.kind === "smart" ? "var(--brand)22" : "var(--elevated)",
+                  color: wallet.kind === "smart" ? "var(--brand)" : "var(--ink)",
+                }}
+              >
+                {wallet.kind === "smart" ? "Smart Wallet (Base)" : "Browser wallet"}
+              </span>
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-xs" style={{ color: "var(--ghost)" }}>
                 Address
