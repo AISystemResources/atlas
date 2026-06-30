@@ -6,20 +6,49 @@ function getServiceClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+// Sprint 098: every tool declares MCP annotations so connected clients
+// (Claude Desktop, ChatGPT) bucket them into Read-only vs Write/delete
+// permission categories. Convention:
+//   - readOnlyHint:    true for any tool that doesn't mutate server state
+//   - openWorldHint:   true if the tool calls a third-party service (Yahoo,
+//                      arXiv, gains.trade, etc) — surfaces "interactive"
+//                      semantics in Claude Desktop's connector UI
+//   - destructiveHint: false everywhere on Atlas (we don't expose deletes
+//                      via MCP). Implicit but kept off explicitly for clarity.
+//   - idempotentHint:  true for tools where repeating the call yields the
+//                      same effect (UPSERTs, dedupe-on-write, pure reads).
+//
+// All read tools are readOnlyHint=true by definition.
+
 export const READ_TOOL_DEFS = [
   {
     name: "get_profile",
     description: "Get the user's profile: boundary_mode, tier, role.",
+    annotations: {
+      title: "Get profile",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "health_check",
     description: "Verify the Atlas API is reachable and returning a healthy response.",
+    annotations: {
+      title: "Health check",
+      readOnlyHint: true,
+      openWorldHint: true, // hits the public /api/v1/health endpoint
+    },
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "get_ticker_info",
     description: "Get fundamental and market data for a ticker (P/E, sector, price, analyst targets etc).",
+    annotations: {
+      title: "Get ticker info",
+      readOnlyHint: true,
+      openWorldHint: true, // Yahoo Finance fundamentals
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -34,6 +63,11 @@ export const READ_TOOL_DEFS = [
       "Get the Atlas metadata for a ticker — kind (equity / etf / index / crypto), display name, " +
       "and which kinds of analysis are honestly available (technical / fundamentals / sentiment). " +
       "Use this before recommending a strategy, so you don't propose fundamentals-based logic for an index.",
+    annotations: {
+      title: "Get ticker metadata",
+      readOnlyHint: true,
+      openWorldHint: false, // Atlas DB only
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -49,6 +83,11 @@ export const READ_TOOL_DEFS = [
       "List Ticket Logic strategies the caller can see — their own (any visibility) plus any strategy marked 'public'. " +
       "Unlisted strategies are intentionally excluded (only fetchable via direct id). Each row carries name, version, " +
       "owner, visibility, status, description, and lineage pointers (parent_version_id, forked_from_id).",
+    annotations: {
+      title: "List strategies",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -71,6 +110,11 @@ export const READ_TOOL_DEFS = [
     description:
       "Fetch one Ticket Logic by id. Returns the full body (rules JSON), the rendered plain-English rules, " +
       "tunable parameters, lineage, and visibility. Enforces ownership/visibility: private strategies of others return 'not found'.",
+    annotations: {
+      title: "Get strategy",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -83,6 +127,11 @@ export const READ_TOOL_DEFS = [
     name: "list_ticket_backtests",
     description:
       "List backtests the caller owns. Optional filters: strategy_id (limit to one strategy), ticker, limit.",
+    annotations: {
+      title: "List backtests",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -97,6 +146,11 @@ export const READ_TOOL_DEFS = [
     description:
       "Fetch one backtest by id. Returns summary stats, per-trade list, and the distillation insight if one exists. " +
       "Enforces ownership: returns 'not found' for backtests the caller doesn't own.",
+    annotations: {
+      title: "Get backtest",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -110,7 +164,12 @@ export const READ_TOOL_DEFS = [
     description:
       "List distillation insights that recommend a promote and haven't been promoted yet. " +
       "Each row carries the source backtest's ticker + timeframe, the proposed parameter changes (with ratchet clamp metadata), trade-citation counts, and the A/B forward-test status. " +
-      "Use this when the user asks 'what should I review?' or 'what's pending?' — it's the natural next step after run_distillation.",
+      "Use this when the user asks 'what should I review?' or 'what's pending?' — it's the natural next step after submit_distillation_insight.",
+    annotations: {
+      title: "List pending proposals",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -128,6 +187,11 @@ export const READ_TOOL_DEFS = [
       "Fetch a backtest in a shape designed for YOU (the LLM) to reason over and then submit your own distillation insight via submit_distillation_insight. " +
       "Returns: backtest summary, the full strategy body, the tunable parameters with their min/max bounds AND per-promote ratchet cap (max_step_pct), per-trade detail with indicator snapshots and 1-based indices for citation, and any existing insights submitted by other MCP-connected models (so you can see what Claude / GPT / other reviewers have already concluded on this backtest). " +
       "This is the deep-analysis read; use get_ticket_backtest for a quick summary view.",
+    annotations: {
+      title: "Get backtest for distillation",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {

@@ -6,11 +6,31 @@ function getServiceClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+// Sprint 098: every tool declares MCP annotations so connected clients
+// (Claude Desktop, ChatGPT) bucket them into Read-only vs Write/delete
+// permission categories. Convention:
+//   - readOnlyHint:    false on writes (mutates Atlas state)
+//   - destructiveHint: false everywhere — Atlas exposes zero deletes via MCP
+//   - idempotentHint:  true for UPSERTs (submit_distillation_insight) and
+//                      dedupe-on-write (fetch_papers); false for tools that
+//                      create a new row every call (run_ticket_backtest,
+//                      create/promote/fork)
+//   - openWorldHint:   true when the tool calls a third-party service
+//                      (Yahoo Finance, arXiv). Surfaces "interactive"
+//                      semantics in Claude Desktop's connector UI.
+
 export const WRITE_TOOL_DEFS = [
   {
     name: "update_settings",
     description:
       "Update user profile settings: boundary_mode. Requires confirmation.",
+    annotations: {
+      title: "Update settings",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true, // same args → same final state
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -34,6 +54,13 @@ export const WRITE_TOOL_DEFS = [
       "2m/5m/15m → 60 days, 1h → 730 days, 1d → effectively unlimited. Sprint 077B.1: `broker_profile_id` parameterises the fill engine " +
       "with spread + commission + slippage. Same strategy under different profiles produces different PnL — that's " +
       "the academic comparison the final report is built around.",
+    annotations: {
+      title: "Run backtest",
+      readOnlyHint: false, // creates a ticket_backtests row + ticket_backtest_trades rows
+      destructiveHint: false,
+      idempotentHint: false, // every call creates a fresh backtest row
+      openWorldHint: true, // pulls historical bars from Yahoo Finance
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -74,6 +101,13 @@ export const WRITE_TOOL_DEFS = [
     description:
       "Apply an insight's proposed_changes to the parent strategy's body and create v(N+1) as a draft. " +
       "Only the strategy's owner can promote; non-owners should fork first. Returns the new strategy id.",
+    annotations: {
+      title: "Promote strategy version",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false, // promotes once; re-calls error with "already promoted"
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -92,6 +126,13 @@ export const WRITE_TOOL_DEFS = [
       "Clone a public or unlisted strategy into the caller's library. Starts a fresh v1 chain under the " +
       "caller's ownership, with forked_from_id pointing back to the source. Forks are private by default — " +
       "the owner can flip visibility from the detail page.",
+    annotations: {
+      title: "Fork strategy",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false, // each call creates a new fork with a timestamp suffix on collision
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -113,6 +154,13 @@ export const WRITE_TOOL_DEFS = [
       "Atlas runs ZERO server-side LLM calls — every distillation insight comes from a connected MCP client (you). " +
       "Server applies the safety pipeline: filters unknown tunable names, applies the per-promote ratchet clamp to proposed_value, maps your 1-based trade indices to real trade ids, and runs the forward A/B test on the proposed changes (if any). " +
       "Insight is stored with model=<your model string> and prompt_version='claude-mcp-v1'. Multiple models coexist on the same backtest; same model+prompt re-runs UPSERT. Returns the insight_id plus a clamp summary showing what was actually applied vs what you proposed.",
+    annotations: {
+      title: "Submit distillation insight",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true, // UPSERT on (backtest_id, model, prompt_version)
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -184,6 +232,13 @@ export const WRITE_TOOL_DEFS = [
       "already-ingested papers are skipped. Returns counts and the list " +
       "of newly inserted paper IDs for downstream extraction (081B). Call this daily to keep the paper library " +
       "up to date.",
+    annotations: {
+      title: "Fetch papers from arXiv",
+      readOnlyHint: false, // writes signal_papers rows
+      destructiveHint: false,
+      idempotentHint: true, // dedup by source_url + normalised title
+      openWorldHint: true, // calls the arXiv export API
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -199,6 +254,13 @@ export const WRITE_TOOL_DEFS = [
     name: "create_ticket_logic",
     description:
       "Create a brand-new Ticket Logic strategy from scratch as v1 under the caller's ownership. The body is a full TicketLogicBody JSON — Atlas validates it via the same schema the rest of the system uses. Use this when iterating on a new idea in chat (the typical loop: create → run_ticket_backtest → get_ticket_backtest → reason over trades → either promote_ticket_logic_version or create_ticket_logic again with a new variant). Strategy is locked to one ticker per Sprint 068.",
+    annotations: {
+      title: "Create strategy",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false, // collision check rejects dupes; repeat calls error
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
