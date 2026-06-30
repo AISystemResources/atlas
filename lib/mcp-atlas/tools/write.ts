@@ -276,7 +276,9 @@ export const WRITE_TOOL_DEFS = [
         },
         body: {
           type: "object",
-          description: "Full TicketLogicBody JSON: universe, timeframe, direction, indicators, entry, exit, etc. See get_ticket_logic on an existing strategy for the shape.",
+          description:
+            "Full TicketLogicBody JSON: universe, timeframe, direction, indicators, entry, exit, etc. See get_ticket_logic on an existing strategy for the shape. " +
+            "**Schema gotcha**: tunable_parameters[].path entries are ALL strings, including array indices — use `\"0\"` not `0` when targeting an array element (e.g. `[\"entry\", \"conditions\", \"0\", \"right\", \"value\"]`). The Zod validator rejects numeric indices cleanly with a descriptive error.",
         },
         description: {
           type: "string",
@@ -703,11 +705,19 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
 
         const { data: parentData } = await sb
           .from("ticket_logics")
-          .select("id, name, version, body, created_by_user_id")
+          .select("id, name, version, body, created_by_user_id, ticker, tags")
           .eq("id", parentId)
           .maybeSingle();
         const parent = parentData as
-          | { id: string; name: string; version: number; body: unknown; created_by_user_id: string | null }
+          | {
+              id: string;
+              name: string;
+              version: number;
+              body: unknown;
+              created_by_user_id: string | null;
+              ticker: string | null;
+              tags: string[] | null;
+            }
           | null;
         if (!parent) return toolError("parent ticket_logic not found", "not_found");
         if (parent.created_by_user_id !== userId) {
@@ -765,6 +775,13 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             created_by: "distillation",
             created_by_user_id: userId,
             visibility: "private",
+            // Sprint 099 fix: preserve ticker + tags from the parent. Strategies
+            // are ticker-locked (Sprint 068); the MCP promote handler used to
+            // drop these, producing v(N+1) rows with ticker=null + tags=[].
+            // The REST /api/v1/ticket-logics/promote/route already did this
+            // correctly; this brings the MCP path into alignment.
+            ticker: parent.ticker,
+            tags: parent.tags ?? [],
           })
           .select("id, name, version")
           .single();
@@ -800,7 +817,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
 
         const { data: srcData } = await sb
           .from("ticket_logics")
-          .select("id, name, description, body, visibility, created_by_user_id")
+          .select("id, name, description, body, visibility, created_by_user_id, ticker, tags")
           .eq("id", sourceId)
           .maybeSingle();
         const source = srcData as
@@ -811,6 +828,8 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
               body: unknown;
               visibility: "private" | "unlisted" | "public";
               created_by_user_id: string | null;
+              ticker: string | null;
+              tags: string[] | null;
             }
           | null;
         if (!source) return toolError("source not found", "not_found");
@@ -850,6 +869,13 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             visibility: "private",
             created_by: "user",
             created_by_user_id: userId,
+            // Sprint 099 fix: preserve ticker + tags from the source. Strategies
+            // are ticker-locked (Sprint 068); the MCP fork handler used to drop
+            // these, producing v1 forks with ticker=null + tags=[]. The REST
+            // /api/v1/ticket-logics/fork/route already did this correctly;
+            // this brings the MCP path into alignment.
+            ticker: source.ticker,
+            tags: source.tags ?? [],
           })
           .select("id, name, version")
           .single();
