@@ -126,7 +126,7 @@ export const READ_TOOL_DEFS = [
     name: "get_backtest_for_distillation",
     description:
       "Fetch a backtest in a shape designed for YOU (the LLM) to reason over and then submit your own distillation insight via submit_distillation_insight. " +
-      "Returns: backtest summary, the full strategy body, the tunable parameters with their min/max bounds AND per-promote ratchet cap (max_step_pct), per-trade detail with indicator snapshots and 1-based indices for citation, and any existing insights from other reviewers (so you can see what Llama / other models have already said about this backtest). " +
+      "Returns: backtest summary, the full strategy body, the tunable parameters with their min/max bounds AND per-promote ratchet cap (max_step_pct), per-trade detail with indicator snapshots and 1-based indices for citation, and any existing insights submitted by other MCP-connected models (so you can see what Claude / GPT / other reviewers have already concluded on this backtest). " +
       "This is the deep-analysis read; use get_ticket_backtest for a quick summary view.",
     inputSchema: {
       type: "object",
