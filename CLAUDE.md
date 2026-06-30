@@ -6,7 +6,7 @@
 
 ## What this is
 
-AI trading assistant on the Vercel + Inngest + Supabase stack. Per-strategy distillation pipeline (Sandy-style ticket logic + ratchet-clamped LLM proposals + forward A/B tests) drives the autonomous scalper. Capstone project (BAC3004, SIT, due 2026-07-19) **and** real B2C product. Cash equities live via Alpaca paper; futures (MYM/Dow) deliberately simulator-only per the academic-honesty story. Full product context: see `projects/ATLAS/CONTEXT.md` in EMDEE.
+AI trading assistant on the Vercel + Inngest + Supabase stack. Per-strategy distillation pipeline (Sandy-style ticket logic + ratchet-clamped LLM proposals + forward A/B tests) drives the autonomous scalper. Capstone project (BAC3004, SIT, due 2026-07-19) **and** real B2C product. Cash equities live via Alpaca paper; futures (MYM/Dow) deliberately simulator-only per the academic-honesty story. Full product context: see `projects/atlas/CONTEXT.md` in EMDEE.
 
 ## Stack
 
@@ -64,7 +64,7 @@ The `.claude/worktrees/` path contains stale agent-session checkouts that pollut
 
 7. **Cold-start discipline for MCP discovery routes.** `lib/mcp-discovery.ts` and `app/.well-known/*` must not transitively import `@clerk/*` or `@supabase/*`. The cold-start guardrail test at `__tests__/lib/mcp-discovery-cold-start.test.ts` enforces this; do not delete or weaken it without replacement.
 
-8. **Lane separation — Code does not write to CONTEXT or INSTRUCTIONS** in the EMDEE vault. Those are Chat-only. Code writes sprint close-outs and `BUILD` close-out sections only. Full lane model: EMDEE Conventions Skill.
+8. **Lane separation — Code does not write to CONTEXT or INSTRUCTIONS** in the EMDEE vault. Those are Chat-only. Code writes sprint close-outs and `SPRINTS` close-out sections only. Full lane model: EMDEE Conventions Skill.
 
 ## Branch & commit conventions
 
@@ -72,23 +72,23 @@ The `.claude/worktrees/` path contains stale agent-session checkouts that pollut
 - **Working branches:** `feat/<sprint-id>-<short-slug>` per sprint. Branch from `main`, merge back via PR. Multiple may exist concurrently — this is the parallelism mechanism for multi-sprint work.
 - **Vercel behaviour:** main = Production deploy (`atlas-broker.vercel.app`). `feat/*` = Preview deploy at `atlas-git-feat-<slug>-elzmings-projects.vercel.app`. The Production-vs-Preview separation is enforced by Vercel's "Production Branch = main" project setting (dashboard, not version-controlled — there is no Vercel mechanism to express "allow previews on feat/* but block Production" via vercel.json with globs).
 - **Branch naming examples:** `feat/041-futures-simulator`, `feat/042-execute-trade-test-coverage`, `feat/043-emdee-doc-refresh`.
-- **Commit prefix:** `feat(NNN):` / `fix(NNN):` / `chore(NNN):` / `perf:` / `refactor:` / `test:` — where `NNN` is the sprint number. Sprint numbers come from `projects/ATLAS/BUILD.md` *Active sprints* or *Next* sections.
+- **Commit prefix:** `feat(NNN):` / `fix(NNN):` / `chore(NNN):` / `perf:` / `refactor:` / `test:` — where `NNN` is the sprint number. Sprint numbers come from `projects/atlas/SPRINTS.md` *Active sprint files* or *Next* sections.
 - **Co-authorship trailer** on agent commits: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` (or whatever model is running).
 - **No long-lived non-main branches.** No `dev`, no `staging`, no `agents`. Each sprint owns a short-lived `feat/*` that disappears at merge.
 
 ## Sprint workflow
 
-- **Spec → Chat.** New sprints are queued by Claude Chat in `projects/ATLAS/BUILD.md` *Active sprints* with `Status: queued` and a full spec.
-- **Pick up → Code.** Claude Code reads `BUILD` → the target sprint section. Flips status to `in-progress` before writing code. Branches as `feat/<sprint-id>-<slug>` from `main`.
+- **Spec → Chat.** New sprints are queued by Claude Chat in `projects/atlas/SPRINTS.md` *Active sprint files* with `Status: queued` and a full spec.
+- **Pick up → Code.** Claude Code reads `SPRINTS` → the target sprint section. Flips status to `in-progress` before writing code. Branches as `feat/<sprint-id>-<slug>` from `main`.
 - **Close-out → Code.** Append close-out to the same sprint section: commit SHAs, files touched, tests run, follow-ups. Flip `Status: shipped`. If stuck, flip to `blocked` with what was attempted and what's needed to unblock — never silently drop.
-- **Archive → Chat.** Shipped sprints migrate from `BUILD` to `LOGS` (3-day window for dev, 24h for ops); learnings extract into `projects/ATLAS/learnings/<TITLE>.md` per the three-test filter in `projects/ATLAS/LEARNINGS.md`.
+- **Archive → Chat.** Shipped sprints migrate from `SPRINTS` to `LOGS` (3-day window for dev, 24h for ops); learnings extract into `projects/atlas/learnings/<TITLE>.md` per the three-test filter in `projects/atlas/LEARNINGS.md`.
 
 Full sprint lifecycle (frontmatter schema, archive rules, lane model): EMDEE Conventions Skill.
 
 ## Claude Code — prompted mode only
 
 **Preconditions (all required, none optional):**
-- A written sprint spec in `projects/ATLAS/BUILD.md` with **testable acceptance criteria**.
+- A written sprint spec in `projects/atlas/SPRINTS.md` with **testable acceptance criteria**.
 - A single, named target module — no fan-out across multiple lib subfolders.
 - Tests already exist (or are written as the first commit) that encode the acceptance criteria. **No tests → no autonomous run.**
 - Working from a fresh `feat/<sprint-id>-<slug>` branch off `main` (Hard Rule #1). Confirm `git rev-parse --abbrev-ref HEAD` matches `^feat/` before the first commit. **Never `main`** — GitHub will reject the push.
@@ -104,14 +104,14 @@ Full sprint lifecycle (frontmatter schema, archive rules, lane model): EMDEE Con
 
 **Flagging blockers:**
 
-Flip the sprint to `Status: blocked` in `projects/ATLAS/BUILD.md` with this shape:
+Flip the sprint to `Status: blocked` in `projects/atlas/SPRINTS.md` with this shape:
 - **Attempted:** what was tried
 - **Blocked by:** the specific obstacle (commit SHA, log line, missing env, etc.)
 - **Would unblock:** what input or decision is needed
 - **Branch & commit:** where the work-in-progress lives
 
 **Flagging blockers (unattended runs):**
-- Write the blocker to `projects/ATLAS/BUILD.md` by flipping the sprint to `Status: blocked` with this shape:
+- Write the blocker to `projects/atlas/SPRINTS.md` by flipping the sprint to `Status: blocked` with this shape:
   - **Attempted:** what was tried
   - **Blocked by:** the specific obstacle (commit SHA, log line, missing env, etc.)
   - **Would unblock:** what input or decision is needed
