@@ -9,7 +9,7 @@ interface PaperRow {
   source: string;
   source_url: string | null;
   abstract: string | null;
-  created_at: string;
+  ingested_at: string;
 }
 
 export default async function ResearchPage() {
@@ -17,11 +17,15 @@ export default async function ResearchPage() {
   if (!userId) redirect("/login");
 
   const sb = getServiceClient();
-  const { data } = await sb
+  const { data, error } = await sb
     .from("signal_papers")
-    .select("id, title, source, source_url, abstract, created_at")
-    .order("created_at", { ascending: false })
+    .select("id, title, source, source_url, abstract, ingested_at")
+    .order("ingested_at", { ascending: false })
     .limit(50);
+
+  if (error) {
+    console.error("[ResearchPage] signal_papers query failed:", error.message);
+  }
 
   return <ResearchClient initialPapers={(data ?? []) as PaperRow[]} />;
 }

@@ -9,8 +9,8 @@ export async function GET() {
   const sb = getServiceClient();
   const { data, error } = await sb
     .from("signal_papers")
-    .select("id, title, source, source_url, abstract, created_at")
-    .order("created_at", { ascending: false })
+    .select("id, title, source, source_url, abstract, ingested_at")
+    .order("ingested_at", { ascending: false })
     .limit(50);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
