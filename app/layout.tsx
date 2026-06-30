@@ -29,6 +29,11 @@ export const metadata: Metadata = {
   title: "Atlas — AI Trading Assistant",
   description:
     "Agentic AI swing trading with configurable execution authority. Full reasoning transparency.",
+  other: {
+    // Base app verification — registers Atlas at dashboard.base.org/apps/.
+    // Required for the gTrade Base mainnet integration shipped in Sprint 094B.
+    "base:app_id": "6a43361260d73a6a6f404301",
+  },
 };
 
 export default function RootLayout({
