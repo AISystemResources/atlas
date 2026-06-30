@@ -28,8 +28,8 @@ export const WRITE_TOOL_DEFS = [
     description:
       "Run a backtest of a Ticket Logic strategy on historical bars from Yahoo Finance. Returns a BacktestSummary " +
       "with the new backtest_id, total trades, win rate, total PnL, and total friction cost under the chosen " +
-      "broker profile, plus an `auto_distillation` field carrying the Llama review that fires automatically post-backtest " +
-      "(Sprint 079F). For per-trade detail or to layer your own analysis, use get_backtest_for_distillation + " +
+      "broker profile. **Atlas runs zero server-side LLM calls (Sprint 095)** — distillation is MCP-only: fetch the " +
+      "backtest detail with get_backtest_for_distillation, reason over it yourself, then post your analysis via " +
       "submit_distillation_insight. Index tickers (e.g. ^DJI) and ETFs both supported. Yahoo intraday limits: 1m → 7 days (auto-clamped), " +
       "2m/5m/15m → 60 days, 1h → 730 days, 1d → effectively unlimited. Sprint 077B.1: `broker_profile_id` parameterises the fill engine " +
       "with spread + commission + slippage. Same strategy under different profiles produces different PnL — that's " +
@@ -385,9 +385,10 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
       }
 
       case "submit_distillation_insight": {
-        // Sprint 079C.2: Claude (or any external LLM) posts its own distillation
-        // analysis. Server applies the same safety pipeline as the Llama path
-        // (clamp, attribution, A/B) and persists alongside any auto-distillation.
+        // Sprint 079C.2 + Sprint 095: Connected MCP client (Claude / ChatGPT)
+        // posts its own distillation analysis. Server applies the safety
+        // pipeline (clamp, attribution, A/B) and persists. No server-side
+        // LLM is ever invoked.
 
         const backtestId = typeof args.backtest_id === "string" ? args.backtest_id : "";
         const model = typeof args.model === "string" ? args.model : "";
@@ -538,7 +539,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         const { saveBacktestInsight } = await import("@/lib/strategies/review-backtest");
         const saved = await saveBacktestInsight(backtestId, result);
 
-        // A/B forward-test, mirror Llama path. Non-fatal.
+        // A/B forward-test on the proposed changes. Non-fatal.
         let abComparison: unknown = null;
         if (clampedChanges.length > 0) {
           try {
