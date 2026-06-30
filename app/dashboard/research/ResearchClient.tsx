@@ -1,18 +1,143 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTier } from "../DashboardShell";
 
-interface Paper {
+// Sprint 105: a paper carries a list of strategies that have been
+// extracted from it. The list is filtered server-side to what the
+// caller can see (their own + public). Verdict and ticker badges
+// make each row immediately useful — same vocab as the Library.
+export interface ExtractedStrategy {
+  id: string;
+  name: string;
+  version: number;
+  ticker: string | null;
+  is_mine: boolean;
+  visibility: "private" | "unlisted" | "public";
+  win_rate: number | null;
+  total_pnl_points: number | null;
+  total_trades: number;
+  backtest_count: number;
+}
+
+export interface PaperRow {
   id: string;
   title: string;
   source: string;
   source_url: string | null;
   abstract: string | null;
   ingested_at: string;
+  extracted_strategies: ExtractedStrategy[];
 }
 
-function PaperCard({ paper }: { paper: Paper }) {
+// Same verdict rule as Sprint 102 (StrategiesClient) and Sprint 103
+// (FreeDashboard). Duplicated by intent — three small inline copies
+// are clearer than a cross-cutting shared lib for one helper.
+type Verdict = "trustworthy" | "healthy" | "needs-work" | "untested";
+
+function computeVerdict(s: ExtractedStrategy): Verdict {
+  if (s.backtest_count === 0) return "untested";
+  const pnl = s.total_pnl_points ?? 0;
+  if (pnl > 0 && s.total_trades >= 30 && s.backtest_count >= 3) return "trustworthy";
+  if (pnl > 0 && s.total_trades >= 10) return "healthy";
+  return "needs-work";
+}
+
+function verdictMeta(v: Verdict) {
+  switch (v) {
+    case "trustworthy":
+      return { label: "Trustworthy", icon: "✓", bg: "var(--bull-bg)", color: "var(--bull)" };
+    case "healthy":
+      return { label: "Healthy", icon: "●", bg: "rgba(59,130,246,0.10)", color: "#3b82f6" };
+    case "needs-work":
+      return { label: "Needs work", icon: "!", bg: "rgba(239,68,68,0.10)", color: "var(--bear)" };
+    case "untested":
+      return { label: "Untested", icon: "○", bg: "var(--elevated)", color: "var(--ghost)" };
+  }
+}
+
+function ExtractedRow({ s }: { s: ExtractedStrategy }) {
+  const verdict = computeVerdict(s);
+  const m = verdictMeta(verdict);
+  return (
+    <Link
+      href={`/dashboard/strategies/${s.id}`}
+      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border transition-colors hover:bg-[var(--elevated)]"
+      style={{
+        borderColor: "var(--line)",
+        background: "transparent",
+        textDecoration: "none",
+        minWidth: 0,
+      }}
+      title={`${s.name} v${s.version}${s.ticker ? ` · ${s.ticker}` : ""} — ${m.label}`}
+    >
+      <span
+        className="inline-flex items-center gap-1 px-1.5 py-0 rounded-full shrink-0"
+        style={{
+          background: m.bg,
+          color: m.color,
+          fontSize: 9,
+          fontWeight: 500,
+          letterSpacing: "0.02em",
+        }}
+      >
+        <span className="font-mono">{m.icon}</span>
+        <span>{m.label}</span>
+      </span>
+      <span
+        className="font-mono truncate"
+        style={{ color: "var(--ink)", fontSize: 11 }}
+      >
+        {s.name}
+      </span>
+      <span className="font-mono shrink-0" style={{ color: "var(--ghost)", fontSize: 10 }}>
+        v{s.version}
+      </span>
+      {s.ticker && (
+        <span className="font-mono shrink-0" style={{ color: "var(--dim)", fontSize: 10 }}>
+          · {s.ticker}
+        </span>
+      )}
+      {s.is_mine && (
+        <span
+          className="inline-flex items-center px-1 py-0 rounded uppercase shrink-0"
+          style={{
+            background: "var(--brand)22",
+            color: "var(--brand)",
+            fontSize: 8,
+            fontWeight: 600,
+            letterSpacing: "0.05em",
+          }}
+        >
+          mine
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function ExtractedStrategiesRow({ strategies }: { strategies: ExtractedStrategy[] }) {
+  if (strategies.length === 0) return null;
+  return (
+    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
+      <div
+        className="text-[10px] uppercase tracking-wide mb-2"
+        style={{ color: "var(--ghost)" }}
+      >
+        Extracted into {strategies.length} strateg{strategies.length === 1 ? "y" : "ies"}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {strategies.map((s) => (
+          <ExtractedRow key={s.id} s={s} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PaperCard({ paper }: { paper: PaperRow }) {
   const tier = useTier();
   const isPro = tier === "pro";
   const [copied, setCopied] = useState(false);
@@ -105,14 +230,16 @@ Paper UUID for reference: ${paper.id}`;
           )}
         </div>
       </div>
+
+      <ExtractedStrategiesRow strategies={paper.extracted_strategies} />
     </div>
   );
 }
 
-export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
+export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] }) {
   const tier = useTier();
   const isPro = tier === "pro";
-  const [papers, setPapers] = useState<Paper[]>(initialPapers);
+  const router = useRouter();
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
 
@@ -126,11 +253,9 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
         setFetchMsg(json.error ?? "Fetch failed");
       } else {
         setFetchMsg(`Fetched ${json.fetched ?? 0}, added ${json.inserted ?? 0} new papers`);
-        const listRes = await fetch("/api/v1/papers");
-        if (listRes.ok) {
-          const listJson = (await listRes.json()) as { papers: Paper[] };
-          setPapers(listJson.papers);
-        }
+        // Trigger Next router refresh so the server fetch re-runs and the
+        // extracted_strategies enrichment is preserved.
+        router.refresh();
       }
     } catch {
       setFetchMsg("Network error");
@@ -168,7 +293,7 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
 
       {fetchMsg && (
         <p className="text-xs mb-4" style={{ color: "var(--dim)" }}>
-          {fetchMsg}
+          {fetchMsg} — reload the page to see new papers.
         </p>
       )}
 
@@ -193,7 +318,11 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
           <>
             This is the provenance trail for strategies in your library. Atlas Pro users author
             strategies from these papers via their connected LLM (Claude / ChatGPT) — the resulting
-            strategies appear as public artefacts you can fork and trade.{" "}
+            strategies appear under each paper below (and on the{" "}
+            <Link href="/dashboard/strategies" className="underline" style={{ color: "var(--brand)" }}>
+              Strategy library
+            </Link>
+            ). {" "}
             <a
               href="/pricing"
               className="underline"
@@ -206,7 +335,7 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
         )}
       </div>
 
-      {papers.length === 0 ? (
+      {initialPapers.length === 0 ? (
         <div
           className="rounded-lg p-8 text-center border"
           style={{ borderColor: "var(--line)", borderStyle: "dashed" }}
@@ -217,7 +346,7 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {papers.map((p) => (
+          {initialPapers.map((p) => (
             <PaperCard key={p.id} paper={p} />
           ))}
         </div>
