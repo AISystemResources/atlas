@@ -591,9 +591,28 @@ export function ExecutionClient() {
           className="rounded-lg p-5 border mb-5"
           style={{ borderColor: "var(--line)", background: "var(--surface)" }}
         >
-          <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--ink)" }}>
-            Place trade on gTrade · Base
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
+              Place trade on gTrade · Base
+            </h2>
+            <span
+              className="text-xs font-mono px-2 py-0.5 rounded-full"
+              style={{ background: "var(--elevated)", color: "var(--dim)" }}
+              title="EBC matrix: Manual = you approve every trade. Future modes (AI-open / AI-close / Full-auto) require Smart Wallet Spend Permissions — post-capstone."
+            >
+              EBC: Manual
+            </span>
+          </div>
+
+          <p
+            className="text-xs mb-3 px-3 py-2 rounded"
+            style={{ background: "var(--elevated)", color: "var(--dim)" }}
+          >
+            <strong>EBC mode — Manual.</strong> You approve every transaction. The full EBC
+            matrix (AI-open / AI-close × Human-open / Human-close) applies only at execution
+            time on a connected wallet; backtesting is deterministic and not modeled by the
+            matrix. Auto modes need Smart Wallet Spend Permissions and are post-capstone work.
+          </p>
 
           {signal.strategy.ticker === "^DJI" && (
             <p
