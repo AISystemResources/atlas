@@ -2,21 +2,27 @@
 
 import { useState, useEffect } from "react";
 import { PortfolioTab } from "../DashboardClient";
+import { FreeDashboard, type PublicStrategyPreview } from "./FreeDashboard";
 import type { StrategyHealth, BacktestTradeLite } from "./page";
 
 const API_URL = "/api";
 
-export function PortfolioPageClient({
-  tier,
-  strategies,
-  pendingCount,
-  recentTrades,
-}: {
-  tier: "free" | "pro";
-  strategies: StrategyHealth[];
-  pendingCount: number;
-  recentTrades: BacktestTradeLite[];
-}) {
+// Sprint 103: discriminated union — the two tiers see materially different
+// dashboards, so the shape they need is materially different. Forcing all
+// props through the same bag was masking that.
+type Props =
+  | {
+      tier: "free";
+      topPicks: PublicStrategyPreview[];
+    }
+  | {
+      tier: "pro";
+      strategies: StrategyHealth[];
+      pendingCount: number;
+      recentTrades: BacktestTradeLite[];
+    };
+
+export function PortfolioPageClient(props: Props) {
   const [trialNote, setTrialNote] = useState<string | null>(null);
 
   // Sprint 075c: redeem invite cookie if present. Idempotent server-side.
@@ -52,12 +58,16 @@ export function PortfolioPageClient({
         </div>
       )}
 
-      <PortfolioTab
-        tier={tier}
-        strategies={strategies}
-        pendingCount={pendingCount}
-        recentTrades={recentTrades}
-      />
+      {props.tier === "free" ? (
+        <FreeDashboard topPicks={props.topPicks} />
+      ) : (
+        <PortfolioTab
+          tier={props.tier}
+          strategies={props.strategies}
+          pendingCount={props.pendingCount}
+          recentTrades={props.recentTrades}
+        />
+      )}
     </div>
   );
 }
