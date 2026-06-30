@@ -17,7 +17,7 @@ AI trading assistant on the Vercel + Inngest + Supabase stack. Per-strategy dist
 | Auth | Clerk v7 (middleware lives in `proxy.ts`, not `middleware.ts`) |
 | Postgres | Supabase (RLS-on; service-role bypasses for server-only code; archived MongoDB collections live in `archived_*` tables) |
 | Workflows / cron | Inngest 4.2 (`/api/inngest` serve handler, `serveOrigin` pinned) — `intradayCron` (scalper) + `orderReconcilerCron` only |
-| LLM | Groq (Llama 3.3 70B for distillation) + Gemini fallback via `lib/agents/llm.ts`. No multi-agent LangGraph pipeline — retired Sprint 078B. |
+| LLM | **None server-side** (Sprint 095). All reasoning happens in the user's connected MCP client (Claude Desktop / ChatGPT). The server is a deterministic engine: backtests, schema validation, ratchet clamps, A/B harness — no LLM calls. |
 | Broker | Alpaca paper (`lib/broker/alpaca.ts`); per-user creds in `broker_connections`, not env |
 | Billing | Stripe |
 | Tests | Jest 30 + ts-jest + testing-library, jsdom env |
@@ -51,7 +51,7 @@ The `.claude/worktrees/` path contains stale agent-session checkouts that pollut
    - There is no long-lived agent-shared branch. Each autonomous run gets its own short-lived `feat/*` branch and is deleted after merge.
 
 2. **Never commit secrets.** `.env.local` is gitignored. Real secrets named in `.env.example` — none of these may appear in tracked files:
-   `SUPABASE_SERVICE_ROLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+   `SUPABASE_SERVICE_ROLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
    Per-user Alpaca credentials live in `broker_connections` (Supabase), never env.
 
 3. **Migration discipline.** All schema changes go through `supabase/migrations/`. Use `mcp__supabase__apply_migration` (server-side) which writes the migration file *and* applies it. One-off SQL via dashboard is forbidden — captures must be retroactive migration files. Never edit a migration that has already been applied to Production; write a new one.
@@ -164,7 +164,7 @@ atlas/
 - API routes versioned under `/v1/`. Frontend callers reference `/v1/*` paths only.
 - `NEXT_PUBLIC_` prefix only for non-sensitive env vars.
 - Supabase service-role key env var: `SUPABASE_SERVICE_ROLE_KEY` (alias `SUPABASE_SERVICE_KEY` accepted).
-- Never call Gemini directly from a node — always route through `lib/agents/llm.ts`.
+- Atlas does NOT make server-side LLM calls (Sprint 095). If a feature needs reasoning, expose it as an MCP tool and let the user's connected Claude/ChatGPT session do the work.
 - Never call Alpaca or any broker API outside `lib/broker/`.
 - Schema migrations in `supabase/migrations/` only (also Hard Rule #3).
 

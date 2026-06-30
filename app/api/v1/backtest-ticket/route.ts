@@ -66,26 +66,10 @@ export async function POST(req: Request): Promise<Response> {
       notionalPerTrade: body.notional_per_trade,
     });
 
-    // Sprint 079F: auto-trigger Llama distillation so the user gets a
-    // baseline review without having to remember to call it. Non-fatal —
-    // the backtest result returns regardless.
-    let autoDistillation: unknown = null;
-    if (result.total_trades > 0) {
-      try {
-        const { runLlamaDistillation } = await import(
-          "@/lib/strategies/auto-distill"
-        );
-        autoDistillation = await runLlamaDistillation(result.backtest_id);
-      } catch (err) {
-        console.error("[backtest-ticket] auto-distillation failed (non-fatal):", err);
-        autoDistillation = {
-          status: "failed",
-          reason: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }
-
-    return Response.json({ ...result, auto_distillation: autoDistillation });
+    // Sprint 095: server-side LLM auto-distillation removed. Distillation
+    // is MCP-only — connected Claude/ChatGPT clients submit insights via
+    // `submit_distillation_insight`.
+    return Response.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[backtest-ticket] failed:", msg);

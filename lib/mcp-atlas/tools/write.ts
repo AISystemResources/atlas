@@ -62,26 +62,11 @@ export const WRITE_TOOL_DEFS = [
           description:
             "Sprint 085: if set, and the backtest win_rate >= this value AND total_trades >= 5, " +
             "the strategy is automatically promoted from draft → active. " +
-            "Useful after extract_strategy_from_paper to validate and activate in one step. " +
+            "Useful for validating a fresh strategy and activating it in one step. " +
             "Ignored if the strategy is already active or archived.",
         },
       },
       required: ["logic_name", "ticker", "start_date", "end_date", "timeframe"],
-    },
-  },
-  {
-    name: "run_distillation",
-    description:
-      "Distil lessons from a completed backtest using an LLM. Reads all trades + any per-trade reviews + " +
-      "the strategy body, returns a structured insight: winning_pattern, losing_pattern, recommendation " +
-      "(promote/keep/deprecate), and proposed_changes (parameter tweaks for v(N+1)). Saved to the insights " +
-      "table; call again to overwrite.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        backtest_id: { type: "string", description: "The ticket_backtest UUID." },
-      },
-      required: ["backtest_id"],
     },
   },
   {
@@ -124,8 +109,9 @@ export const WRITE_TOOL_DEFS = [
   {
     name: "submit_distillation_insight",
     description:
-      "Post YOUR (the LLM caller's) distillation analysis of a backtest, so it persists alongside any auto-distillation from Llama. Use this when you've fetched a backtest via get_backtest_for_distillation, reasoned over the trades yourself, and want to record your conclusion. " +
-      "Server applies the same safety pipeline as the Llama path: filters unknown tunable names, applies the per-promote ratchet clamp to proposed_value, maps your 1-based trade indices to real trade ids, and runs the forward A/B test on the proposed changes (if any). " +
+      "Post YOUR distillation analysis of a backtest. Use this after you've fetched a backtest via get_backtest_for_distillation and reasoned over the trades. " +
+      "Atlas runs ZERO server-side LLM calls — every distillation insight comes from a connected MCP client (you). " +
+      "Server applies the safety pipeline: filters unknown tunable names, applies the per-promote ratchet clamp to proposed_value, maps your 1-based trade indices to real trade ids, and runs the forward A/B test on the proposed changes (if any). " +
       "Insight is stored with model=<your model string> and prompt_version='claude-mcp-v1'. Multiple models coexist on the same backtest; same model+prompt re-runs UPSERT. Returns the insight_id plus a clamp summary showing what was actually applied vs what you proposed.",
     inputSchema: {
       type: "object",
@@ -209,29 +195,6 @@ export const WRITE_TOOL_DEFS = [
       },
     },
   },
-  // ── Paper extraction tools (Sprint 081B) ────────────────────────────────
-  {
-    name: "extract_strategy_from_paper",
-    description:
-      "Given a signal_papers row ID, call Groq to extract a TicketLogicBody from the paper's title and abstract " +
-      "and save it as a draft ticket_logic linked back to the source paper. Returns strategy_id and name on success, " +
-      "or validation_errors if the LLM output doesn't satisfy the strategy schema. " +
-      "The created strategy has status='draft' — review and run a backtest before promoting to active.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        paper_id: {
-          type: "string",
-          description: "UUID of a signal_papers row.",
-        },
-        ticker: {
-          type: "string",
-          description: "Ticker to calibrate the strategy for (e.g. 'SPY', '^DJI', 'TSLA'). Defaults to 'SPY'.",
-        },
-      },
-      required: ["paper_id"],
-    },
-  },
   {
     name: "create_ticket_logic",
     description:
@@ -256,7 +219,7 @@ export const WRITE_TOOL_DEFS = [
         description: {
           type: "string",
           maxLength: 2000,
-          description: "Optional human-readable description. If omitted, Atlas auto-generates one via Groq.",
+          description: "Optional human-readable description. If omitted, a templated description is used; you can pass prose that reads well.",
         },
         tags: {
           type: "array",
@@ -386,24 +349,9 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           brokerProfileId,
         });
 
-        // Sprint 079F: auto-trigger Llama distillation so the user always
-        // has a baseline review without having to remember to call
-        // run_distillation. Non-fatal — backtest result returns regardless.
-        let autoDistillation: unknown = null;
-        if (result.total_trades > 0) {
-          try {
-            const { runLlamaDistillation } = await import(
-              "@/lib/strategies/auto-distill"
-            );
-            autoDistillation = await runLlamaDistillation(result.backtest_id);
-          } catch (err) {
-            console.error("[run_ticket_backtest] auto-distillation failed (non-fatal):", err);
-            autoDistillation = {
-              status: "failed",
-              reason: err instanceof Error ? err.message : String(err),
-            };
-          }
-        }
+        // Sprint 095: server-side auto-distillation removed. The MCP caller
+        // (Claude, ChatGPT) reads the backtest via get_backtest_for_distillation
+        // and submits its own analysis via submit_distillation_insight.
 
         // Sprint 085: auto-promote draft → active if threshold met.
         let autoPromoted = false;
@@ -433,35 +381,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           }
         }
 
-        return textContent({ ...result, auto_distillation: autoDistillation, auto_promoted: autoPromoted });
-      }
-
-      case "run_distillation": {
-        const backtestId = typeof args.backtest_id === "string" ? args.backtest_id : "";
-        if (!backtestId) return toolError("backtest_id required", "invalid_request");
-
-        // Ownership pre-check before invoking the shared pipeline.
-        const sb = getServiceClient();
-        const { data: btOwner } = await sb
-          .from("ticket_backtests")
-          .select("user_id, total_trades")
-          .eq("id", backtestId)
-          .maybeSingle();
-        const owner = btOwner as { user_id: string; total_trades: number } | null;
-        if (!owner) return toolError("backtest not found", "not_found");
-        if (owner.user_id !== userId) return toolError("forbidden", "forbidden");
-        if (owner.total_trades === 0) {
-          return toolError("cannot distil a backtest with zero trades", "invalid_request");
-        }
-
-        // Sprint 079F: shared pipeline. Same code path as the auto-trigger
-        // from run_ticket_backtest.
-        const { runLlamaDistillation } = await import("@/lib/strategies/auto-distill");
-        const result = await runLlamaDistillation(backtestId);
-        if (result.status === "skipped") {
-          return toolError(`distillation skipped: ${result.reason}`, "internal_error");
-        }
-        return textContent(result);
+        return textContent({ ...result, auto_promoted: autoPromoted });
       }
 
       case "submit_distillation_insight": {
@@ -738,7 +658,6 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         const { ticketLogicBodySchema, parseTicketLogicBody } = await import(
           "@/lib/strategies/schema"
         );
-        const { describeStrategy } = await import("@/lib/strategies/describe-strategy");
 
         let newBody;
         try {
@@ -762,22 +681,14 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         const nextVersion =
           ((topRow as { version: number } | null)?.version ?? parent.version) + 1;
 
+        // Sprint 095: templated description. MCP callers can rewrite the
+        // description field via their own tools if they want prose.
         const changeDescriptions = changes
           .map((c) => `${c.name}: ${c.current_value} → ${c.proposed_value} (${c.reason})`)
           .join("; ");
-        let description = `Promoted from ${parent.name} v${parent.version} via AI Distillation. Changes: ${changeDescriptions}`;
-        try {
-          const aiDesc = await describeStrategy({
-            action: "promote",
-            body: newBody,
-            parent: { name: parent.name, version: parent.version, author_label: "you" },
-            changes,
-            promote_rationale: insight.rationale ?? undefined,
-          });
-          if (aiDesc) description = aiDesc;
-        } catch {
-          // fallback already in place
-        }
+        const description = insight.rationale
+          ? `Promoted from ${parent.name} v${parent.version}. Changes: ${changeDescriptions}. Rationale: ${insight.rationale}`
+          : `Promoted from ${parent.name} v${parent.version} via AI Distillation. Changes: ${changeDescriptions}`;
 
         const { data: newRow, error: insErr } = await sb
           .from("ticket_logics")
@@ -859,27 +770,9 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           forkName = `${forkName}-fork-${Date.now().toString(36).slice(-4)}`;
         }
 
-        let description = `Forked from ${source.name}. ${source.description}`;
-        try {
-          const { parseTicketLogicBody } = await import("@/lib/strategies/schema");
-          const { describeStrategy } = await import("@/lib/strategies/describe-strategy");
-          const body = parseTicketLogicBody(source.body);
-          const aiDesc = await describeStrategy({
-            action: "fork",
-            body,
-            parent: {
-              name: source.name,
-              version: 1,
-              author_label:
-                source.created_by_user_id === userId
-                  ? "you"
-                  : `@${source.created_by_user_id?.slice(5, 11) ?? "—"}`,
-            },
-          });
-          if (aiDesc) description = aiDesc;
-        } catch {
-          // fallback in place
-        }
+        // Sprint 095: templated description. MCP callers can rewrite the
+        // description field via their own tools if they want prose.
+        const description = `Forked from ${source.name}. ${source.description}`;
 
         const { data: inserted, error: insErr } = await sb
           .from("ticket_logics")
@@ -970,93 +863,6 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         });
       }
 
-      case "extract_strategy_from_paper": {
-        const paperId = typeof args.paper_id === "string" ? args.paper_id.trim() : "";
-        if (!paperId) return toolError("paper_id is required", "invalid_request");
-        const ticker = typeof args.ticker === "string" ? args.ticker.trim().toUpperCase() : "SPY";
-
-        const sb = getServiceClient();
-
-        const { data: paper, error: paperErr } = await sb
-          .from("signal_papers")
-          .select("id, title, abstract")
-          .eq("id", paperId)
-          .maybeSingle();
-
-        if (paperErr || !paper) {
-          return toolError("paper_not_found", "not_found");
-        }
-
-        const p = paper as { id: string; title: string; abstract: string | null };
-
-        const { extractStrategyFromPaper } = await import("@/lib/paper-ingest/extract-strategy");
-        const result = await extractStrategyFromPaper({
-          title: p.title,
-          abstract: p.abstract ?? "",
-          ticker,
-        });
-
-        if (!result.ok) {
-          return toolError(
-            result.validationErrors
-              ? `${result.error}: ${result.validationErrors}`
-              : result.error,
-            "extraction_failed",
-          );
-        }
-
-        // Deduplicate name: if a v1 already exists, append a short suffix.
-        let finalName = result.suggestedName;
-        const { data: nameConflict } = await sb
-          .from("ticket_logics")
-          .select("id")
-          .eq("name", finalName)
-          .eq("version", 1)
-          .maybeSingle();
-        if (nameConflict) {
-          finalName = `${finalName}-${paperId.slice(0, 6)}`;
-        }
-
-        const insertPayload: Record<string, unknown> = {
-          name: finalName,
-          version: 1,
-          description: `Extracted from arXiv paper: ${p.title}`,
-          body: result.body,
-          status: "draft",
-          created_by: "distillation",
-          created_by_user_id: userId,
-          ticker,
-          tags: ["paper-extracted"],
-          visibility: "unlisted",
-          parent_paper_id: paperId,
-        };
-
-        const { data: inserted, error: insErr } = await sb
-          .from("ticket_logics")
-          .insert(insertPayload)
-          .select("id, name, version")
-          .single();
-
-        if (insErr) {
-          // parent_paper_id column not yet applied — retry without it
-          if (insErr.message?.includes("parent_paper_id")) {
-            const { parent_paper_id: _drop, ...withoutPaperId } = insertPayload;
-            const { data: retried, error: retryErr } = await sb
-              .from("ticket_logics")
-              .insert(withoutPaperId)
-              .select("id, name, version")
-              .single();
-            if (retryErr || !retried) return toolError(`insert failed: ${retryErr?.message ?? "no row"}`);
-            const r = retried as { id: string; name: string; version: number };
-            return textContent({ strategy_id: r.id, name: r.name, version: r.version, paper_id: paperId });
-          }
-          return toolError(`insert failed: ${insErr.message}`);
-        }
-
-        const ins = inserted as { id: string; name: string; version: number };
-        return textContent({ strategy_id: ins.id, name: ins.name, version: ins.version, paper_id: paperId });
-      }
-
       case "create_ticket_logic": {
         // Sprint 075b: gating — authoring strategies via Chat is a Pro feature.
         // Free users get a friendly message pointing at /pricing or invites.
@@ -1115,21 +921,12 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           );
         }
 
-        // Auto-generate a description if the caller didn't provide one.
-        let description = userDescription;
-        if (!description) {
-          try {
-            const { describeStrategy } = await import("@/lib/strategies/describe-strategy");
-            const aiDesc = await describeStrategy({
-              action: "fork",
-              body: parsedBody,
-              parent: { name, version: 1, author_label: "you" },
-            });
-            if (aiDesc) description = aiDesc;
-          } catch {
-            description = `Created via Chat. ${name} v1 on ${ticker.toUpperCase()}.`;
-          }
-        }
+        // Sprint 095: templated default if the caller didn't supply one.
+        // MCP callers should provide a meaningful description in the
+        // `description` arg if they want prose.
+        const description = userDescription
+          ? userDescription
+          : `Created via MCP. ${name} v1 on ${ticker.toUpperCase()}.`;
 
         const { data: inserted, error: insErr } = await sb
           .from("ticket_logics")

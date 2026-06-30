@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 
 interface Paper {
   id: string;
@@ -12,44 +11,28 @@ interface Paper {
   ingested_at: string;
 }
 
-interface ExtractResult {
-  strategy_id: string;
-  name: string;
-  version: number;
-}
+function PaperCard({ paper }: { paper: Paper }) {
+  const [copied, setCopied] = useState(false);
 
-function PaperCard({
-  paper,
-  ticker,
-}: {
-  paper: Paper;
-  ticker: string;
-}) {
-  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [result, setResult] = useState<ExtractResult | null>(null);
-  const [err, setErr] = useState("");
+  async function copyPrompt() {
+    const prompt = `I want to extract a quantitative trading strategy from this paper and create it in Atlas.
 
-  async function extract() {
-    setState("loading");
-    setErr("");
-    try {
-      const res = await fetch("/api/v1/papers/extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paper_id: paper.id, ticker }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setErr(json.error ?? "Extraction failed");
-        setState("error");
-      } else {
-        setResult(json as ExtractResult);
-        setState("done");
-      }
-    } catch {
-      setErr("Network error");
-      setState("error");
-    }
+Title: ${paper.title}
+
+Abstract: ${paper.abstract ?? "(no abstract available)"}
+
+Source: ${paper.source_url ?? paper.source}
+
+Please:
+1. Read the abstract and propose ONE concrete tradable entry+exit rule grounded in it.
+2. Encode it as a TicketLogicBody (see the schema via the Atlas MCP) and call \`create_ticket_logic\` with it.
+3. Then call \`run_ticket_backtest\` on the new strategy and analyse the trades.
+
+Paper UUID for reference: ${paper.id}`;
+
+    await navigator.clipboard.writeText(prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   }
 
   return (
@@ -87,38 +70,18 @@ function PaperCard({
         </div>
 
         <div className="shrink-0">
-          {state === "idle" && (
-            <button
-              onClick={extract}
-              className="text-xs px-3 py-1.5 rounded-md border transition-colors"
-              style={{
-                borderColor: "var(--brand)",
-                color: "var(--brand)",
-                background: "transparent",
-              }}
-            >
-              Extract
-            </button>
-          )}
-          {state === "loading" && (
-            <span className="text-xs" style={{ color: "var(--ghost)" }}>
-              Extracting…
-            </span>
-          )}
-          {state === "done" && result && (
-            <Link
-              href={`/dashboard/strategies/${result.strategy_id}`}
-              className="text-xs px-3 py-1.5 rounded-md"
-              style={{ background: "var(--bull)", color: "#fff" }}
-            >
-              View strategy →
-            </Link>
-          )}
-          {state === "error" && (
-            <span className="text-xs" style={{ color: "var(--bear)" }}>
-              {err}
-            </span>
-          )}
+          <button
+            onClick={copyPrompt}
+            className="text-xs px-3 py-1.5 rounded-md border transition-colors"
+            style={{
+              borderColor: "var(--brand)",
+              color: "var(--brand)",
+              background: "transparent",
+            }}
+            title="Copy a ready-to-paste prompt for Claude/ChatGPT (via the Atlas MCP)"
+          >
+            {copied ? "Copied ✓" : "Copy MCP prompt"}
+          </button>
         </div>
       </div>
     </div>
@@ -127,7 +90,6 @@ function PaperCard({
 
 export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
   const [papers, setPapers] = useState<Paper[]>(initialPapers);
-  const [ticker, setTicker] = useState("^DJI");
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
 
@@ -136,15 +98,14 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
     setFetchMsg("");
     try {
       const res = await fetch("/api/v1/papers/fetch", { method: "POST" });
-      const json = await res.json() as { fetched?: number; inserted?: number; error?: string };
+      const json = (await res.json()) as { fetched?: number; inserted?: number; error?: string };
       if (!res.ok) {
         setFetchMsg(json.error ?? "Fetch failed");
       } else {
         setFetchMsg(`Fetched ${json.fetched ?? 0}, added ${json.inserted ?? 0} new papers`);
-        // Reload list
         const listRes = await fetch("/api/v1/papers");
         if (listRes.ok) {
-          const listJson = await listRes.json() as { papers: Paper[] };
+          const listJson = (await listRes.json()) as { papers: Paper[] };
           setPapers(listJson.papers);
         }
       }
@@ -163,7 +124,7 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
             Research
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>
-            Extract trading strategies from academic papers
+            Browse trading-research papers and extract strategies via your connected MCP client
           </p>
         </div>
         <button
@@ -186,21 +147,20 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
         </p>
       )}
 
-      <div className="flex items-center gap-3 mb-5">
-        <label className="text-xs" style={{ color: "var(--ghost)" }}>
-          Target ticker for extraction
-        </label>
-        <input
-          value={ticker}
-          onChange={(e) => setTicker(e.target.value.toUpperCase())}
-          className="text-xs px-3 py-1.5 rounded-md border font-mono"
-          style={{
-            borderColor: "var(--line)",
-            background: "var(--elevated)",
-            color: "var(--ink)",
-            width: 100,
-          }}
-        />
+      <div
+        className="rounded-md p-3 mb-4 text-xs"
+        style={{ background: "var(--elevated)", color: "var(--dim)" }}
+      >
+        Atlas runs no server-side LLM. Click <em>Copy MCP prompt</em> on a paper to grab a
+        ready-to-paste extraction prompt, then run it from Claude / ChatGPT connected via the{" "}
+        <a
+          href="/dashboard/settings"
+          className="underline"
+          style={{ color: "var(--brand)" }}
+        >
+          Atlas MCP
+        </a>
+        .
       </div>
 
       {papers.length === 0 ? (
@@ -215,7 +175,7 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
       ) : (
         <div className="flex flex-col gap-3">
           {papers.map((p) => (
-            <PaperCard key={p.id} paper={p} ticker={ticker} />
+            <PaperCard key={p.id} paper={p} />
           ))}
         </div>
       )}

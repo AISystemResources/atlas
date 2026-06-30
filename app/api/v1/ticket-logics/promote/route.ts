@@ -18,7 +18,6 @@ import { getUserFromRequest } from "@/lib/auth/context";
 import { getServiceClient } from "@/lib/supabase-server";
 import { applyParameterChanges } from "@/lib/strategies/tunable-params";
 import { ticketLogicBodySchema } from "@/lib/strategies/schema";
-import { describeStrategy } from "@/lib/strategies/describe-strategy";
 
 const BodySchema = z.object({
   parent_logic_id: z.string().uuid(),
@@ -173,27 +172,20 @@ export async function POST(req: Request): Promise<Response> {
     .maybeSingle();
   const nextVersion = ((topRow as { version: number } | null)?.version ?? parent.version) + 1;
 
-  // Sprint 064: AI-authored description summarising the change. Falls back
-  // to the developer-flavored auto-text if the LLM call fails.
+  // Sprint 095: templated description. AI-authored descriptions used to
+  // come from a server-side Groq call (describeStrategy); after the
+  // MCP-only refactor, the connected MCP client can rewrite this field
+  // via its own tools if it wants prose. `insight.rationale` (if present)
+  // is the human-readable "why" from whichever model produced the insight.
   const changeDescriptions = changes
     .map(
       (c) =>
         `${c.name}: ${c.current_value} → ${c.proposed_value} (${c.reason})`,
     )
     .join("; ");
-  let description = `Promoted from ${parent.name} v${parent.version} via AI Distillation. Changes: ${changeDescriptions}`;
-  try {
-    const aiDesc = await describeStrategy({
-      action: "promote",
-      body: newBody,
-      parent: { name: parent.name, version: parent.version, author_label: "you" },
-      changes,
-      promote_rationale: insight.rationale ?? undefined,
-    });
-    if (aiDesc) description = aiDesc;
-  } catch (err) {
-    console.warn("[promote] description gen failed, using fallback:", err);
-  }
+  const description = insight.rationale
+    ? `Promoted from ${parent.name} v${parent.version}. Changes: ${changeDescriptions}. Rationale: ${insight.rationale}`
+    : `Promoted from ${parent.name} v${parent.version} via AI Distillation. Changes: ${changeDescriptions}`;
 
   const { data: newRow, error: insErr } = await sb
     .from("ticket_logics")
