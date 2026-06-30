@@ -41,15 +41,37 @@ describe("SettingsTab", () => {
     expect(screen.getByText("free")).toBeInTheDocument();
   });
 
-  it("renders about section with engine and papers entries", () => {
+  it("renders How Atlas Works architecture story (Sprint 100)", () => {
     render(<SettingsTab tier="free" />);
-    expect(screen.getByText("Engine")).toBeInTheDocument();
-    expect(screen.getByText("Papers")).toBeInTheDocument();
+    expect(screen.getByText(/HOW ATLAS WORKS/)).toBeInTheDocument();
+    expect(screen.getByText(/No server-side AI/)).toBeInTheDocument();
+    expect(screen.getByText(/Backtests are deterministic/)).toBeInTheDocument();
+    expect(screen.getByText(/Your wallet signs every trade/)).toBeInTheDocument();
   });
 
-  it("renders MCP connector", () => {
+  it("renders Data Sources section with truthful labels (Sprint 100)", () => {
+    render(<SettingsTab tier="free" />);
+    expect(screen.getByText(/DATA SOURCES/)).toBeInTheDocument();
+    expect(screen.getByText("OHLCV bars")).toBeInTheDocument();
+    expect(screen.getByText("Research papers")).toBeInTheDocument();
+    expect(screen.getByText("Execution venue")).toBeInTheDocument();
+  });
+
+  it("does not falsely claim Groq Llama is the engine (Sprint 095 / 100)", () => {
+    render(<SettingsTab tier="free" />);
+    expect(screen.queryByText(/Groq Llama/i)).toBeNull();
+    expect(screen.queryByText(/US Equities/i)).toBeNull();
+  });
+
+  it("renders MCP connector for Pro tier", () => {
     render(<SettingsTab tier="pro" />);
     expect(screen.getByTestId("mcp-connector")).toBeInTheDocument();
+  });
+
+  it("renders Pro CTA instead of MCP connector for free tier (Sprint 100)", () => {
+    render(<SettingsTab tier="free" />);
+    expect(screen.queryByTestId("mcp-connector")).toBeNull();
+    expect(screen.getByText(/Upgrade to Pro/i)).toBeInTheDocument();
   });
 
   it("shows manage billing for pro tier", () => {

@@ -192,6 +192,7 @@ function ManageBillingButton() {
 
 export function SettingsTab({ tier }: { tier: "free" | "pro" | "max" }) {
   const tierColor = tier === "pro" ? "var(--tier-pro)" : tier === "max" ? "var(--tier-max)" : "var(--dim)";
+  const isPro = tier === "pro" || tier === "max";
 
   return (
     <div className="flex flex-col gap-4 pb-6">
@@ -209,21 +210,59 @@ export function SettingsTab({ tier }: { tier: "free" | "pro" | "max" }) {
         }}>
           {tier}
         </span>
-        {(tier === "pro" || tier === "max") && (
-          <ManageBillingButton />
-        )}
+        {isPro && <ManageBillingButton />}
       </div>
 
-      {/* About */}
+      {/* How Atlas works — the architecture story, not a list of dependencies. */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
-        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>ABOUT</div>
+        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 12 }}>
+          HOW ATLAS WORKS
+        </div>
+        <ul className="flex flex-col gap-3" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <li className="flex gap-3">
+            <span style={{ color: "var(--bull)", fontSize: 12, fontFamily: "var(--font-jb)", flexShrink: 0, marginTop: 2 }}>·</span>
+            <span style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.5 }}>
+              <strong>No server-side AI.</strong>{" "}
+              <span style={{ color: "var(--dim)" }}>
+                All reasoning happens in your connected MCP client (Claude / ChatGPT).
+                The platform itself runs zero LLM calls.
+              </span>
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span style={{ color: "var(--bull)", fontSize: 12, fontFamily: "var(--font-jb)", flexShrink: 0, marginTop: 2 }}>·</span>
+            <span style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.5 }}>
+              <strong>Backtests are deterministic.</strong>{" "}
+              <span style={{ color: "var(--dim)" }}>
+                Same strategy, same date range, same broker profile → same result every time.
+                No randomness, no model temperature noise.
+              </span>
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span style={{ color: "var(--bull)", fontSize: 12, fontFamily: "var(--font-jb)", flexShrink: 0, marginTop: 2 }}>·</span>
+            <span style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.5 }}>
+              <strong>Your wallet signs every trade.</strong>{" "}
+              <span style={{ color: "var(--dim)" }}>
+                Atlas holds no keys, signs no transactions. The EBC matrix lives at execution
+                only — backtest is deterministic and not modelled by it.
+              </span>
+            </span>
+          </li>
+        </ul>
+      </div>
+
+      {/* Data sources — what the platform actually uses, factually. */}
+      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
+        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 12 }}>
+          DATA SOURCES
+        </div>
         <div className="flex flex-col gap-2">
           {[
-            ["Engine",  "Groq Llama 3.3 70B"],
-            ["Data",    "Yahoo Finance · OHLCV"],
-            ["Papers",  "arXiv q-fin.TR"],
-            ["Market",  "US Equities / ETFs"],
-            ["Version", "0.2.0 · Strategy Research"],
+            ["OHLCV bars", "Yahoo Finance · per-day cache"],
+            ["Research papers", "arXiv q-fin.TR · daily fetch"],
+            ["Live signal evaluation", "deterministic, on-demand"],
+            ["Execution venue", "Base mainnet · gTrade DIA pair"],
           ].map(([k, v]) => (
             <div key={k} className="flex items-center justify-between">
               <span style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-jb)" }}>{k}</span>
@@ -233,9 +272,46 @@ export function SettingsTab({ tier }: { tier: "free" | "pro" | "max" }) {
         </div>
       </div>
 
-      {/* MCP connector */}
+      {/* MCP connector — Pro only. Free tier sees a CTA. */}
       <div style={{ marginBottom: 32 }}>
-        <AtlasMcpConnectorCard />
+        {isPro ? (
+          <AtlasMcpConnectorCard />
+        ) : (
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              padding: "20px 22px",
+              boxShadow: "var(--card-shadow)",
+            }}
+          >
+            <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>
+              CONNECT MCP CLIENT · PRO
+            </div>
+            <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+              Atlas exposes <strong>17 MCP tools</strong> (10 read-only, 7 writes — zero destructive)
+              that let you author and improve strategies using your own LLM via Claude Desktop or ChatGPT.
+              You bring the model; Atlas stays deterministic.
+            </p>
+            <a
+              href="/pricing"
+              style={{
+                display: "inline-block",
+                background: "var(--brand)",
+                color: "#fff",
+                fontSize: 12,
+                fontFamily: "var(--font-jb)",
+                padding: "8px 16px",
+                borderRadius: 6,
+                textDecoration: "none",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Upgrade to Pro
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
