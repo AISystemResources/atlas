@@ -1,6 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  BASE_MAINNET,
+  GTRADE_DIAMOND_BASE,
+  USDC_BASE,
+  USDC_DECIMALS,
+  ensureBaseMainnet,
+  isOnBase,
+  readUsdcAllowance,
+  readUsdcBalance,
+  sendUsdcApprove,
+  sendOpenTrade,
+  usdcAmount,
+  positionSizeUsd,
+  dollarsPerPoint,
+} from "@/lib/execution/gtrade";
 
 declare global {
   interface Window {
@@ -10,18 +25,10 @@ declare global {
   }
 }
 
-const ARBITRUM_SEPOLIA = {
-  chainId: "0x66eee",
-  chainName: "Arbitrum Sepolia",
-  nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
-  rpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
-  blockExplorerUrls: ["https://sepolia.arbiscan.io"],
-};
-
 interface WalletState {
   address: string;
   chainId: string;
-  isArbitrumSepolia: boolean;
+  isOnBase: boolean;
 }
 
 interface Strategy {
@@ -44,6 +51,23 @@ interface SignalResult {
   strategy: { id: string; name: string; version: number; ticker: string; timeframe: string };
 }
 
+type TradeStage =
+  | { kind: "idle" }
+  | { kind: "approving"; tx?: string }
+  | { kind: "trading"; tx?: string }
+  | { kind: "success"; tx: string }
+  | { kind: "error"; message: string };
+
+// ^DJI index value is ~100× gTrade's DIA pair price (which tracks the DIA ETF).
+// When the signal originates from a ^DJI-priced strategy, divide by 100 to get
+// the gTrade-pair price the contract's oracle expects. Other tickers: scale=1.
+function scaleSignalToGtrade(signalTicker: string, signalPrice: number): number {
+  if (signalTicker === "^DJI" || signalTicker.toUpperCase() === "DJI") {
+    return signalPrice / 100;
+  }
+  return signalPrice;
+}
+
 export function ExecutionClient() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -60,6 +84,14 @@ export function ExecutionClient() {
   const [signal, setSignal] = useState<SignalResult | null>(null);
   const [signalError, setSignalError] = useState("");
 
+  // Trade form
+  const [collateralUsdc, setCollateralUsdc] = useState(5);
+  const [leverage, setLeverage] = useState(5);
+  const [slippagePercent, setSlippagePercent] = useState(1.0);
+  const [openPriceOverride, setOpenPriceOverride] = useState<number | null>(null);
+  const [tradeStage, setTradeStage] = useState<TradeStage>({ kind: "idle" });
+  const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
+
   useEffect(() => {
     if (typeof window === "undefined" || !window.ethereum) return;
     const eth = window.ethereum;
@@ -73,13 +105,25 @@ export function ExecutionClient() {
             setWallet({
               address: accounts[0],
               chainId,
-              isArbitrumSepolia: chainId === ARBITRUM_SEPOLIA.chainId,
+              isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
             });
           });
         }
       })
       .catch(() => {});
   }, []);
+
+  // Pull USDC balance whenever the wallet is on Base.
+  useEffect(() => {
+    if (!wallet?.isOnBase || !window.ethereum) {
+      setUsdcBalance(null);
+      return;
+    }
+    const eth = window.ethereum;
+    readUsdcBalance(eth, wallet.address)
+      .then(setUsdcBalance)
+      .catch(() => setUsdcBalance(null));
+  }, [wallet]);
 
   const loadStrategies = useCallback(async () => {
     setLoadingStrategies(true);
@@ -114,7 +158,7 @@ export function ExecutionClient() {
       setWallet({
         address: accounts[0],
         chainId,
-        isArbitrumSepolia: chainId === ARBITRUM_SEPOLIA.chainId,
+        isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
       });
     } catch (e: unknown) {
       setWalletError(e instanceof Error ? e.message : "Connection rejected");
@@ -123,32 +167,20 @@ export function ExecutionClient() {
     }
   }
 
-  async function switchNetwork() {
+  async function switchToBase() {
     if (!window.ethereum) return;
     const eth = window.ethereum;
     setSwitching(true);
+    setWalletError("");
     try {
-      await eth.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: ARBITRUM_SEPOLIA.chainId }],
-      });
+      await ensureBaseMainnet(eth);
+      const onBase = await isOnBase(eth);
+      const chainId = (await eth.request({ method: "eth_chainId" })) as string;
+      setWallet((w) => (w ? { ...w, chainId, isOnBase: onBase } : w));
     } catch (e: unknown) {
-      if ((e as { code?: number }).code === 4902) {
-        try {
-          await eth.request({
-            method: "wallet_addEthereumChain",
-            params: [ARBITRUM_SEPOLIA],
-          });
-        } catch {
-          setWalletError("Could not add Arbitrum Sepolia to MetaMask.");
-        }
-      }
+      setWalletError(e instanceof Error ? e.message : "Could not switch to Base.");
     } finally {
       setSwitching(false);
-      const chainId = (await eth.request({ method: "eth_chainId" })) as string;
-      setWallet((w) =>
-        w ? { ...w, chainId, isArbitrumSepolia: chainId === ARBITRUM_SEPOLIA.chainId } : w,
-      );
     }
   }
 
@@ -157,6 +189,8 @@ export function ExecutionClient() {
     setEvaluating(true);
     setSignalError("");
     setSignal(null);
+    setOpenPriceOverride(null);
+    setTradeStage({ kind: "idle" });
     try {
       const res = await fetch("/api/v1/execution/evaluate", {
         method: "POST",
@@ -180,12 +214,91 @@ export function ExecutionClient() {
     setWallet(null);
   }
 
+  // Computed: default openPrice in gTrade scale.
+  const gtradeOpenPrice = useMemo(() => {
+    if (openPriceOverride !== null) return openPriceOverride;
+    if (signal?.current_price == null) return 0;
+    return scaleSignalToGtrade(signal.strategy.ticker, signal.current_price);
+  }, [openPriceOverride, signal]);
+
+  const gtradeTakeProfit = useMemo(() => {
+    if (!signal || signal.take_profit == null) return 0;
+    return scaleSignalToGtrade(signal.strategy.ticker, signal.take_profit);
+  }, [signal]);
+
+  const gtradeStopLoss = useMemo(() => {
+    if (!signal || signal.stop_loss == null) return 0;
+    return scaleSignalToGtrade(signal.strategy.ticker, signal.stop_loss);
+  }, [signal]);
+
+  async function placeTrade() {
+    if (!signal || !wallet || !window.ethereum) return;
+    if (signal.signal === "HOLD") return;
+    const eth = window.ethereum;
+
+    setTradeStage({ kind: "approving" });
+    try {
+      const required = usdcAmount(collateralUsdc);
+
+      // 1. Check allowance, approve if needed.
+      const allowance = await readUsdcAllowance(eth, wallet.address);
+      if (allowance < required) {
+        const approveTx = await sendUsdcApprove(eth, wallet.address, required);
+        setTradeStage({ kind: "approving", tx: approveTx });
+        // Poll allowance until it confirms (Base confirms ~2s/block).
+        const deadline = Date.now() + 60_000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const a = await readUsdcAllowance(eth, wallet.address);
+          if (a >= required) break;
+        }
+      }
+
+      // 2. Submit the trade.
+      setTradeStage({ kind: "trading" });
+      const tradeTx = await sendOpenTrade(eth, {
+        from: wallet.address,
+        long: signal.signal === "BUY",
+        collateralUsdc,
+        leverage,
+        openPrice: gtradeOpenPrice,
+        takeProfit: gtradeTakeProfit,
+        stopLoss: gtradeStopLoss,
+        maxSlippagePercent: slippagePercent,
+      });
+      setTradeStage({ kind: "success", tx: tradeTx });
+
+      // Refresh balance.
+      readUsdcBalance(eth, wallet.address).then(setUsdcBalance).catch(() => {});
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Trade failed";
+      setTradeStage({ kind: "error", message: msg });
+    }
+  }
+
   const signalColor =
     signal?.signal === "BUY"
       ? "var(--bull)"
       : signal?.signal === "SELL"
         ? "var(--bear)"
         : "var(--ghost)";
+
+  const usdcBalanceDollars =
+    usdcBalance !== null ? Number(usdcBalance) / 10 ** USDC_DECIMALS : null;
+  const insufficientBalance =
+    usdcBalanceDollars !== null && usdcBalanceDollars < collateralUsdc;
+
+  const tradePanelDisabled =
+    !signal ||
+    signal.signal === "HOLD" ||
+    !wallet ||
+    !wallet.isOnBase ||
+    tradeStage.kind === "approving" ||
+    tradeStage.kind === "trading" ||
+    insufficientBalance ||
+    collateralUsdc <= 0 ||
+    leverage < 2 ||
+    gtradeOpenPrice <= 0;
 
   return (
     <div className="mx-auto" style={{ maxWidth: 720 }}>
@@ -194,7 +307,7 @@ export function ExecutionClient() {
           Execution
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>
-          Evaluate live signals from your strategies and deploy via gTrade on Arbitrum
+          Evaluate live signals and submit on-chain trades via gTrade on Base mainnet
         </p>
       </div>
 
@@ -247,24 +360,41 @@ export function ExecutionClient() {
               <span className="text-xs" style={{ color: "var(--ghost)" }}>
                 Network
               </span>
-              {wallet.isArbitrumSepolia ? (
+              {wallet.isOnBase ? (
                 <span
                   className="text-xs font-mono px-2 py-0.5 rounded-full"
                   style={{ background: "var(--bull)22", color: "var(--bull)" }}
                 >
-                  Arbitrum Sepolia ✓
+                  Base ✓
                 </span>
               ) : (
                 <button
-                  onClick={switchNetwork}
+                  onClick={switchToBase}
                   disabled={switching}
                   className="text-xs px-2 py-0.5 rounded-full border"
                   style={{ borderColor: "var(--bear)", color: "var(--bear)" }}
                 >
-                  {switching ? "Switching…" : "Switch to Arbitrum Sepolia"}
+                  {switching ? "Switching…" : "Switch to Base"}
                 </button>
               )}
             </div>
+            {wallet.isOnBase && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                  USDC balance
+                </span>
+                <span className="text-xs font-mono" style={{ color: "var(--ink)" }}>
+                  {usdcBalanceDollars != null
+                    ? `$${usdcBalanceDollars.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                    : "—"}
+                </span>
+              </div>
+            )}
+            {walletError && (
+              <p className="text-xs mt-1" style={{ color: "var(--bear)" }}>
+                {walletError}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -285,6 +415,7 @@ export function ExecutionClient() {
               setSelectedId(e.target.value);
               setSignal(null);
               setSignalError("");
+              setTradeStage({ kind: "idle" });
             }}
             disabled={loadingStrategies}
             className="flex-1 text-xs px-3 py-2 rounded-md border"
@@ -354,7 +485,12 @@ export function ExecutionClient() {
                     {label}
                   </p>
                   <p className="text-xs font-mono" style={{ color: "var(--ink)" }}>
-                    {val != null ? Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                    {val != null
+                      ? Number(val).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      : "—"}
                   </p>
                 </div>
               ))}
@@ -368,16 +504,6 @@ export function ExecutionClient() {
                 <> · last bar {new Date(signal.last_bar_ts).toLocaleString()}</>
               )}
             </p>
-
-            {/* Place trade button — 094B */}
-            <button
-              disabled
-              className="w-full py-2.5 rounded-lg text-sm font-medium mt-1"
-              style={{ background: "var(--elevated)", color: "var(--ghost)", cursor: "not-allowed" }}
-              title="gTrade contract submission coming in Sprint 094B"
-            >
-              Place Trade on gTrade (coming soon)
-            </button>
           </div>
         )}
 
@@ -387,6 +513,201 @@ export function ExecutionClient() {
           </p>
         )}
       </div>
+
+      {/* Trade panel — visible when signal is BUY or SELL */}
+      {signal && signal.signal !== "HOLD" && (
+        <div
+          className="rounded-lg p-5 border mb-5"
+          style={{ borderColor: "var(--line)", background: "var(--surface)" }}
+        >
+          <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--ink)" }}>
+            Place trade on gTrade · Base
+          </h2>
+
+          {signal.strategy.ticker === "^DJI" && (
+            <p
+              className="text-xs mb-3 px-3 py-2 rounded"
+              style={{ background: "var(--elevated)", color: "var(--dim)" }}
+            >
+              The strategy prices in ^DJI index value (~38,000). gTrade&apos;s DIA pair tracks the
+              DIA ETF (~$380, ÷100). Prices below are auto-scaled.
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                Collateral (USDC)
+              </span>
+              <input
+                type="number"
+                value={collateralUsdc}
+                onChange={(e) => setCollateralUsdc(Math.max(1, Number(e.target.value) || 0))}
+                step={0.5}
+                min={1}
+                max={100}
+                className="text-xs px-3 py-2 rounded-md border font-mono"
+                style={{
+                  borderColor: "var(--line)",
+                  background: "var(--elevated)",
+                  color: "var(--ink)",
+                }}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                Leverage (2×–100×)
+              </span>
+              <input
+                type="number"
+                value={leverage}
+                onChange={(e) => setLeverage(Math.max(2, Math.min(100, Number(e.target.value) || 2)))}
+                step={1}
+                min={2}
+                max={100}
+                className="text-xs px-3 py-2 rounded-md border font-mono"
+                style={{
+                  borderColor: "var(--line)",
+                  background: "var(--elevated)",
+                  color: "var(--ink)",
+                }}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                Slippage tolerance (%)
+              </span>
+              <input
+                type="number"
+                value={slippagePercent}
+                onChange={(e) => setSlippagePercent(Math.max(0.1, Number(e.target.value) || 0.1))}
+                step={0.1}
+                min={0.1}
+                max={5}
+                className="text-xs px-3 py-2 rounded-md border font-mono"
+                style={{
+                  borderColor: "var(--line)",
+                  background: "var(--elevated)",
+                  color: "var(--ink)",
+                }}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+                Entry price (gTrade scale)
+              </span>
+              <input
+                type="number"
+                value={gtradeOpenPrice}
+                onChange={(e) => setOpenPriceOverride(Number(e.target.value) || 0)}
+                step={0.01}
+                className="text-xs px-3 py-2 rounded-md border font-mono"
+                style={{
+                  borderColor: "var(--line)",
+                  background: "var(--elevated)",
+                  color: "var(--ink)",
+                }}
+              />
+            </label>
+          </div>
+
+          <div
+            className="rounded-md p-3 mb-3 grid grid-cols-3 gap-2 text-xs"
+            style={{ background: "var(--elevated)" }}
+          >
+            <div>
+              <p style={{ color: "var(--ghost)" }}>Position size</p>
+              <p className="font-mono" style={{ color: "var(--ink)" }}>
+                ${positionSizeUsd(collateralUsdc, leverage).toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p style={{ color: "var(--ghost)" }}>$/point</p>
+              <p className="font-mono" style={{ color: "var(--ink)" }}>
+                $
+                {dollarsPerPoint(collateralUsdc, leverage, gtradeOpenPrice).toLocaleString(
+                  undefined,
+                  { maximumFractionDigits: 4 },
+                )}
+              </p>
+            </div>
+            <div>
+              <p style={{ color: "var(--ghost)" }}>Max loss</p>
+              <p className="font-mono" style={{ color: "var(--ink)" }}>
+                ${collateralUsdc.toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          {insufficientBalance && (
+            <p className="text-xs mb-2" style={{ color: "var(--bear)" }}>
+              Insufficient USDC balance. You need at least ${collateralUsdc.toFixed(2)} USDC on
+              Base.
+            </p>
+          )}
+
+          {!wallet?.isOnBase && wallet && (
+            <p className="text-xs mb-2" style={{ color: "var(--bear)" }}>
+              Switch to Base network in the Wallet card above before trading.
+            </p>
+          )}
+
+          <button
+            onClick={placeTrade}
+            disabled={tradePanelDisabled}
+            className="w-full py-2.5 rounded-lg text-sm font-medium"
+            style={{
+              background: tradePanelDisabled ? "var(--elevated)" : "var(--brand)",
+              color: tradePanelDisabled ? "var(--ghost)" : "#fff",
+              cursor: tradePanelDisabled ? "not-allowed" : "pointer",
+            }}
+          >
+            {tradeStage.kind === "approving"
+              ? tradeStage.tx
+                ? "Waiting for USDC approval…"
+                : "Approve USDC…"
+              : tradeStage.kind === "trading"
+                ? "Submitting trade…"
+                : tradeStage.kind === "success"
+                  ? `Trade submitted ✓`
+                  : `Place ${signal.signal} on gTrade Base`}
+          </button>
+
+          {tradeStage.kind === "approving" && tradeStage.tx && (
+            <p className="text-xs mt-2 text-center" style={{ color: "var(--ghost)" }}>
+              Approve tx:{" "}
+              <a
+                href={`${BASE_MAINNET.blockExplorerUrls[0]}/tx/${tradeStage.tx}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+                style={{ color: "var(--brand)" }}
+              >
+                {tradeStage.tx.slice(0, 10)}…{tradeStage.tx.slice(-8)}
+              </a>
+            </p>
+          )}
+          {tradeStage.kind === "success" && (
+            <p className="text-xs mt-2 text-center" style={{ color: "var(--bull)" }}>
+              View on Basescan:{" "}
+              <a
+                href={`${BASE_MAINNET.blockExplorerUrls[0]}/tx/${tradeStage.tx}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+                style={{ color: "var(--brand)" }}
+              >
+                {tradeStage.tx.slice(0, 10)}…{tradeStage.tx.slice(-8)}
+              </a>
+            </p>
+          )}
+          {tradeStage.kind === "error" && (
+            <p className="text-xs mt-2" style={{ color: "var(--bear)" }}>
+              {tradeStage.message}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* gTrade info card */}
       <div
@@ -398,9 +719,17 @@ export function ExecutionClient() {
         </h2>
         <div className="flex flex-col gap-2 text-xs" style={{ color: "var(--dim)" }}>
           <p>
-            Decentralised CFD perpetuals on Arbitrum. Trade US30 (Dow Jones), crypto, and forex
-            using USDC as collateral. No KYC, no account required.
+            Decentralised CFD perpetuals on Base mainnet. Trade DIA (Dow Jones tracker), crypto,
+            forex, and indices using native USDC as collateral. No KYC, no account required.
           </p>
+          <div
+            className="rounded p-2 mt-1 font-mono text-xs"
+            style={{ background: "var(--elevated)", color: "var(--dim)" }}
+          >
+            Trading contract: {GTRADE_DIAMOND_BASE.slice(0, 10)}…{GTRADE_DIAMOND_BASE.slice(-8)}
+            <br />
+            USDC (Base): {USDC_BASE.slice(0, 10)}…{USDC_BASE.slice(-8)}
+          </div>
           <div className="flex flex-wrap gap-3 mt-2">
             <a
               href="https://gains.trade"
@@ -412,22 +741,13 @@ export function ExecutionClient() {
               gains.trade ↗
             </a>
             <a
-              href="https://faucet.quicknode.com/arbitrum/sepolia"
+              href="https://basescan.org"
               target="_blank"
               rel="noopener noreferrer"
               className="underline"
               style={{ color: "var(--brand)" }}
             >
-              Arbitrum Sepolia faucet ↗
-            </a>
-            <a
-              href="https://sepolia.arbiscan.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-              style={{ color: "var(--brand)" }}
-            >
-              Arbiscan ↗
+              Basescan ↗
             </a>
           </div>
         </div>
@@ -442,7 +762,7 @@ export function ExecutionClient() {
           No open positions
         </p>
         <p className="text-xs" style={{ color: "var(--ghost)" }}>
-          gTrade on-chain positions will appear here once Sprint 094B ships.{" "}
+          gTrade on-chain positions tracking is a future enhancement.{" "}
           {!wallet && "Connect your wallet to get started."}
         </p>
       </div>
