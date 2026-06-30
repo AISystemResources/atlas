@@ -6,7 +6,13 @@
 
 ## What this is
 
-AI trading assistant on the Vercel + Inngest + Supabase stack. Per-strategy distillation pipeline (Sandy-style ticket logic + ratchet-clamped LLM proposals + forward A/B tests) drives the autonomous scalper. Capstone project (BAC3004, SIT, due 2026-07-19) **and** real B2C product. Cash equities live via Alpaca paper; futures (MYM/Dow) deliberately simulator-only per the academic-honesty story. Full product context: see `projects/atlas/CONTEXT.md` in EMDEE.
+AI trading assistant on the Vercel + Supabase stack. Strategy lifecycle platform: paper ingestion → MCP-driven extraction → deterministic backtest → forward-A/B distillation (MCP-driven via `submit_distillation_insight`) → live signal evaluator → on-chain trade on Base via gTrade. **Server-side LLM removed in Sprint 095** — all reasoning happens in the user's connected MCP client (Claude / ChatGPT). Capstone project (BAC3004, SIT, due 2026-07-19) **and** real B2C product. Full product context: see `projects/atlas/CONTEXT.md` in EMDEE.
+
+**Two-sided architecture** (post-Sprint 095 / 094C):
+- **Authors** — Pro Claude / ChatGPT MCP users iterate strategies. Reasoning lives in their paid LLM session.
+- **Consumers** — anyone with a Base wallet (Smart Wallet email-sign-in or MetaMask). Browse public strategies, trade on-chain.
+
+**EBC matrix scope** (sharpened in Sprint 096): the 4-cell matrix (AI-open / AI-close × Human-open / Human-close) applies at **execution time** only, when the user applies a strategy to a connected wallet. **Backtesting is deterministic and not modeled by the matrix** — there is no human-in-the-loop dynamic during simulation. Current implementation supports only the "Manual" cell (user approves every trade); other cells require Smart Wallet Spend Permissions and are post-capstone.
 
 ## Stack
 
