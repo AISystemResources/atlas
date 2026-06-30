@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase-server";
+import { getEffectiveTier } from "@/lib/auth/effective-tier";
 import { PortfolioPageClient } from "./PortfolioPageClient";
 
 export type StrategyHealth = {
@@ -35,8 +36,9 @@ export default async function PortfolioPage() {
 
   const sb = getServiceClient();
 
-  const [profileResult, strategiesResult, pendingResult, tradesResult] = await Promise.all([
-    sb.from("profiles").select("tier").eq("id", userId).maybeSingle(),
+  const [tierInfo, strategiesResult, pendingResult, tradesResult] = await Promise.all([
+    // Sprint 101: tier collapsed to free | pro at the UI boundary.
+    getEffectiveTier(userId),
 
     sb.from("ticket_logics")
       .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_points, total_trades, created_at)")
@@ -53,10 +55,7 @@ export default async function PortfolioPage() {
       .limit(20),
   ]);
 
-  const p = profileResult.data as Record<string, unknown> | null;
-  const VALID_TIERS = ["free", "pro", "max"] as const;
-  const rawTier = String(p?.["tier"] ?? "free");
-  const tier = (VALID_TIERS.includes(rawTier as typeof VALID_TIERS[number]) ? rawTier : "free") as "free" | "pro" | "max";
+  const tier = tierInfo.effective;
 
   // Build StrategyHealth list — pick the latest backtest per strategy
   const strategies: StrategyHealth[] = ((strategiesResult.data ?? []) as Record<string, unknown>[]).map((row) => {

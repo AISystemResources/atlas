@@ -19,7 +19,7 @@ export function PortfolioTab({
   pendingCount,
   recentTrades,
 }: {
-  tier: "free" | "pro" | "max";
+  tier: "free" | "pro";
   strategies: StrategyHealth[];
   pendingCount: number;
   recentTrades: BacktestTradeLite[];
@@ -190,9 +190,9 @@ function ManageBillingButton() {
   );
 }
 
-export function SettingsTab({ tier }: { tier: "free" | "pro" | "max" }) {
-  const tierColor = tier === "pro" ? "var(--tier-pro)" : tier === "max" ? "var(--tier-max)" : "var(--dim)";
-  const isPro = tier === "pro" || tier === "max";
+export function SettingsTab({ tier }: { tier: "free" | "pro" }) {
+  const tierColor = tier === "pro" ? "var(--tier-pro)" : "var(--dim)";
+  const isPro = tier === "pro";
 
   return (
     <div className="flex flex-col gap-4 pb-6">

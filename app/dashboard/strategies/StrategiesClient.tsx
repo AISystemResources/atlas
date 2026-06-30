@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTier } from "../DashboardShell";
 
 export interface StrategyCard {
   id: string;
@@ -47,7 +48,12 @@ export function StrategiesClient({
   papers: PaperRow[];
   extractedPaperIds: string[];
 }) {
-  const [tab, setTab] = useState<Tab>("mine");
+  const tier = useTier();
+  const isPro = tier === "pro";
+  // Sprint 101: Pro authors land on their own library by default; free
+  // consumers land on the Public tab where they can browse trustworthy
+  // strategies to execute. Papers tab is Pro-only and hidden for free.
+  const [tab, setTab] = useState<Tab>(isPro ? "mine" : "public");
   const extractedSet = useMemo(() => new Set(extractedPaperIds), [extractedPaperIds]);
 
   const mine = useMemo(() => cards.filter((c) => c.is_mine), [cards]);
@@ -60,10 +66,9 @@ export function StrategiesClient({
     <div className="mx-auto p-6" style={{ maxWidth: 1100, color: "var(--ink)" }}>
       <h1 className="text-2xl font-bold mb-1">Strategies</h1>
       <p className="text-sm mb-6" style={{ color: "var(--dim)" }}>
-        A Ticket Logic is a rule set for entering and exiting trades. Yours
-        evolves through AI distillation; public strategies are read-only until
-        you fork them into your library. The Papers tab surfaces arXiv research
-        you can turn into a strategy in one click.
+        {isPro
+          ? "A strategy is a rule set for entering and exiting trades. Yours evolves through AI distillation via your MCP client. Public strategies are read-only until you fork them. The Papers tab surfaces arXiv research you can turn into a strategy."
+          : "Browse public strategies authored by Atlas Pro users from research papers and discussion. Each carries a backtest record; fork or execute on Base when you find one you trust."}
       </p>
 
       {/* Tabs */}
@@ -71,15 +76,19 @@ export function StrategiesClient({
         className="flex gap-1 mb-6 p-1 inline-flex rounded-lg"
         style={{ background: "var(--elevated)" }}
       >
-        <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
-          Mine ({mine.length})
-        </TabButton>
         <TabButton active={tab === "public"} onClick={() => setTab("public")}>
           Public ({publik.length})
         </TabButton>
-        <TabButton active={tab === "papers"} onClick={() => setTab("papers")}>
-          Papers {papers.length > 0 && `(${papers.length})`}
-        </TabButton>
+        {isPro && (
+          <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
+            Mine ({mine.length})
+          </TabButton>
+        )}
+        {isPro && (
+          <TabButton active={tab === "papers"} onClick={() => setTab("papers")}>
+            Papers {papers.length > 0 && `(${papers.length})`}
+          </TabButton>
+        )}
       </div>
 
       {tab === "papers" ? (
