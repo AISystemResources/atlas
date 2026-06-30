@@ -1,0 +1,2289 @@
+{
+  "experiment": "sprint-042-distillation-ab",
+  "run_at": "2026-06-30T02:40:41.447Z",
+  "ticker": "^DJI",
+  "timeframe": "5m",
+  "notional": 200,
+  "k_iterations": 5,
+  "seed": 42,
+  "llm_model": "llama-3.3-70b-versatile",
+  "strategies": [
+    {
+      "strategy": {
+        "name": "sandy-s2-long",
+        "starting_version": 1
+      },
+      "in_sample_window": {
+        "start_date": "2026-04-16",
+        "end_date": "2026-06-09"
+      },
+      "forward_window": {
+        "start_date": "2026-06-10",
+        "end_date": "2026-06-23"
+      },
+      "arms": [
+        {
+          "arm": "llm",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -3.82,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 4.64,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -949.3326,
+                "avg_pnl_points": -43.1515
+              },
+              "sharpe": -0.3438,
+              "profit_factor": 0.42,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -3.82,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 4.64,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -949.3326,
+                "avg_pnl_points": -43.1515
+              },
+              "sharpe": -0.3438,
+              "profit_factor": 0.42,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.25
+                },
+                {
+                  "name": "atr_tp_multiple",
+                  "current_value": 5,
+                  "proposed_value": 6.25
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.7,
+                "avg_pnl_dollars": -0.39,
+                "max_drawdown_dollars": 2.7,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -697.8135,
+                "avg_pnl_points": -99.6876
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.25,
+                "avg_pnl_dollars": -0.32,
+                "max_drawdown_dollars": 2.25,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -584.3542,
+                "avg_pnl_points": -83.4792
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-2.25 > control_pnl=-2.70"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.25,
+                "atr_tp_multiple": 6.25,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -2.39,
+                "avg_pnl_dollars": -0.11,
+                "max_drawdown_dollars": 3.86,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -599.3733,
+                "avg_pnl_points": -27.2442
+              },
+              "sharpe": -0.202,
+              "profit_factor": 0.56,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.25,
+                "atr_tp_multiple": 6.25,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -2.39,
+                "avg_pnl_dollars": -0.11,
+                "max_drawdown_dollars": 3.86,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -599.3733,
+                "avg_pnl_points": -27.2442
+              },
+              "sharpe": -0.202,
+              "profit_factor": 0.56,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.25,
+                  "proposed_value": 0.94
+                },
+                {
+                  "name": "atr_tp_multiple",
+                  "current_value": 6.25,
+                  "proposed_value": 5.2
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.25,
+                "avg_pnl_dollars": -0.32,
+                "max_drawdown_dollars": 2.25,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -584.3542,
+                "avg_pnl_points": -83.4792
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -1.73,
+                "avg_pnl_dollars": -0.25,
+                "max_drawdown_dollars": 1.73,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -443.6649,
+                "avg_pnl_points": -63.3807
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.73 > control_pnl=-2.25"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 0.94,
+                "atr_tp_multiple": 5.2,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 2,
+                "losing_trades": 20,
+                "win_rate": 0.0909,
+                "total_pnl_dollars": -1.66,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 2.93,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -407.9719,
+                "avg_pnl_points": -18.5442
+              },
+              "sharpe": -0.1565,
+              "profit_factor": 0.62,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            }
+          ]
+        },
+        {
+          "arm": "random",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -3.82,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 4.64,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -949.3326,
+                "avg_pnl_points": -43.1515
+              },
+              "sharpe": -0.3438,
+              "profit_factor": 0.42,
+              "proposed_changes": [
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 3.4385497252224013
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 242.1727105975151
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.7,
+                "avg_pnl_dollars": -0.39,
+                "max_drawdown_dollars": 2.7,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -697.8135,
+                "avg_pnl_points": -99.6876
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.7,
+                "avg_pnl_dollars": -0.39,
+                "max_drawdown_dollars": 2.7,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -698.2521,
+                "avg_pnl_points": -99.7503
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-2.70 ≤ control_pnl=-2.70 (kept)"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -3.82,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 4.64,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -949.3326,
+                "avg_pnl_points": -43.1515
+              },
+              "sharpe": -0.3438,
+              "profit_factor": 0.42,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.6288598937098868
+                },
+                {
+                  "name": "atr_tp_multiple",
+                  "current_value": 5,
+                  "proposed_value": 4.3963280017487705
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.7,
+                "avg_pnl_dollars": -0.39,
+                "max_drawdown_dollars": 2.7,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -697.8135,
+                "avg_pnl_points": -99.6876
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.92,
+                "avg_pnl_dollars": -0.42,
+                "max_drawdown_dollars": 2.92,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -756.2948,
+                "avg_pnl_points": -108.0421
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-2.92 ≤ control_pnl=-2.70 (kept)"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -3.82,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 4.64,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -949.3326,
+                "avg_pnl_points": -43.1515
+              },
+              "sharpe": -0.3438,
+              "profit_factor": 0.42,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.2016705245478079
+                },
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 2.561367391026579
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.7,
+                "avg_pnl_dollars": -0.39,
+                "max_drawdown_dollars": 2.7,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -697.8135,
+                "avg_pnl_points": -99.6876
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.18,
+                "avg_pnl_dollars": -0.31,
+                "max_drawdown_dollars": 2.18,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -561.982,
+                "avg_pnl_points": -80.2831
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-2.18 > control_pnl=-2.70"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.561367391026579,
+                "atr_stop_multiple": 1.2016705245478079,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -2.49,
+                "avg_pnl_dollars": -0.11,
+                "max_drawdown_dollars": 3.71,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -621.8718,
+                "avg_pnl_points": -28.2669
+              },
+              "sharpe": -0.236,
+              "profit_factor": 0.52,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.2016705245478079,
+                  "proposed_value": 1.1204256346287025
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 165.7164299627766
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.18,
+                "avg_pnl_dollars": -0.31,
+                "max_drawdown_dollars": 2.18,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -561.982,
+                "avg_pnl_points": -80.2831
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.03,
+                "avg_pnl_dollars": -0.29,
+                "max_drawdown_dollars": 2.03,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -525.11,
+                "avg_pnl_points": -75.0157
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-2.03 > control_pnl=-2.18"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.561367391026579,
+                "atr_stop_multiple": 1.1204256346287025,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 165.7164299627766
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -2.15,
+                "avg_pnl_dollars": -0.1,
+                "max_drawdown_dollars": 3.46,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -533.052,
+                "avg_pnl_points": -24.2296
+              },
+              "sharpe": -0.205,
+              "profit_factor": 0.56,
+              "proposed_changes": [
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 165.7164299627766,
+                  "proposed_value": 170.34719780029945
+                },
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.1204256346287025,
+                  "proposed_value": 0.9730764347059594
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -2.03,
+                "avg_pnl_dollars": -0.29,
+                "max_drawdown_dollars": 2.03,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -525.11,
+                "avg_pnl_points": -75.0157
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 0,
+                "losing_trades": 7,
+                "win_rate": 0,
+                "total_pnl_dollars": -1.78,
+                "avg_pnl_dollars": -0.25,
+                "max_drawdown_dollars": 1.78,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -458.2374,
+                "avg_pnl_points": -65.4625
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.78 > control_pnl=-2.03"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "strategy": {
+        "name": "sandy-s2-short",
+        "starting_version": 1
+      },
+      "in_sample_window": {
+        "start_date": "2026-04-16",
+        "end_date": "2026-06-09"
+      },
+      "forward_window": {
+        "start_date": "2026-06-10",
+        "end_date": "2026-06-23"
+      },
+      "arms": [
+        {
+          "arm": "llm",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            }
+          ]
+        },
+        {
+          "arm": "random",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 3.4385497252224013
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 242.1727105975151
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 2,
+                "losing_trades": 7,
+                "win_rate": 0.2222,
+                "total_pnl_dollars": -0.7,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -187.4374,
+                "avg_pnl_points": -20.8264
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 2,
+                "losing_trades": 7,
+                "win_rate": 0.2222,
+                "total_pnl_dollars": -0.71,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 2.5,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -188.3145,
+                "avg_pnl_points": -20.9238
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-0.71 ≤ control_pnl=-0.70 (kept)"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.6288598937098868
+                },
+                {
+                  "name": "atr_tp_multiple",
+                  "current_value": 5,
+                  "proposed_value": 4.3963280017487705
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 2,
+                "losing_trades": 7,
+                "win_rate": 0.2222,
+                "total_pnl_dollars": -0.7,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -187.4374,
+                "avg_pnl_points": -20.8264
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 2,
+                "losing_trades": 7,
+                "win_rate": 0.2222,
+                "total_pnl_dollars": -1.16,
+                "avg_pnl_dollars": -0.13,
+                "max_drawdown_dollars": 2.73,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -307.8015,
+                "avg_pnl_points": -34.2002
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.16 ≤ control_pnl=-0.70 (kept)"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.2016705245478079
+                },
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 2.561367391026579
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 2,
+                "losing_trades": 7,
+                "win_rate": 0.2222,
+                "total_pnl_dollars": -0.7,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -187.4374,
+                "avg_pnl_points": -20.8264
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -0.99,
+                "avg_pnl_dollars": -0.11,
+                "max_drawdown_dollars": 2.78,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -263.432,
+                "avg_pnl_points": -29.2702
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-0.99 ≤ control_pnl=-0.70 (kept)"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.3985850677127019
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 165.7164299627766
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 2,
+                "losing_trades": 7,
+                "win_rate": 0.2222,
+                "total_pnl_dollars": -0.7,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -187.4374,
+                "avg_pnl_points": -20.8264
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.43,
+                "avg_pnl_dollars": -0.16,
+                "max_drawdown_dollars": 3.22,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -381.1411,
+                "avg_pnl_points": -42.349
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.43 ≤ control_pnl=-0.70 (kept)"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.9,
+                "avg_pnl_dollars": 0.04,
+                "max_drawdown_dollars": 4.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 226.6625,
+                "avg_pnl_points": 9.8549
+              },
+              "sharpe": 0.0606,
+              "profit_factor": 1.16,
+              "proposed_changes": [
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 205.5887854192406
+                },
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.3027322893613018
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 2,
+                "losing_trades": 7,
+                "win_rate": 0.2222,
+                "total_pnl_dollars": -0.7,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -187.4374,
+                "avg_pnl_points": -20.8264
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.21,
+                "avg_pnl_dollars": -0.13,
+                "max_drawdown_dollars": 3,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -324.0568,
+                "avg_pnl_points": -36.0063
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.21 ≤ control_pnl=-0.70 (kept)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "strategy": {
+        "name": "sandy-s2-long-v2",
+        "starting_version": 1
+      },
+      "in_sample_window": {
+        "start_date": "2026-04-16",
+        "end_date": "2026-06-09"
+      },
+      "forward_window": {
+        "start_date": "2026-06-10",
+        "end_date": "2026-06-23"
+      },
+      "arms": [
+        {
+          "arm": "llm",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -2.76,
+                "avg_pnl_dollars": -0.13,
+                "max_drawdown_dollars": 3.59,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -686.726,
+                "avg_pnl_points": -31.2148
+              },
+              "sharpe": -0.2556,
+              "profit_factor": 0.49,
+              "proposed_changes": [
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 2.25
+                },
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.13
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.78,
+                "avg_pnl_dollars": -0.25,
+                "max_drawdown_dollars": 1.79,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -460.4597,
+                "avg_pnl_points": -65.78
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.51,
+                "avg_pnl_dollars": -0.22,
+                "max_drawdown_dollars": 1.52,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -390.9564,
+                "avg_pnl_points": -55.8509
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.51 > control_pnl=-1.78"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.25,
+                "atr_stop_multiple": 1.13,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -1.77,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 3,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -436.7437,
+                "avg_pnl_points": -19.852
+              },
+              "sharpe": -0.1698,
+              "profit_factor": 0.6,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.25,
+                "atr_stop_multiple": 1.13,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -1.77,
+                "avg_pnl_dollars": -0.08,
+                "max_drawdown_dollars": 3,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -436.7437,
+                "avg_pnl_points": -19.852
+              },
+              "sharpe": -0.1698,
+              "profit_factor": 0.6,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.13,
+                  "proposed_value": 0.85
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.51,
+                "avg_pnl_dollars": -0.22,
+                "max_drawdown_dollars": 1.52,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -390.9564,
+                "avg_pnl_points": -55.8509
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.22,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 1.23,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -313.6382,
+                "avg_pnl_points": -44.8055
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.22 > control_pnl=-1.51"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.25,
+                "atr_stop_multiple": 0.85,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 2,
+                "losing_trades": 20,
+                "win_rate": 0.0909,
+                "total_pnl_dollars": -2.68,
+                "avg_pnl_dollars": -0.12,
+                "max_drawdown_dollars": 3.47,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -655.2417,
+                "avg_pnl_points": -29.7837
+              },
+              "sharpe": -0.4187,
+              "profit_factor": 0.3,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 0.85,
+                  "proposed_value": 0.64
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.22,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 1.23,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -313.6382,
+                "avg_pnl_points": -44.8055
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1,
+                "avg_pnl_dollars": -0.14,
+                "max_drawdown_dollars": 1.01,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -259.9399,
+                "avg_pnl_points": -37.1343
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.00 > control_pnl=-1.22"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.25,
+                "atr_stop_multiple": 0.64,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 2,
+                "losing_trades": 20,
+                "win_rate": 0.0909,
+                "total_pnl_dollars": -1.88,
+                "avg_pnl_dollars": -0.09,
+                "max_drawdown_dollars": 2.75,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -465.5228,
+                "avg_pnl_points": -21.1601
+              },
+              "sharpe": -0.3107,
+              "profit_factor": 0.38,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            }
+          ]
+        },
+        {
+          "arm": "random",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -2.76,
+                "avg_pnl_dollars": -0.13,
+                "max_drawdown_dollars": 3.59,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -686.726,
+                "avg_pnl_points": -31.2148
+              },
+              "sharpe": -0.2556,
+              "profit_factor": 0.49,
+              "proposed_changes": [
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 3.4385497252224013
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 242.1727105975151
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.78,
+                "avg_pnl_dollars": -0.25,
+                "max_drawdown_dollars": 1.79,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -460.4597,
+                "avg_pnl_points": -65.78
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.79,
+                "avg_pnl_dollars": -0.26,
+                "max_drawdown_dollars": 1.8,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -463.0908,
+                "avg_pnl_points": -66.1558
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.79 ≤ control_pnl=-1.78 (kept)"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 3,
+                "losing_trades": 19,
+                "win_rate": 0.1364,
+                "total_pnl_dollars": -2.76,
+                "avg_pnl_dollars": -0.13,
+                "max_drawdown_dollars": 3.59,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -686.726,
+                "avg_pnl_points": -31.2148
+              },
+              "sharpe": -0.2556,
+              "profit_factor": 0.49,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.6288598937098868
+                },
+                {
+                  "name": "atr_tp_ceiling_multiple",
+                  "current_value": 5,
+                  "proposed_value": 4.3963280017487705
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.78,
+                "avg_pnl_dollars": -0.25,
+                "max_drawdown_dollars": 1.79,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -460.4597,
+                "avg_pnl_points": -65.78
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.64,
+                "avg_pnl_dollars": -0.23,
+                "max_drawdown_dollars": 1.65,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -425.3595,
+                "avg_pnl_points": -60.7656
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.64 > control_pnl=-1.78"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.6288598937098868,
+                "atr_tp_ceiling_multiple": 4.3963280017487705,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 4,
+                "losing_trades": 18,
+                "win_rate": 0.1818,
+                "total_pnl_dollars": -2.33,
+                "avg_pnl_dollars": -0.11,
+                "max_drawdown_dollars": 2.79,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -585.9451,
+                "avg_pnl_points": -26.6339
+              },
+              "sharpe": -0.2223,
+              "profit_factor": 0.57,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.6288598937098868,
+                  "proposed_value": 1.3049019485928308
+                },
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 2.561367391026579
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.64,
+                "avg_pnl_dollars": -0.23,
+                "max_drawdown_dollars": 1.65,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -425.3595,
+                "avg_pnl_points": -60.7656
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.7,
+                "avg_pnl_dollars": -0.24,
+                "max_drawdown_dollars": 1.71,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -440.1875,
+                "avg_pnl_points": -62.8839
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.70 ≤ control_pnl=-1.64 (kept)"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.6288598937098868,
+                "atr_tp_ceiling_multiple": 4.3963280017487705,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 4,
+                "losing_trades": 18,
+                "win_rate": 0.1818,
+                "total_pnl_dollars": -2.33,
+                "avg_pnl_dollars": -0.11,
+                "max_drawdown_dollars": 2.79,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -585.9451,
+                "avg_pnl_points": -26.6339
+              },
+              "sharpe": -0.2223,
+              "profit_factor": 0.57,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.6288598937098868,
+                  "proposed_value": 1.518732749825831
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 165.7164299627766
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.64,
+                "avg_pnl_dollars": -0.23,
+                "max_drawdown_dollars": 1.65,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -425.3595,
+                "avg_pnl_points": -60.7656
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.79,
+                "avg_pnl_dollars": -0.26,
+                "max_drawdown_dollars": 1.8,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -462.1388,
+                "avg_pnl_points": -66.0198
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.79 ≤ control_pnl=-1.64 (kept)"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.6288598937098868,
+                "atr_tp_ceiling_multiple": 4.3963280017487705,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 22,
+                "winning_trades": 4,
+                "losing_trades": 18,
+                "win_rate": 0.1818,
+                "total_pnl_dollars": -2.33,
+                "avg_pnl_dollars": -0.11,
+                "max_drawdown_dollars": 2.79,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -585.9451,
+                "avg_pnl_points": -26.6339
+              },
+              "sharpe": -0.2223,
+              "profit_factor": 0.57,
+              "proposed_changes": [
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 205.5887854192406
+                },
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.6288598937098868,
+                  "proposed_value": 1.4146455855876583
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.64,
+                "avg_pnl_dollars": -0.23,
+                "max_drawdown_dollars": 1.65,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -425.3595,
+                "avg_pnl_points": -60.7656
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 7,
+                "winning_trades": 1,
+                "losing_trades": 6,
+                "win_rate": 0.1429,
+                "total_pnl_dollars": -1.75,
+                "avg_pnl_dollars": -0.25,
+                "max_drawdown_dollars": 1.76,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -452.809,
+                "avg_pnl_points": -64.687
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.75 ≤ control_pnl=-1.64 (kept)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "strategy": {
+        "name": "sandy-s2-short-v2",
+        "starting_version": 1
+      },
+      "in_sample_window": {
+        "start_date": "2026-04-16",
+        "end_date": "2026-06-09"
+      },
+      "forward_window": {
+        "start_date": "2026-06-10",
+        "end_date": "2026-06-23"
+      },
+      "arms": [
+        {
+          "arm": "llm",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [],
+              "forward_window": null,
+              "forward_control_stats": null,
+              "forward_treatment_stats": null,
+              "promoted": false,
+              "promote_reason": "no proposed_changes"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.875
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.93,
+                "avg_pnl_dollars": -0.21,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -499.3794,
+                "avg_pnl_points": -55.4866
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.93,
+                "avg_pnl_dollars": -0.21,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -496.9406,
+                "avg_pnl_points": -55.2156
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.93 ≤ control_pnl=-1.93 (kept)"
+            }
+          ]
+        },
+        {
+          "arm": "random",
+          "iterations": [
+            {
+              "iteration": 1,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 3.4385497252224013
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 242.1727105975151
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.93,
+                "avg_pnl_dollars": -0.21,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -499.3794,
+                "avg_pnl_points": -55.4866
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.98,
+                "avg_pnl_dollars": -0.22,
+                "max_drawdown_dollars": 2.54,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -512.9408,
+                "avg_pnl_points": -56.9934
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.98 ≤ control_pnl=-1.93 (kept)"
+            },
+            {
+              "iteration": 2,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.6288598937098868
+                },
+                {
+                  "name": "atr_tp_ceiling_multiple",
+                  "current_value": 5,
+                  "proposed_value": 4.3963280017487705
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.93,
+                "avg_pnl_dollars": -0.21,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -499.3794,
+                "avg_pnl_points": -55.4866
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.93,
+                "avg_pnl_dollars": -0.21,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -496.9052,
+                "avg_pnl_points": -55.2117
+              },
+              "promoted": false,
+              "promote_reason": "treatment_pnl=-1.93 ≤ control_pnl=-1.93 (kept)"
+            },
+            {
+              "iteration": 3,
+              "body_snapshot_params": {
+                "entry_buffer_points": 3,
+                "atr_stop_multiple": 1.5,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": -0.01,
+                "avg_pnl_dollars": 0,
+                "max_drawdown_dollars": 2.63,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 5.4366,
+                "avg_pnl_points": 0.2364
+              },
+              "sharpe": 0.0019,
+              "profit_factor": 1,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.5,
+                  "proposed_value": 1.2016705245478079
+                },
+                {
+                  "name": "entry_buffer_points",
+                  "current_value": 3,
+                  "proposed_value": 2.561367391026579
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.93,
+                "avg_pnl_dollars": -0.21,
+                "max_drawdown_dollars": 2.49,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -499.3794,
+                "avg_pnl_points": -55.4866
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.62,
+                "avg_pnl_dollars": -0.18,
+                "max_drawdown_dollars": 2.18,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -419.7338,
+                "avg_pnl_points": -46.6371
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.62 > control_pnl=-1.93"
+            },
+            {
+              "iteration": 4,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.561367391026579,
+                "atr_stop_multiple": 1.2016705245478079,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 200
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.38,
+                "avg_pnl_dollars": 0.02,
+                "max_drawdown_dollars": 2.31,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 105.1553,
+                "avg_pnl_points": 4.572
+              },
+              "sharpe": 0.0371,
+              "profit_factor": 1.11,
+              "proposed_changes": [
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.2016705245478079,
+                  "proposed_value": 1.1204256346287025
+                },
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 200,
+                  "proposed_value": 165.7164299627766
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.62,
+                "avg_pnl_dollars": -0.18,
+                "max_drawdown_dollars": 2.18,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -419.7338,
+                "avg_pnl_points": -46.6371
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.55,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 2.11,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -403.0043,
+                "avg_pnl_points": -44.7783
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.55 > control_pnl=-1.62"
+            },
+            {
+              "iteration": 5,
+              "body_snapshot_params": {
+                "entry_buffer_points": 2.561367391026579,
+                "atr_stop_multiple": 1.1204256346287025,
+                "atr_tp_ceiling_multiple": 5,
+                "notional_per_trade": 165.7164299627766
+              },
+              "in_sample_stats": {
+                "total_bars": 2606,
+                "total_trades": 23,
+                "winning_trades": 7,
+                "losing_trades": 16,
+                "win_rate": 0.3043,
+                "total_pnl_dollars": 0.48,
+                "avg_pnl_dollars": 0.02,
+                "max_drawdown_dollars": 2.23,
+                "total_friction_dollars": 0,
+                "total_pnl_points": 126.3233,
+                "avg_pnl_points": 5.4923
+              },
+              "sharpe": 0.0449,
+              "profit_factor": 1.14,
+              "proposed_changes": [
+                {
+                  "name": "notional_per_trade",
+                  "current_value": 165.7164299627766,
+                  "proposed_value": 170.34719780029945
+                },
+                {
+                  "name": "atr_stop_multiple",
+                  "current_value": 1.1204256346287025,
+                  "proposed_value": 0.9730764347059594
+                }
+              ],
+              "forward_window": {
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-23"
+              },
+              "forward_control_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.55,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 2.11,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -403.0043,
+                "avg_pnl_points": -44.7783
+              },
+              "forward_treatment_stats": {
+                "total_bars": 756,
+                "total_trades": 9,
+                "winning_trades": 1,
+                "losing_trades": 8,
+                "win_rate": 0.1111,
+                "total_pnl_dollars": -1.54,
+                "avg_pnl_dollars": -0.17,
+                "max_drawdown_dollars": 2.1,
+                "total_friction_dollars": 0,
+                "total_pnl_points": -396.7708,
+                "avg_pnl_points": -44.0856
+              },
+              "promoted": true,
+              "promote_reason": "treatment_pnl=-1.54 > control_pnl=-1.55"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
