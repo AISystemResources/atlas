@@ -119,15 +119,15 @@ const WRITE_TOOL_NAMES = new Set([
   "update_settings",
   // Ticket Logic write tools (Sprint 066) + create (Sprint 073)
   "run_ticket_backtest",
-  "run_distillation",
   "promote_ticket_logic_version",
   "fork_ticket_logic",
   "create_ticket_logic",
-  // Sprint 079C.2: external LLM submits its own distillation
+  // Sprint 079C.2 + Sprint 095: MCP-only distillation. Connected client
+  // (Claude / ChatGPT) reads via get_backtest_for_distillation and posts
+  // its analysis back here.
   "submit_distillation_insight",
-  // Sprint 081B: paper → strategy extraction
+  // Sprint 081A: arXiv ingestion
   "fetch_papers",
-  "extract_strategy_from_paper",
 ]);
 
 async function handleToolCall(

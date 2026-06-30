@@ -16,9 +16,10 @@ const NAV_ITEMS = [
   { path: "/admin/users",           label: "Users",          short: "US" },
   { path: "/admin/invites",         label: "Invites",        short: "IV" },
   { path: "/admin/roles",           label: "Roles",          short: "RL" },
-  // Archived legacy surfaces — superadmin access only
-  { path: "/admin/backtesting",     label: "Backtesting 1",  short: "B1" },
-  { path: "/dashboard/backtests",   label: "Backtesting 2",  short: "B2" },
+  // Archived legacy surface — superadmin access only.
+  // Sprint 095 removed "Backtesting 1" (multi-agent pipeline UI that
+  // depended on the now-deleted server-side LLM layer).
+  { path: "/dashboard/backtests",   label: "Backtests",      short: "BT" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
