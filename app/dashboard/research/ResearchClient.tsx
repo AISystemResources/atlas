@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTier } from "../DashboardShell";
 
 interface Paper {
   id: string;
@@ -12,6 +13,8 @@ interface Paper {
 }
 
 function PaperCard({ paper }: { paper: Paper }) {
+  const tier = useTier();
+  const isPro = tier === "pro";
   const [copied, setCopied] = useState(false);
 
   async function copyPrompt() {
@@ -70,18 +73,36 @@ Paper UUID for reference: ${paper.id}`;
         </div>
 
         <div className="shrink-0">
-          <button
-            onClick={copyPrompt}
-            className="text-xs px-3 py-1.5 rounded-md border transition-colors"
-            style={{
-              borderColor: "var(--brand)",
-              color: "var(--brand)",
-              background: "transparent",
-            }}
-            title="Copy a ready-to-paste prompt for Claude/ChatGPT (via the Atlas MCP)"
-          >
-            {copied ? "Copied ✓" : "Copy MCP prompt"}
-          </button>
+          {isPro ? (
+            <button
+              onClick={copyPrompt}
+              className="text-xs px-3 py-1.5 rounded-md border transition-colors"
+              style={{
+                borderColor: "var(--brand)",
+                color: "var(--brand)",
+                background: "transparent",
+              }}
+              title="Copy a ready-to-paste prompt for Claude/ChatGPT (via the Atlas MCP)"
+            >
+              {copied ? "Copied ✓" : "Copy MCP prompt"}
+            </button>
+          ) : (
+            <a
+              href={paper.source_url ?? "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-3 py-1.5 rounded-md border transition-colors inline-block"
+              style={{
+                borderColor: "var(--line)",
+                color: "var(--ghost)",
+                background: "transparent",
+                textDecoration: "none",
+              }}
+              title="Pro tier can extract strategies from papers via MCP. View the source paper instead."
+            >
+              View paper ↗
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -89,6 +110,8 @@ Paper UUID for reference: ${paper.id}`;
 }
 
 export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
+  const tier = useTier();
+  const isPro = tier === "pro";
   const [papers, setPapers] = useState<Paper[]>(initialPapers);
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
@@ -124,7 +147,9 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
             Research
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>
-            Browse trading-research papers and extract strategies via your connected MCP client
+            {isPro
+              ? "Browse trading-research papers and extract strategies via your connected MCP client"
+              : "Browse the trading research underlying public strategies in the library"}
           </p>
         </div>
         <button
@@ -151,16 +176,34 @@ export function ResearchClient({ initialPapers }: { initialPapers: Paper[] }) {
         className="rounded-md p-3 mb-4 text-xs"
         style={{ background: "var(--elevated)", color: "var(--dim)" }}
       >
-        Atlas runs no server-side LLM. Click <em>Copy MCP prompt</em> on a paper to grab a
-        ready-to-paste extraction prompt, then run it from Claude / ChatGPT connected via the{" "}
-        <a
-          href="/dashboard/settings"
-          className="underline"
-          style={{ color: "var(--brand)" }}
-        >
-          Atlas MCP
-        </a>
-        .
+        {isPro ? (
+          <>
+            Atlas runs no server-side LLM. Click <em>Copy MCP prompt</em> on a paper to grab a
+            ready-to-paste extraction prompt, then run it from Claude / ChatGPT connected via the{" "}
+            <a
+              href="/dashboard/settings"
+              className="underline"
+              style={{ color: "var(--brand)" }}
+            >
+              Atlas MCP
+            </a>
+            .
+          </>
+        ) : (
+          <>
+            This is the provenance trail for strategies in your library. Atlas Pro users author
+            strategies from these papers via their connected LLM (Claude / ChatGPT) — the resulting
+            strategies appear as public artefacts you can fork and trade.{" "}
+            <a
+              href="/pricing"
+              className="underline"
+              style={{ color: "var(--brand)" }}
+            >
+              Upgrade to Pro
+            </a>{" "}
+            to extract strategies yourself.
+          </>
+        )}
       </div>
 
       {papers.length === 0 ? (

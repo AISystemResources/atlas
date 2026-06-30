@@ -12,7 +12,7 @@ export function PortfolioPageClient({
   pendingCount,
   recentTrades,
 }: {
-  tier: "free" | "pro" | "max";
+  tier: "free" | "pro";
   strategies: StrategyHealth[];
   pendingCount: number;
   recentTrades: BacktestTradeLite[];
