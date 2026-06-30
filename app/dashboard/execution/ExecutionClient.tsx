@@ -3,8 +3,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   BASE_MAINNET,
-  GTRADE_DIAMOND_BASE,
-  USDC_BASE,
   USDC_DECIMALS,
   ensureBaseMainnet,
   isOnBase,
@@ -340,19 +338,31 @@ export function ExecutionClient() {
     gtradeOpenPrice <= 0;
 
   return (
-    <div className="mx-auto" style={{ maxWidth: 720 }}>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: "var(--ink)" }}>
+    <div
+      className="flex flex-col w-full h-full"
+      style={{ maxWidth: 1100, margin: "0 auto", minHeight: 0 }}
+    >
+      {/* Compact header — Sprint 104: single-viewport layout */}
+      <div className="mb-3 shrink-0">
+        <h1 className="text-xl md:text-2xl font-bold" style={{ color: "var(--ink)" }}>
           Execution
         </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>
-          Evaluate live signals and submit on-chain trades via gTrade on Base mainnet
+        <p className="text-xs md:text-sm" style={{ color: "var(--dim)" }}>
+          Live signal → on-chain trade on Base mainnet via gTrade
         </p>
       </div>
 
+      {/* Two-column body — desktop: Wallet rail + Signal/Trade stack.
+          Each column scrolls internally so the page itself doesn't. */}
+      <div className="flex flex-col md:flex-row gap-3 flex-1 min-h-0">
+        {/* Left rail: Wallet */}
+        <aside
+          className="md:w-[320px] md:shrink-0 flex flex-col gap-3 md:overflow-y-auto pb-2 md:pb-0"
+        >
+
       {/* Wallet connection card */}
       <div
-        className="rounded-lg p-5 border mb-5"
+        className="rounded-lg p-4 border"
         style={{ borderColor: "var(--line)", background: "var(--surface)" }}
       >
         <div className="flex items-center justify-between mb-3">
@@ -470,9 +480,14 @@ export function ExecutionClient() {
         )}
       </div>
 
+        </aside>
+
+        {/* Right column: Signal + Trade — scrolls internally */}
+        <section className="flex-1 flex flex-col gap-3 md:overflow-y-auto min-h-0 pb-2 md:pb-0">
+
       {/* Live signal evaluator */}
       <div
-        className="rounded-lg p-5 border mb-5"
+        className="rounded-lg p-4 border"
         style={{ borderColor: "var(--line)", background: "var(--surface)" }}
       >
         <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--ink)" }}>
@@ -588,7 +603,7 @@ export function ExecutionClient() {
       {/* Trade panel — visible when signal is BUY or SELL */}
       {signal && signal.signal !== "HOLD" && (
         <div
-          className="rounded-lg p-5 border mb-5"
+          className="rounded-lg p-4 border"
           style={{ borderColor: "var(--line)", background: "var(--surface)" }}
         >
           <div className="flex items-center justify-between mb-3">
@@ -799,62 +814,7 @@ export function ExecutionClient() {
         </div>
       )}
 
-      {/* gTrade info card */}
-      <div
-        className="rounded-lg p-5 border mb-5"
-        style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-      >
-        <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--ink)" }}>
-          gTrade (Gains Network)
-        </h2>
-        <div className="flex flex-col gap-2 text-xs" style={{ color: "var(--dim)" }}>
-          <p>
-            Decentralised CFD perpetuals on Base mainnet. Trade DIA (Dow Jones tracker), crypto,
-            forex, and indices using native USDC as collateral. No KYC, no account required.
-          </p>
-          <div
-            className="rounded p-2 mt-1 font-mono text-xs"
-            style={{ background: "var(--elevated)", color: "var(--dim)" }}
-          >
-            Trading contract: {GTRADE_DIAMOND_BASE.slice(0, 10)}…{GTRADE_DIAMOND_BASE.slice(-8)}
-            <br />
-            USDC (Base): {USDC_BASE.slice(0, 10)}…{USDC_BASE.slice(-8)}
-          </div>
-          <div className="flex flex-wrap gap-3 mt-2">
-            <a
-              href="https://gains.trade"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-              style={{ color: "var(--brand)" }}
-            >
-              gains.trade ↗
-            </a>
-            <a
-              href="https://basescan.org"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-              style={{ color: "var(--brand)" }}
-            >
-              Basescan ↗
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {/* Positions placeholder */}
-      <div
-        className="rounded-lg p-8 border text-center"
-        style={{ borderColor: "var(--line)", borderStyle: "dashed" }}
-      >
-        <p className="text-sm font-medium mb-1" style={{ color: "var(--ghost)" }}>
-          No open positions
-        </p>
-        <p className="text-xs" style={{ color: "var(--ghost)" }}>
-          gTrade on-chain positions tracking is a future enhancement.{" "}
-          {!wallet && "Connect your wallet to get started."}
-        </p>
+        </section>
       </div>
     </div>
   );
