@@ -18,6 +18,8 @@ interface StrategyRow {
   version: number;
   parent_version_id: string | null;
   forked_from_id: string | null;
+  parent_paper_id: string | null;
+  created_by: string;
   description: string;
   status: "draft" | "active" | "archived";
   visibility: "private" | "unlisted" | "public";
@@ -56,7 +58,7 @@ export default async function StrategiesPage() {
   const { data: rows } = await sb
     .from("ticket_logics")
     .select(
-      "id, name, version, parent_version_id, forked_from_id, description, status, visibility, created_by_user_id, created_at, ticker, tags",
+      "id, name, version, parent_version_id, forked_from_id, parent_paper_id, created_by, description, status, visibility, created_by_user_id, created_at, ticker, tags",
     )
     .or(orClauses.join(","))
     .neq("status", "archived")
@@ -101,6 +103,45 @@ export default async function StrategiesPage() {
     (profile as { scalper_strategy_id: string | null } | null)
       ?.scalper_strategy_id ?? null;
 
+  // Sprint 102: enrich rows with provenance — paper title for paper-extracted
+  // strategies, source strategy name for forks. Two batched lookups so the
+  // card can render "From arXiv: <title>" / "Forked from <name>" directly.
+  const paperIdsForLookup = [
+    ...new Set(
+      latest.map((s) => s.parent_paper_id).filter((v): v is string => v != null),
+    ),
+  ];
+  const paperTitleMap = new Map<string, string>();
+  if (paperIdsForLookup.length > 0) {
+    try {
+      const { data: paperRows } = await sb
+        .from("signal_papers")
+        .select("id, title")
+        .in("id", paperIdsForLookup);
+      for (const p of (paperRows ?? []) as { id: string; title: string }[]) {
+        paperTitleMap.set(p.id, p.title);
+      }
+    } catch {
+      // signal_papers may not exist in older envs — degrade gracefully
+    }
+  }
+
+  const forkIdsForLookup = [
+    ...new Set(
+      latest.map((s) => s.forked_from_id).filter((v): v is string => v != null),
+    ),
+  ];
+  const forkSourceMap = new Map<string, string>();
+  if (forkIdsForLookup.length > 0) {
+    const { data: forkRows } = await sb
+      .from("ticket_logics")
+      .select("id, name")
+      .in("id", forkIdsForLookup);
+    for (const f of (forkRows ?? []) as { id: string; name: string }[]) {
+      forkSourceMap.set(f.id, f.name);
+    }
+  }
+
   const cards: StrategyCard[] = latest.map((s) => {
     const bt = latestBtMap.get(s.id);
     return {
@@ -111,6 +152,10 @@ export default async function StrategiesPage() {
       visibility: s.visibility,
       status: s.status,
       forked_from_id: s.forked_from_id,
+      fork_source_name: s.forked_from_id ? forkSourceMap.get(s.forked_from_id) ?? null : null,
+      parent_paper_id: s.parent_paper_id,
+      parent_paper_title: s.parent_paper_id ? paperTitleMap.get(s.parent_paper_id) ?? null : null,
+      created_by: s.created_by,
       is_mine: s.created_by_user_id === userId,
       owner_label: s.created_by_user_id === userId ? "you" : truncateUser(s.created_by_user_id),
       backtest_count: backtestCounts.get(s.id) ?? 0,
