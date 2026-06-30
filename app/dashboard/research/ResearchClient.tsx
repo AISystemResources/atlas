@@ -9,7 +9,7 @@ interface Paper {
   source: string;
   source_url: string | null;
   abstract: string | null;
-  created_at: string;
+  ingested_at: string;
 }
 
 interface ExtractResult {
