@@ -141,13 +141,47 @@ interface EthereumProvider {
 
 // ─── Network helpers ──────────────────────────────────────────────────────────
 
+/**
+ * Normalise a chainId value to a canonical lowercase hex string.
+ *
+ * Sprint 104D: EIP-1193 says `eth_chainId` MUST return a hex string like
+ * "0x2105". In practice we've seen:
+ *   - MetaMask: "0x2105"          → keep
+ *   - Coinbase Smart Wallet: "8453" (decimal string) or 8453 (number)
+ *   - Some wallets: "0X2105"      → lowercase
+ *   - Rare: "2105" (decimal string that LOOKS like hex — treat as decimal
+ *     since standard hex chainIds carry a 0x prefix)
+ *
+ * Returning null lets callers apply their own fallback (e.g. assume Base
+ * for Smart Wallet, since the SDK is Base-locked by design).
+ */
+export function normalizeChainId(v: unknown): string | null {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return `0x${v.toString(16)}`;
+  }
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    if (trimmed.length === 0) return null;
+    if (/^0x[0-9a-f]+$/i.test(trimmed)) return trimmed.toLowerCase();
+    if (/^\d+$/.test(trimmed)) return `0x${parseInt(trimmed, 10).toString(16)}`;
+  }
+  return null;
+}
+
 export async function getCurrentChainId(eth: EthereumProvider): Promise<string> {
-  return (await eth.request({ method: "eth_chainId" })) as string;
+  const raw = await eth.request({ method: "eth_chainId" });
+  const normalized = normalizeChainId(raw);
+  if (!normalized) {
+    throw new Error(
+      `Unexpected chainId shape from provider: ${JSON.stringify(raw)}`,
+    );
+  }
+  return normalized;
 }
 
 export async function isOnBase(eth: EthereumProvider): Promise<boolean> {
   const chainId = await getCurrentChainId(eth);
-  return chainId.toLowerCase() === BASE_MAINNET.chainId;
+  return chainId === BASE_MAINNET.chainId;
 }
 
 /**
