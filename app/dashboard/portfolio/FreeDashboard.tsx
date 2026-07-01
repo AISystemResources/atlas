@@ -279,7 +279,7 @@ function HowItWorks() {
     {
       n: "2",
       title: "Connect",
-      body: "Sign in with a Base Smart Wallet (email) or MetaMask — no key handover.",
+      body: "Connect MetaMask or Coinbase Wallet on Base — no key handover.",
     },
     {
       n: "3",
