@@ -42,6 +42,8 @@ interface Strategy {
   status: string;
 }
 
+import { PriceChart, type ChartBar } from "./PriceChart";
+
 interface SignalResult {
   // Sprint 104B: aligned with CFD trading vocabulary. null = no setup
   // currently active (no badge rendered, no entry/TP/SL shown).
@@ -53,6 +55,8 @@ interface SignalResult {
   current_price: number | null;
   last_bar_ts: string | null;
   bars_evaluated: number;
+  // Sprint 107: last N OHLC bars for the chart panel.
+  chart_bars: ChartBar[];
   strategy: { id: string; name: string; version: number; ticker: string; timeframe: string };
 }
 
@@ -495,11 +499,26 @@ export function ExecutionClient() {
 
         {signal && (
           <div className="flex flex-col gap-3">
-            {/* Signal badge — only render when there's an actual trade signal.
-                Sprint 104B: a null signal means "no setup currently active",
-                which is the absence of a trade, not a trade state. */}
+            {/* Sprint 107: candlestick chart. When a signal is live, the
+                chart overlays entry/TP/SL as horizontal lines; when flat,
+                just the price context. */}
+            {signal.chart_bars.length > 0 && (
+              <PriceChart
+                bars={signal.chart_bars}
+                overlay={{
+                  entry: signal.entry_price,
+                  takeProfit: signal.take_profit,
+                  stopLoss: signal.stop_loss,
+                  direction: signal.direction,
+                }}
+                ticker={signal.strategy.ticker}
+                timeframe={signal.strategy.timeframe}
+              />
+            )}
+
             {signal.signal !== null ? (
               <>
+                {/* Signal badge */}
                 <div className="flex items-center justify-between">
                   <span className="text-xs" style={{ color: "var(--ghost)" }}>
                     Signal
@@ -512,13 +531,13 @@ export function ExecutionClient() {
                   </span>
                 </div>
 
-                {/* Price levels — full grid when a trade signal is active */}
+                {/* Numeric levels — precise reference for order entry. Chart
+                    shows them visually; this shows them exactly. */}
                 <div
-                  className="rounded-md p-3 grid grid-cols-2 gap-2"
+                  className="rounded-md p-3 grid grid-cols-3 gap-2"
                   style={{ background: "var(--elevated)" }}
                 >
                   {[
-                    ["Current price", signal.current_price],
                     ["Entry level", signal.entry_price],
                     ["Take profit", signal.take_profit],
                     ["Stop loss", signal.stop_loss],
@@ -540,38 +559,20 @@ export function ExecutionClient() {
                 </div>
               </>
             ) : (
-              // No-signal state: show current price only + a clear waiting message.
-              <>
-                <div
-                  className="rounded-md p-3 flex items-center justify-between"
-                  style={{ background: "var(--elevated)" }}
-                >
-                  <span className="text-xs" style={{ color: "var(--ghost)" }}>
-                    Current price
-                  </span>
-                  <span className="text-sm font-mono" style={{ color: "var(--ink)" }}>
-                    {signal.current_price != null
-                      ? Number(signal.current_price).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })
-                      : "—"}
-                  </span>
-                </div>
-                <p
-                  className="text-xs leading-relaxed px-1"
-                  style={{ color: "var(--dim)" }}
-                >
-                  No setup fired on the last bar. Strategy is sitting flat —
-                  check back next bar or pick a different strategy.
-                </p>
-              </>
+              // No-signal state: chart above already carries the price
+              // context, so this is just the waiting message.
+              <p
+                className="text-xs leading-relaxed px-1"
+                style={{ color: "var(--dim)" }}
+              >
+                No setup fired on the last bar. Strategy is sitting flat —
+                check back next bar or pick a different strategy.
+              </p>
             )}
 
             {/* Meta */}
             <p className="text-xs" style={{ color: "var(--ghost)" }}>
-              {signal.bars_evaluated.toLocaleString()} bars evaluated ·{" "}
-              {signal.strategy.ticker} {signal.strategy.timeframe}
+              {signal.bars_evaluated.toLocaleString()} bars evaluated
               {signal.last_bar_ts && (
                 <> · last bar {new Date(signal.last_bar_ts).toLocaleString()}</>
               )}
