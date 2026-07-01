@@ -56,7 +56,26 @@ interface SmartWalletConnectResult {
  * Trigger the email + passkey sign-in flow. Returns the connected provider
  * + first account address. The provider can then be passed to the gtrade.ts
  * helpers (readUsdcBalance, sendUsdcApprove, sendOpenTrade) directly.
+ *
+ * Sprint 104C: the Base Account SDK returns `accounts` as an array of
+ * objects (`{ address: "0x...", capabilities: { ... } }`) when the
+ * `signInWithEthereum` capability is used — NOT as an array of plain
+ * strings the way legacy EIP-1193 `eth_requestAccounts` does. Guard for
+ * both shapes so downstream `wallet.address.slice(0, 6)` renders (and
+ * every gTrade helper that treats address as a string) don't blow up.
  */
+type AccountEntry = string | { address: string; [key: string]: unknown };
+
+function extractAddress(entry: AccountEntry): string {
+  if (typeof entry === "string") return entry;
+  if (entry && typeof entry === "object" && typeof entry.address === "string") {
+    return entry.address;
+  }
+  throw new Error(
+    `Smart Wallet returned an unexpected account shape: ${JSON.stringify(entry)}`,
+  );
+}
+
 export async function connectSmartWallet(): Promise<SmartWalletConnectResult> {
   const provider = getSmartWalletProvider();
   const result = (await provider.request({
@@ -72,11 +91,11 @@ export async function connectSmartWallet(): Promise<SmartWalletConnectResult> {
         },
       },
     ],
-  })) as { accounts: string[] };
+  })) as { accounts: AccountEntry[] };
 
   if (!result.accounts || result.accounts.length === 0) {
     throw new Error("Smart Wallet did not return an account");
   }
 
-  return { provider, address: result.accounts[0] };
+  return { provider, address: extractAddress(result.accounts[0]) };
 }
