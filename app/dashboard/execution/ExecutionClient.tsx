@@ -15,7 +15,7 @@ import {
   positionSizeUsd,
   dollarsPerPoint,
 } from "@/lib/execution/gtrade";
-import { connectSmartWallet } from "@/lib/execution/smart-wallet";
+import { connectSmartWallet, tryReconnectSmartWallet } from "@/lib/execution/smart-wallet";
 
 declare global {
   interface Window {
@@ -102,29 +102,50 @@ export function ExecutionClient() {
   const [tradeStage, setTradeStage] = useState<TradeStage>({ kind: "idle" });
   const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
 
-  // Auto-reconnect to MetaMask if the user previously approved it.
-  // Smart Wallet doesn't auto-reconnect — users explicitly click "Sign in with Base".
+  // Sprint 104E: silently auto-reconnect on mount.
+  //   1. Try Smart Wallet first — it's the primary consumer path (Base is
+  //      the whole point of Sign in with Base), and its SDK persists the
+  //      session in IndexedDB. Silent reconnect returns null if there's
+  //      nothing stored, no UI triggered.
+  //   2. Fall back to MetaMask if window.ethereum has an already-approved
+  //      account. Chain gets normalised via normalizeChainId.
   useEffect(() => {
-    if (typeof window === "undefined" || !window.ethereum) return;
-    const eth = window.ethereum;
-    eth
-      .request({ method: "eth_accounts" })
-      .then((res) => {
-        const accounts = res as string[];
-        if (accounts.length > 0) {
-          eth.request({ method: "eth_chainId" }).then((c) => {
-            const chainId = normalizeChainId(c) ?? BASE_MAINNET.chainId;
-            setProvider(eth);
-            setWallet({
-              address: accounts[0],
-              chainId,
-              isOnBase: chainId === BASE_MAINNET.chainId,
-              kind: "metamask",
-            });
-          });
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
+    (async () => {
+      const smart = await tryReconnectSmartWallet();
+      if (cancelled) return;
+      if (smart) {
+        setProvider(smart.provider);
+        setWallet({
+          address: smart.address,
+          chainId: BASE_MAINNET.chainId,
+          isOnBase: true,
+          kind: "smart",
+        });
+        return;
+      }
+      if (typeof window === "undefined" || !window.ethereum) return;
+      const eth = window.ethereum;
+      try {
+        const accounts = (await eth.request({ method: "eth_accounts" })) as string[];
+        if (cancelled || accounts.length === 0) return;
+        const rawChain = await eth.request({ method: "eth_chainId" });
+        const chainId = normalizeChainId(rawChain) ?? BASE_MAINNET.chainId;
+        if (cancelled) return;
+        setProvider(eth);
+        setWallet({
+          address: accounts[0],
+          chainId,
+          isOnBase: chainId === BASE_MAINNET.chainId,
+          kind: "metamask",
+        });
+      } catch {
+        // Non-fatal — user can always click Connect / Sign in.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Pull USDC balance whenever the wallet is on Base.
@@ -191,16 +212,15 @@ export function ExecutionClient() {
     try {
       const { provider: sp, address } = await connectSmartWallet();
       setProvider(sp);
-      // Sprint 104C/D: Coinbase Smart Wallet's wallet_connect enforces
-      // Base via the signInWithEthereum capability. In practice the
-      // provider's eth_chainId can return a decimal string ("8453") or
-      // a number rather than a hex string, so normalise before compare.
-      const chainIdRaw = await sp.request({ method: "eth_chainId" }).catch(() => null);
-      const chainId = normalizeChainId(chainIdRaw) ?? BASE_MAINNET.chainId;
+      // Sprint 104E: Coinbase Smart Wallet is Base-locked by design — the
+      // signInWithEthereum capability we passed to wallet_connect pins
+      // the chain. The provider's eth_chainId can be flaky (returns
+      // decimal strings, sometimes empty, sometimes throws), so don't
+      // depend on it. Trust the SDK contract.
       setWallet({
         address,
-        chainId,
-        isOnBase: chainId === BASE_MAINNET.chainId,
+        chainId: BASE_MAINNET.chainId,
+        isOnBase: true,
         kind: "smart",
       });
     } catch (e: unknown) {

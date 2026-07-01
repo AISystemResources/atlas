@@ -99,3 +99,23 @@ export async function connectSmartWallet(): Promise<SmartWalletConnectResult> {
 
   return { provider, address: extractAddress(result.accounts[0]) };
 }
+
+/**
+ * Sprint 104E: silently check whether the user already has an active Smart
+ * Wallet session (persisted in browser storage by the Base Account SDK).
+ * Returns the provider + address if so, or null if there's no session —
+ * without triggering the sign-in UI. Call this on mount to auto-reconnect
+ * users who refreshed the page.
+ */
+export async function tryReconnectSmartWallet(): Promise<SmartWalletConnectResult | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const provider = getSmartWalletProvider();
+    const raw = await provider.request({ method: "eth_accounts" });
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const address = extractAddress(raw[0] as AccountEntry);
+    return { provider, address };
+  } catch {
+    return null;
+  }
+}
