@@ -44,6 +44,7 @@ interface Strategy {
 
 import { PriceChart, type ChartBar } from "./PriceChart";
 import { AutoExecutePanel } from "./AutoExecutePanel";
+import { RecentSignals } from "./RecentSignals";
 
 interface SignalResult {
   // Sprint 104B: aligned with CFD trading vocabulary. null = no setup
@@ -805,6 +806,10 @@ export function ExecutionClient() {
           )}
         </div>
       )}
+
+      {/* Sprint 109 Phase 3: recent signal events for the caller. Refreshes
+          every 30s so newly-detected auto-executions surface without reload. */}
+      <RecentSignals />
 
         </section>
       </div>

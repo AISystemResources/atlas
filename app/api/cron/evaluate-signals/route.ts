@@ -23,6 +23,7 @@ import { getServiceClient } from "@/lib/supabase-server";
 import { loadTicketLogicById } from "@/lib/strategies/loader";
 import { fetchHistoricalBarsCached } from "@/lib/backtest-ticket/fetch-bars-cached";
 import { evaluate } from "@/lib/strategies/evaluate";
+import { autoExecuteSignal } from "@/lib/execution/auto-trade-dispatcher";
 
 const DAYS_BACK: Record<string, number> = {
   "1m": 7,
@@ -101,12 +102,27 @@ async function handle(req: Request): Promise<Response> {
   const flat = outcomes.filter((o) => o.status === "flat").length;
   const errors = outcomes.filter((o) => o.status === "error").length;
 
+  // Sprint 109 Phase 3: after detection, try to auto-execute newly detected
+  // signals for users with an active spend permission. The dispatcher is
+  // idempotent (guards on signal_events.executed_at IS NULL) so redoing
+  // this pass on a re-run is safe.
+  let autoExecuted = 0;
+  let autoErrored = 0;
+  for (const o of outcomes) {
+    if (o.status !== "detected" || !o.event_id) continue;
+    const res = await autoExecuteSignal(o.event_id);
+    if (res === "executed") autoExecuted += 1;
+    else if (res === "errored") autoErrored += 1;
+  }
+
   return Response.json({
     ok: true,
     watched: watched.length,
     detected,
     flat,
     errors,
+    auto_executed: autoExecuted,
+    auto_errored: autoErrored,
     outcomes,
   });
 }

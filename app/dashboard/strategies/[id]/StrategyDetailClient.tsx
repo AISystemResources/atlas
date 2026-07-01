@@ -132,6 +132,8 @@ export interface StrategyDetail {
   paper_extracted: boolean;
   paper_source_url: string | null;
   shares: StrategyShareEntry[];
+  // Sprint 109 Phase 3: is this strategy in the caller's watched_strategies?
+  watched_by_me: boolean;
 }
 
 export function StrategyDetailClient({
@@ -151,6 +153,39 @@ export function StrategyDetailClient({
   const [forkBusy, setForkBusy] = useState(false);
   const [scalperBusy, setScalperBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  // Sprint 109 Phase 3: watch toggle. Optimistic local state; server call
+  // via /api/v1/watched-strategies.
+  const [watched, setWatched] = useState(detail.watched_by_me);
+  const [watchBusy, setWatchBusy] = useState(false);
+
+  async function onToggleWatch() {
+    setWatchBusy(true);
+    setActionMsg(null);
+    const prev = watched;
+    setWatched(!prev);
+    try {
+      const res = await (prev
+        ? fetch(
+            `/api/v1/watched-strategies?strategy_id=${encodeURIComponent(detail.id)}`,
+            { method: "DELETE" },
+          )
+        : fetch("/api/v1/watched-strategies", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ strategy_id: detail.id }),
+          }));
+      if (!res.ok) {
+        setWatched(prev); // revert
+        const j = (await res.json()) as { error?: string };
+        setActionMsg(j.error ?? "Watch toggle failed");
+      }
+    } catch {
+      setWatched(prev);
+      setActionMsg("Network error");
+    } finally {
+      setWatchBusy(false);
+    }
+  }
 
 
   async function onFork() {
@@ -266,6 +301,23 @@ export function StrategyDetailClient({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={onToggleWatch}
+            disabled={watchBusy}
+            className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50"
+            style={{
+              background: watched ? "var(--bull-bg)" : "transparent",
+              color: watched ? "var(--bull)" : "var(--ink)",
+              border: `1px solid ${watched ? "var(--bull)" : "var(--line)"}`,
+            }}
+            title={
+              watched
+                ? "Atlas is evaluating this every 5 min for live signals. Click to unwatch."
+                : "Get live signal notifications for this strategy."
+            }
+          >
+            {watchBusy ? "…" : watched ? "★ Watching" : "☆ Watch"}
+          </button>
           {!detail.is_mine && (detail.visibility !== "private" || detail.is_shared_with_me) && (
             <button
               onClick={onFork}
