@@ -114,6 +114,21 @@ export async function POST(req: Request): Promise<Response> {
     lastSignal !== null && lastSignal.bar_index >= bars.length - recencyWindow;
   const currentSignal = isRecent ? lastSignal : null;
 
+  // Sprint 107: attach the last N bars for client-side candlestick
+  // rendering. Cap at 120 to keep the payload small; that's ~10 hours of
+  // 5m bars, plenty of visual context for the "what's price doing" panel.
+  const CHART_BAR_COUNT = 120;
+  const chartBars = bars
+    .slice(-CHART_BAR_COUNT)
+    .map((b) => ({
+      time: b.timestamp ? Math.floor(new Date(b.timestamp).getTime() / 1000) : 0,
+      open: b.open ?? b.close, // fall back to close if source omitted open
+      high: b.high,
+      low: b.low,
+      close: b.close,
+    }))
+    .filter((b) => b.time > 0);
+
   return Response.json({
     signal: currentSignal
       ? currentSignal.direction === "long"
@@ -128,6 +143,7 @@ export async function POST(req: Request): Promise<Response> {
     last_bar_ts: lastBar.timestamp ?? null,
     bars_evaluated: bars.length,
     last_signal_bar_index: lastSignal?.bar_index ?? null,
+    chart_bars: chartBars,
     strategy: {
       id: logic.id,
       name: logic.name,
