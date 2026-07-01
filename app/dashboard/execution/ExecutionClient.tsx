@@ -15,7 +15,6 @@ import {
   positionSizeUsd,
   dollarsPerPoint,
 } from "@/lib/execution/gtrade";
-import { connectSmartWallet, tryReconnectSmartWallet } from "@/lib/execution/smart-wallet";
 
 declare global {
   interface Window {
@@ -29,13 +28,10 @@ interface EthereumProvider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 }
 
-type WalletKind = "metamask" | "smart";
-
 interface WalletState {
   address: string;
   chainId: string;
   isOnBase: boolean;
-  kind: WalletKind;
 }
 
 interface Strategy {
@@ -80,7 +76,7 @@ function scaleSignalToGtrade(signalTicker: string, signalPrice: number): number 
 export function ExecutionClient() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [provider, setProvider] = useState<EthereumProvider | null>(null);
-  const [connecting, setConnecting] = useState<WalletKind | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const [walletError, setWalletError] = useState("");
   const [switching, setSwitching] = useState(false);
 
@@ -102,30 +98,14 @@ export function ExecutionClient() {
   const [tradeStage, setTradeStage] = useState<TradeStage>({ kind: "idle" });
   const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
 
-  // Sprint 104E: silently auto-reconnect on mount.
-  //   1. Try Smart Wallet first — it's the primary consumer path (Base is
-  //      the whole point of Sign in with Base), and its SDK persists the
-  //      session in IndexedDB. Silent reconnect returns null if there's
-  //      nothing stored, no UI triggered.
-  //   2. Fall back to MetaMask if window.ethereum has an already-approved
-  //      account. Chain gets normalised via normalizeChainId.
+  // Sprint 106: browser wallet is the only path — silently reconnect on
+  // mount if the user previously approved the site. The Smart Wallet /
+  // Sign in with Base flow was removed as scope creep for the capstone.
   useEffect(() => {
+    if (typeof window === "undefined" || !window.ethereum) return;
+    const eth = window.ethereum;
     let cancelled = false;
     (async () => {
-      const smart = await tryReconnectSmartWallet();
-      if (cancelled) return;
-      if (smart) {
-        setProvider(smart.provider);
-        setWallet({
-          address: smart.address,
-          chainId: BASE_MAINNET.chainId,
-          isOnBase: true,
-          kind: "smart",
-        });
-        return;
-      }
-      if (typeof window === "undefined" || !window.ethereum) return;
-      const eth = window.ethereum;
       try {
         const accounts = (await eth.request({ method: "eth_accounts" })) as string[];
         if (cancelled || accounts.length === 0) return;
@@ -137,10 +117,9 @@ export function ExecutionClient() {
           address: accounts[0],
           chainId,
           isOnBase: chainId === BASE_MAINNET.chainId,
-          kind: "metamask",
         });
       } catch {
-        // Non-fatal — user can always click Connect / Sign in.
+        // Non-fatal — user can always click Connect.
       }
     })();
     return () => {
@@ -178,15 +157,15 @@ export function ExecutionClient() {
     loadStrategies();
   }, [loadStrategies]);
 
-  async function connectMetaMask() {
+  async function connectWallet() {
     if (!window.ethereum) {
       setWalletError(
-        "No browser wallet detected. Install MetaMask or Coinbase Wallet, or sign in with Base instead.",
+        "No browser wallet detected. Install MetaMask or Coinbase Wallet, then reload.",
       );
       return;
     }
     const eth = window.ethereum;
-    setConnecting("metamask");
+    setConnecting(true);
     setWalletError("");
     try {
       const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
@@ -197,36 +176,11 @@ export function ExecutionClient() {
         address: accounts[0],
         chainId,
         isOnBase: chainId === BASE_MAINNET.chainId,
-        kind: "metamask",
       });
     } catch (e: unknown) {
       setWalletError(e instanceof Error ? e.message : "Connection rejected");
     } finally {
-      setConnecting(null);
-    }
-  }
-
-  async function connectSmart() {
-    setConnecting("smart");
-    setWalletError("");
-    try {
-      const { provider: sp, address } = await connectSmartWallet();
-      setProvider(sp);
-      // Sprint 104E: Coinbase Smart Wallet is Base-locked by design — the
-      // signInWithEthereum capability we passed to wallet_connect pins
-      // the chain. The provider's eth_chainId can be flaky (returns
-      // decimal strings, sometimes empty, sometimes throws), so don't
-      // depend on it. Trust the SDK contract.
-      setWallet({
-        address,
-        chainId: BASE_MAINNET.chainId,
-        isOnBase: true,
-        kind: "smart",
-      });
-    } catch (e: unknown) {
-      setWalletError(e instanceof Error ? e.message : "Sign-in failed");
-    } finally {
-      setConnecting(null);
+      setConnecting(false);
     }
   }
 
@@ -239,7 +193,7 @@ export function ExecutionClient() {
       const onBase = await isOnBase(provider);
       const chainIdRaw = await provider.request({ method: "eth_chainId" });
       const chainId = normalizeChainId(chainIdRaw) ?? BASE_MAINNET.chainId;
-      setWallet((w) => (w ? { ...w, chainId, isOnBase: onBase } : w));
+      setWallet((w) => (w ? { address: w.address, chainId, isOnBase: onBase } : w));
     } catch (e: unknown) {
       setWalletError(e instanceof Error ? e.message : "Could not switch to Base.");
     } finally {
@@ -405,33 +359,20 @@ export function ExecutionClient() {
         {!wallet ? (
           <div className="flex flex-col gap-2">
             <button
-              onClick={connectSmart}
-              disabled={connecting !== null}
+              onClick={connectWallet}
+              disabled={connecting}
               className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors"
               style={{
-                background: connecting === "smart" ? "var(--elevated)" : "var(--brand)",
-                color: connecting === "smart" ? "var(--ghost)" : "#fff",
-              }}
-              title="Email + passkey sign-in. No browser extension required. Recommended."
-            >
-              {connecting === "smart" ? "Opening sign-in…" : "Sign in with Base (email + passkey)"}
-            </button>
-            <button
-              onClick={connectMetaMask}
-              disabled={connecting !== null}
-              className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors border"
-              style={{
-                borderColor: "var(--line)",
-                background: "transparent",
-                color: connecting !== null ? "var(--ghost)" : "var(--ink)",
+                background: connecting ? "var(--elevated)" : "var(--brand)",
+                color: connecting ? "var(--ghost)" : "#fff",
               }}
               title="Use MetaMask, Coinbase Wallet, or any browser EVM wallet"
             >
-              {connecting === "metamask" ? "Connecting…" : "Connect browser wallet (MetaMask / Coinbase)"}
+              {connecting ? "Connecting…" : "Connect wallet"}
             </button>
             <p className="text-xs mt-1" style={{ color: "var(--ghost)" }}>
-              Sign in with Base uses Coinbase&apos;s Smart Wallet — sign in with email + passkey,
-              no seed phrase. Works on Base mainnet by default.
+              Connects to MetaMask, Coinbase Wallet, or any browser EVM wallet you have installed.
+              Switch to Base mainnet after connecting.
             </p>
             {walletError && (
               <p className="text-xs mt-2" style={{ color: "var(--bear)" }}>
@@ -441,20 +382,6 @@ export function ExecutionClient() {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
-                Wallet
-              </span>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full"
-                style={{
-                  background: wallet.kind === "smart" ? "var(--brand)22" : "var(--elevated)",
-                  color: wallet.kind === "smart" ? "var(--brand)" : "var(--ink)",
-                }}
-              >
-                {wallet.kind === "smart" ? "Smart Wallet (Base)" : "Browser wallet"}
-              </span>
-            </div>
             <div className="flex items-center justify-between">
               <span className="text-xs" style={{ color: "var(--ghost)" }}>
                 Address
