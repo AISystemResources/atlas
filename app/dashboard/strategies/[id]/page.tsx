@@ -237,6 +237,15 @@ export default async function StrategyDetailPage({
     shares = (shareRows ?? []) as Array<{ email: string; granted_at: string }>;
   }
 
+  // Sprint 109 Phase 3: is this strategy in the caller's watched set?
+  const { data: watchRow } = await sb
+    .from("watched_strategies")
+    .select("strategy_id")
+    .eq("user_id", userId)
+    .eq("strategy_id", row.id)
+    .maybeSingle();
+  const watchedByMe = watchRow !== null;
+
   const detail: StrategyDetail = {
     id: row.id,
     name: row.name,
@@ -261,6 +270,7 @@ export default async function StrategyDetailPage({
     paper_extracted: (row.tags ?? []).includes("paper-extracted"),
     paper_source_url: paperSourceUrl,
     shares,
+    watched_by_me: watchedByMe,
   };
 
   return (
