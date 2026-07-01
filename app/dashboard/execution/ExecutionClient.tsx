@@ -43,6 +43,7 @@ interface Strategy {
 }
 
 import { PriceChart, type ChartBar } from "./PriceChart";
+import { AutoExecutePanel } from "./AutoExecutePanel";
 
 interface SignalResult {
   // Sprint 104B: aligned with CFD trading vocabulary. null = no setup
@@ -436,6 +437,10 @@ export function ExecutionClient() {
           </div>
         )}
       </div>
+
+      {/* Sprint 109 Phase 2: Auto-execute opt-in card. Only useful when a
+          wallet is connected, but the panel handles its own visibility. */}
+      <AutoExecutePanel />
 
         </aside>
 
