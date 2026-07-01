@@ -6,6 +6,7 @@ import {
   USDC_DECIMALS,
   ensureBaseMainnet,
   isOnBase,
+  normalizeChainId,
   readUsdcAllowance,
   readUsdcBalance,
   sendUsdcApprove,
@@ -112,12 +113,12 @@ export function ExecutionClient() {
         const accounts = res as string[];
         if (accounts.length > 0) {
           eth.request({ method: "eth_chainId" }).then((c) => {
-            const chainId = c as string;
+            const chainId = normalizeChainId(c) ?? BASE_MAINNET.chainId;
             setProvider(eth);
             setWallet({
               address: accounts[0],
               chainId,
-              isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
+              isOnBase: chainId === BASE_MAINNET.chainId,
               kind: "metamask",
             });
           });
@@ -168,12 +169,13 @@ export function ExecutionClient() {
     setWalletError("");
     try {
       const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
-      const chainId = (await eth.request({ method: "eth_chainId" })) as string;
+      const chainIdRaw = await eth.request({ method: "eth_chainId" });
+      const chainId = normalizeChainId(chainIdRaw) ?? BASE_MAINNET.chainId;
       setProvider(eth);
       setWallet({
         address: accounts[0],
         chainId,
-        isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
+        isOnBase: chainId === BASE_MAINNET.chainId,
         kind: "metamask",
       });
     } catch (e: unknown) {
@@ -189,15 +191,16 @@ export function ExecutionClient() {
     try {
       const { provider: sp, address } = await connectSmartWallet();
       setProvider(sp);
-      // Smart Wallet's wallet_connect already sets chainId via the
-      // capabilities; if it doesn't, eth_chainId will tell us.
-      const chainId = ((await sp.request({ method: "eth_chainId" }).catch(
-        () => BASE_MAINNET.chainId,
-      )) as string) ?? BASE_MAINNET.chainId;
+      // Sprint 104C/D: Coinbase Smart Wallet's wallet_connect enforces
+      // Base via the signInWithEthereum capability. In practice the
+      // provider's eth_chainId can return a decimal string ("8453") or
+      // a number rather than a hex string, so normalise before compare.
+      const chainIdRaw = await sp.request({ method: "eth_chainId" }).catch(() => null);
+      const chainId = normalizeChainId(chainIdRaw) ?? BASE_MAINNET.chainId;
       setWallet({
         address,
         chainId,
-        isOnBase: chainId.toLowerCase() === BASE_MAINNET.chainId,
+        isOnBase: chainId === BASE_MAINNET.chainId,
         kind: "smart",
       });
     } catch (e: unknown) {
@@ -214,7 +217,8 @@ export function ExecutionClient() {
     try {
       await ensureBaseMainnet(provider);
       const onBase = await isOnBase(provider);
-      const chainId = (await provider.request({ method: "eth_chainId" })) as string;
+      const chainIdRaw = await provider.request({ method: "eth_chainId" });
+      const chainId = normalizeChainId(chainIdRaw) ?? BASE_MAINNET.chainId;
       setWallet((w) => (w ? { ...w, chainId, isOnBase: onBase } : w));
     } catch (e: unknown) {
       setWalletError(e instanceof Error ? e.message : "Could not switch to Base.");
