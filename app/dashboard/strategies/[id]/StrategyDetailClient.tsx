@@ -1,17 +1,20 @@
 "use client";
 
 /**
- * Strategy detail — Sprint 061C.
+ * Strategy detail (Sprint 113 rewrite).
  *
- * Sections:
- *   - Header with name, version, lineage, visibility chip, action buttons
- *   - Description (AI-authored eventually)
- *   - Structured rule blocks: 📍 SIGNAL BAR / 🎯 ENTRY / 🛑 STOP LOSS /
- *     💰 TAKE PROFIT / ⏰ TIME STOP
- *   - Indicators list
- *   - Tunable parameters table
- *   - Recent backtests (links to backtest detail)
- *   - Version navigator chevrons
+ * The page reads as a trader's cheat-sheet, not a marketing page. Vertical order
+ * is honest to how a trader decides "should I run this?":
+ *   1. Identity strip — name, ticker, timeframe, direction, actions
+ *   2. Pending proposals (owner-only, action-required)
+ *   3. PROOF — recent backtests hoisted from the bottom, with mini bars
+ *   4. PLAYBOOK — 6 numbered stages in trade-lifecycle order
+ *   5. TUNABLE — compact parameter table
+ *   6. PROVENANCE — origin verb + lineage + tags
+ *   7. SHARE (owner-only)
+ *
+ * The AI-authored description prose is gone; the playbook IS the summary.
+ * Emoji card headers are gone. Coloured decorative borders are gone.
  */
 
 import Link from "next/link";
@@ -227,268 +230,57 @@ export function StrategyDetailClient({
   }
 
   return (
-    <div className="mx-auto p-6" style={{ maxWidth: 1100, color: "var(--ink)" }}>
+    <div className="mx-auto pb-12" style={{ maxWidth: 900, color: "var(--ink)" }}>
       {/* Breadcrumb */}
-      <div className="mb-4">
+      <div className="mb-5" style={{ paddingTop: 8 }}>
         <Link
           href="/dashboard/strategies"
-          className="text-xs"
-          style={{ color: "var(--ghost)" }}
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--ghost)",
+            textDecoration: "none",
+            letterSpacing: "0.04em",
+          }}
         >
           ← All strategies
         </Link>
       </div>
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-2 flex-wrap">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap mb-1">
-            <h1 className="text-2xl font-mono font-bold">{detail.name}</h1>
-            {detail.ticker && (
-              <span
-                className="inline-flex items-center px-2 py-0.5 text-sm font-mono font-semibold rounded"
-                style={{ background: "var(--elevated)", color: "var(--brand)" }}
-              >
-                {detail.ticker}
-              </span>
-            )}
-            <VersionTimeline family={family} strategyName={detail.name} />
-            {detail.paper_extracted && (
-              detail.paper_source_url ? (
-                <a
-                  href={detail.paper_source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
-                  style={{ background: "var(--brand-bg, #e8f4fd)", color: "var(--brand)", textDecoration: "none" }}
-                >
-                  arXiv ↗
-                </a>
-              ) : (
-                <span
-                  className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
-                  style={{ background: "var(--brand-bg, #e8f4fd)", color: "var(--brand)" }}
-                >
-                  arXiv
-                </span>
-              )
-            )}
-            {detail.is_my_scalper && (
-              <span
-                className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded uppercase"
-                style={{ background: "var(--bull-bg)", color: "var(--bull)" }}
-              >
-                My scalper
-              </span>
-            )}
-            {detail.is_shared_with_me && (
-              <span
-                className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded uppercase"
-                style={{ background: "var(--elevated)", color: "var(--brand)" }}
-              >
-                Shared with you
-              </span>
-            )}
-            <VisibilityChip vis={detail.visibility} />
-            <StatusChip status={detail.status} />
-          </div>
-          <p className="text-xs" style={{ color: "var(--ghost)" }}>
-            by {detail.owner_label}
-            {detail.forked_from_label && <> · forked from {detail.forked_from_label}</>}
-            {detail.parent_version_id && <> · promoted from earlier version</>}
-            <> · {detail.timeframe} · {detail.direction}-only</>
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={onToggleWatch}
-            disabled={watchBusy}
-            className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50"
-            style={{
-              background: watched ? "var(--bull-bg)" : "transparent",
-              color: watched ? "var(--bull)" : "var(--ink)",
-              border: `1px solid ${watched ? "var(--bull)" : "var(--line)"}`,
-            }}
-            title={
-              watched
-                ? "Atlas is evaluating this every 5 min for live signals. Click to unwatch."
-                : "Get live signal notifications for this strategy."
-            }
-          >
-            {watchBusy ? "…" : watched ? "★ Watching" : "☆ Watch"}
-          </button>
-          {!detail.is_mine && (detail.visibility !== "private" || detail.is_shared_with_me) && (
-            <button
-              onClick={onFork}
-              disabled={forkBusy}
-              className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50"
-              style={{ background: "var(--brand)", color: "#fff" }}
-            >
-              {forkBusy ? "Forking…" : "Fork to my library"}
-            </button>
-          )}
-          {detail.is_mine && !detail.is_my_scalper && (
-            <button
-              onClick={onUseAsScalper}
-              disabled={scalperBusy}
-              className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50"
-              style={{ background: "var(--bull)", color: "#fff" }}
-            >
-              {scalperBusy ? "Setting…" : "Use as my scalper"}
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Identity strip */}
+      <IdentityStrip
+        detail={detail}
+        watched={watched}
+        watchBusy={watchBusy}
+        forkBusy={forkBusy}
+        scalperBusy={scalperBusy}
+        onToggleWatch={onToggleWatch}
+        onFork={onFork}
+        onUseAsScalper={onUseAsScalper}
+      />
 
       {actionMsg && (
         <p
-          className="text-xs mb-3"
-          style={{ color: "var(--bull)" }}
+          className="mb-6"
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            color: "var(--bull)",
+          }}
         >
           {actionMsg}
         </p>
       )}
 
-      {/* Description */}
-      {detail.description && (
-        <p
-          className="text-sm leading-relaxed mb-3"
-          style={{ color: "var(--dim)" }}
-        >
-          {detail.description}
-        </p>
-      )}
-
-      {detail.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-6">
-          {detail.tags.map((t) => (
-            <span
-              key={t}
-              className="inline-flex items-center px-2 py-0.5 text-[11px] font-mono rounded"
-              style={{ background: "var(--elevated)", color: "var(--dim)" }}
-            >
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Structured rule blocks */}
-      <div className="space-y-3 mb-8">
-        {detail.rendered.whenItFires && (
-          <RuleBlock
-            icon="🕒"
-            title="When it fires"
-            lines={[detail.rendered.whenItFires]}
-            accent="var(--hold)"
-          />
-        )}
-        <RuleBlock
-          icon="📍"
-          title="Signal Bar — what qualifies"
-          lines={detail.rendered.signalBar}
-          accent="var(--brand)"
-        />
-        <RuleBlock
-          icon="🎯"
-          title="Entry — when and at what price"
-          lines={detail.rendered.entry}
-          accent="var(--brand)"
-        />
-        <RuleBlock
-          icon="🛑"
-          title="Stop Loss"
-          lines={[detail.rendered.stopLoss]}
-          accent="var(--bear)"
-        />
-        <RuleBlock
-          icon="💰"
-          title="Take Profit (Limit Order)"
-          lines={[detail.rendered.takeProfit]}
-          accent="var(--bull)"
-        />
-        {detail.rendered.timeStop && (
-          <RuleBlock
-            icon="⏰"
-            title="Time Stop"
-            lines={[detail.rendered.timeStop]}
-            accent="var(--hold)"
-          />
-        )}
-      </div>
-
-      {/* Indicators */}
-      <Section title="Indicators used">
-        <div className="flex flex-wrap gap-2">
-          {detail.rendered.indicators.map((ind) => (
-            <span
-              key={ind.id}
-              className="inline-flex items-center px-2 py-1 text-xs rounded border"
-              style={{
-                background: "var(--elevated)",
-                borderColor: "var(--line)",
-                color: "var(--dim)",
-              }}
-            >
-              <span
-                className="font-mono mr-1.5"
-                style={{ color: "var(--ghost)" }}
-              >
-                {ind.id}
-              </span>
-              {ind.label}
-            </span>
-          ))}
-        </div>
-      </Section>
-
-      {/* Sprint 075a — share panel (owner only) */}
-      {detail.is_mine && (
-        <Section title="Share with people">
-          <SharePanel strategyId={detail.id} initialShares={detail.shares} />
-        </Section>
-      )}
-
-      {/* Tunables */}
-      {detail.tunable_parameters.length > 0 && (
-        <Section title="Tunable parameters">
-          <table className="w-full text-sm">
-            <thead>
-              <tr
-                className="text-left text-xs uppercase border-b"
-                style={{ color: "var(--ghost)", borderColor: "var(--line)" }}
-              >
-                <th className="py-2 pr-2">Name</th>
-                <th className="py-2 pr-2">Range</th>
-                <th className="py-2 pr-2">Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.tunable_parameters.map((t) => (
-                <tr
-                  key={t.name}
-                  className="border-b"
-                  style={{ borderColor: "var(--line)" }}
-                >
-                  <td className="py-2 pr-2 font-mono text-xs">{t.name}</td>
-                  <td className="py-2 pr-2 text-xs" style={{ color: "var(--dim)" }}>
-                    {t.min ?? "—"} … {t.max ?? "—"}
-                  </td>
-                  <td className="py-2 pr-2 text-xs" style={{ color: "var(--dim)" }}>
-                    {t.description}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
-      )}
-
-      {/* Sprint 053.3: pending promote-proposals (owner-only) */}
+      {/* Pending proposals — owner-only, action-required, top billing */}
       {detail.is_mine && pendingProposals.length > 0 && (
-        <Section title={`Proposed changes (${pendingProposals.length})`}>
-          <div className="space-y-3">
+        <section className="mb-10">
+          <SectionRule
+            label={`PENDING · ${pendingProposals.length}`}
+            note="needs review"
+            noteColor="var(--brand)"
+          />
+          <div className="flex flex-col gap-3">
             {pendingProposals.map((p) => (
               <PendingProposalCard
                 key={p.insight_id}
@@ -501,67 +293,34 @@ export function StrategyDetailClient({
               />
             ))}
           </div>
-        </Section>
+        </section>
       )}
 
-      {/* Backtests */}
-      <Section title={`Recent backtests (${backtests.length})`}>
-        {backtests.length === 0 ? (
-          <p className="text-sm" style={{ color: "var(--ghost)" }}>
-            No backtests of this version yet.{" "}
-            <Link
-              href="/dashboard/backtests"
-              className="underline"
-              style={{ color: "var(--brand)" }}
-            >
-              Run one →
-            </Link>
-          </p>
-        ) : (
-          <div className="space-y-1">
-            {backtests.map((b) => {
-              const pnl = b.total_pnl_points ?? 0;
-              return (
-                <Link
-                  key={b.id}
-                  href={`/dashboard/backtests/${b.id}`}
-                  className="flex items-center justify-between p-2.5 rounded hover:bg-[var(--elevated)] text-xs"
-                  style={{ color: "var(--dim)" }}
-                >
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-mono" style={{ color: "var(--ink)" }}>
-                      {b.ticker}
-                    </span>
-                    <span>{b.timeframe}</span>
-                    <span>
-                      {b.start_date} → {b.end_date}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span>{b.total_trades} trades</span>
-                    {b.win_rate != null && (
-                      <span>{(b.win_rate * 100).toFixed(1)}%</span>
-                    )}
-                    <span
-                      className="font-mono"
-                      style={{
-                        color:
-                          pnl > 0
-                            ? "var(--bull)"
-                            : pnl < 0
-                              ? "var(--bear)"
-                              : "var(--dim)",
-                      }}
-                    >
-                      {pnl >= 0 ? "+" : ""}{pnl.toFixed(1)} pts
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </Section>
+      {/* PROOF — backtests hoisted from bottom */}
+      <ProofSection backtests={backtests} />
+
+      {/* PLAYBOOK — 6 numbered stages in trade-lifecycle order */}
+      <PlaybookSection
+        rendered={detail.rendered}
+        timeframe={detail.timeframe}
+        direction={detail.direction}
+      />
+
+      {/* TUNABLE — compact 3-col table */}
+      {detail.tunable_parameters.length > 0 && (
+        <TunableSection tunables={detail.tunable_parameters} />
+      )}
+
+      {/* PROVENANCE — origin verb + lineage + tags */}
+      <ProvenanceSection detail={detail} family={family} />
+
+      {/* SHARE (owner only) */}
+      {detail.is_mine && (
+        <section className="mb-8">
+          <SectionRule label="SHARE" />
+          <SharePanel strategyId={detail.id} initialShares={detail.shares} />
+        </section>
+      )}
     </div>
   );
 }
@@ -884,146 +643,715 @@ function timeAgo(iso: string): string {
 
 // ── Small primitives ─────────────────────────────────────────────────────────
 
-function RuleBlock({
-  icon,
-  title,
-  lines,
-  accent,
+// ── Sprint 113: new atoms for the redesigned detail page ────────────────────
+
+function SectionRule({
+  label,
+  note,
+  noteColor,
 }: {
-  icon: string;
-  title: string;
-  lines: string[];
-  accent: string;
+  label: string;
+  note?: string;
+  noteColor?: string;
 }) {
   return (
     <div
-      className="p-4 rounded-lg border"
-      style={{
-        background: "var(--surface)",
-        borderColor: "var(--line)",
-        borderLeftWidth: 3,
-        borderLeftColor: accent,
-        boxShadow: "var(--card-shadow)",
-      }}
+      className="flex items-center gap-3"
+      style={{ marginBottom: 14 }}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">{icon}</span>
-        <h3
-          className="text-xs uppercase tracking-wide font-semibold"
-          style={{ color: accent }}
-        >
-          {title}
-        </h3>
-      </div>
-      <ul className="space-y-1">
-        {lines.map((l, i) => (
-          <li
-            key={i}
-            className="text-sm leading-relaxed"
-            style={{ color: "var(--ink)" }}
-          >
-            <span style={{ color: "var(--ghost)" }}>•</span> {l}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-6">
-      <h3
-        className="text-xs uppercase tracking-wide font-semibold mb-3"
-        style={{ color: "var(--ghost)" }}
+      <span
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.14em",
+          color: "var(--ink)",
+        }}
       >
-        {title}
-      </h3>
-      {children}
+        {label}
+      </span>
+      <span
+        aria-hidden
+        style={{
+          flex: 1,
+          height: 1,
+          background: "var(--line)",
+        }}
+      />
+      {note && (
+        <span
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: noteColor ?? "var(--ghost)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          {note}
+        </span>
+      )}
     </div>
   );
 }
 
-function VersionTimeline({
-  family,
-  strategyName,
+// ── Identity strip — name, ticker, timeframe, direction, sub-line, actions ──
+
+function IdentityStrip({
+  detail,
+  watched,
+  watchBusy,
+  forkBusy,
+  scalperBusy,
+  onToggleWatch,
+  onFork,
+  onUseAsScalper,
 }: {
-  family: VersionFamilyEntry[];
-  strategyName: string;
+  detail: StrategyDetail;
+  watched: boolean;
+  watchBusy: boolean;
+  forkBusy: boolean;
+  scalperBusy: boolean;
+  onToggleWatch: () => void;
+  onFork: () => void;
+  onUseAsScalper: () => void;
 }) {
-  if (family.length <= 1) return null;
+  const canFork =
+    !detail.is_mine &&
+    (detail.visibility !== "private" || detail.is_shared_with_me);
+
+  const originWord = deriveOriginWord(detail);
+
+  const sublineBits: string[] = [
+    `v${detail.version}`,
+    originWord,
+    `by ${detail.owner_label}`,
+    detail.timeframe,
+    `${detail.direction}-only`,
+    detail.visibility,
+  ];
+
   return (
-    <div className="flex items-center gap-1 text-xs font-mono flex-wrap">
-      {family.map((entry, i) => (
-        <div key={entry.id} className="flex items-center gap-1">
-          {i > 0 && (
-            <span style={{ color: "var(--ghost)", fontSize: 10, opacity: 0.5 }}>→</span>
-          )}
-          {entry.is_current ? (
-            <span
-              className="px-1.5 py-0.5 rounded font-semibold"
+    <header className="mb-8">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h1
+              className="font-display font-bold"
               style={{
-                background: "var(--elevated)",
+                fontSize: 26,
+                letterSpacing: "-0.01em",
                 color: "var(--ink)",
-                border: "1px solid var(--brand)",
+                fontFamily: "var(--font-jb)",
               }}
-              title={`${strategyName} v${entry.version} (current)`}
             >
-              v{entry.version}
-            </span>
-          ) : (
-            <Link
-              href={`/dashboard/strategies/${entry.id}`}
-              className="px-1.5 py-0.5 rounded hover:bg-[var(--elevated)]"
+              {detail.name}
+            </h1>
+            {detail.ticker && (
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 13,
+                  color: "var(--dim)",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {detail.ticker}
+              </span>
+            )}
+            {detail.is_my_scalper && (
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  color: "var(--bull)",
+                  background: "var(--bull-bg)",
+                  padding: "2px 8px",
+                  borderRadius: 3,
+                }}
+              >
+                MY SCALPER
+              </span>
+            )}
+            {detail.is_shared_with_me && (
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  color: "var(--brand)",
+                  background: "rgba(200,16,46,0.08)",
+                  padding: "2px 8px",
+                  borderRadius: 3,
+                }}
+              >
+                SHARED WITH YOU
+              </span>
+            )}
+          </div>
+
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--ghost)",
+              marginTop: 8,
+              letterSpacing: "0.02em",
+            }}
+          >
+            {sublineBits.join(" · ")}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={onToggleWatch}
+            disabled={watchBusy}
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              padding: "6px 14px",
+              borderRadius: 4,
+              border: `1px solid ${watched ? "var(--bull)" : "var(--line)"}`,
+              background: watched ? "var(--bull-bg)" : "transparent",
+              color: watched ? "var(--bull)" : "var(--ink)",
+              cursor: watchBusy ? "default" : "pointer",
+              letterSpacing: "0.02em",
+            }}
+            title={
+              watched
+                ? "Atlas evaluates this every 5 min for live signals. Click to unwatch."
+                : "Get live signal notifications for this strategy."
+            }
+          >
+            {watchBusy ? "…" : watched ? "★ Watching" : "☆ Watch"}
+          </button>
+          {canFork && (
+            <button
+              onClick={onFork}
+              disabled={forkBusy}
               style={{
-                color: entry.status === "archived" ? "var(--ghost)" : "var(--dim)",
-                textDecoration: entry.status === "archived" ? "line-through" : "none",
-                opacity: entry.status === "archived" ? 0.6 : 1,
+                fontFamily: "var(--font-jb)",
+                fontSize: 12,
+                padding: "6px 14px",
+                borderRadius: 4,
+                border: "1px solid var(--brand)",
+                background: "var(--brand)",
+                color: "#fff",
+                cursor: forkBusy ? "default" : "pointer",
+                letterSpacing: "0.02em",
               }}
-              title={`${strategyName} v${entry.version}${entry.status === "archived" ? " (archived)" : ""}`}
             >
-              v{entry.version}
-            </Link>
+              {forkBusy ? "Forking…" : "Fork to my library"}
+            </button>
+          )}
+          {detail.is_mine && !detail.is_my_scalper && (
+            <button
+              onClick={onUseAsScalper}
+              disabled={scalperBusy}
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 12,
+                padding: "6px 14px",
+                borderRadius: 4,
+                border: "1px solid var(--bull)",
+                background: "var(--bull)",
+                color: "#fff",
+                cursor: scalperBusy ? "default" : "pointer",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {scalperBusy ? "Setting…" : "Use as my scalper"}
+            </button>
           )}
         </div>
-      ))}
+      </div>
+    </header>
+  );
+}
+
+function deriveOriginWord(detail: StrategyDetail): string {
+  if (detail.paper_extracted || detail.paper_source_url) return "arXiv";
+  if (detail.forked_from_label) return `Fork from ${detail.forked_from_label}`;
+  if (detail.parent_version_id) return `Tune from v${Math.max(1, detail.version - 1)}`;
+  return "Draft";
+}
+
+// ── PROOF — recent backtests + mini bar chart ───────────────────────────────
+
+function ProofSection({ backtests }: { backtests: BacktestListEntry[] }) {
+  const maxAbs = Math.max(
+    1,
+    ...backtests.map((b) => Math.abs(b.total_pnl_points ?? 0)),
+  );
+
+  return (
+    <section className="mb-10">
+      <SectionRule
+        label={`PROOF · ${backtests.length} backtest${backtests.length === 1 ? "" : "s"}`}
+      />
+      {backtests.length === 0 ? (
+        <p
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            color: "var(--ghost)",
+            padding: "8px 0",
+          }}
+        >
+          No runs yet.{" "}
+          <Link
+            href="/dashboard/backtests"
+            style={{
+              color: "var(--brand)",
+              textDecoration: "underline",
+              textUnderlineOffset: 2,
+            }}
+          >
+            Run a backtest →
+          </Link>
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          {backtests.map((b) => (
+            <BacktestRow key={b.id} bt={b} maxAbs={maxAbs} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BacktestRow({
+  bt,
+  maxAbs,
+}: {
+  bt: BacktestListEntry;
+  maxAbs: number;
+}) {
+  const pnl = bt.total_pnl_points ?? 0;
+  const pnlPos = pnl >= 0;
+  const barPct = Math.min(100, (Math.abs(pnl) / maxAbs) * 100);
+
+  return (
+    <Link
+      href={`/dashboard/backtests/${bt.id}`}
+      className="grid items-center"
+      style={{
+        gridTemplateColumns: "auto auto auto minmax(0, 1fr) auto",
+        columnGap: 14,
+        padding: "10px 4px",
+        borderBottom: "1px solid rgba(141, 164, 178, 0.14)",
+        textDecoration: "none",
+        fontFamily: "var(--font-jb)",
+        fontSize: 12,
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      <span style={{ color: "var(--ghost)" }}>
+        {bt.start_date} → {bt.end_date}
+      </span>
+      <span style={{ color: "var(--dim)" }}>
+        {bt.ticker} {bt.timeframe}
+      </span>
+      <span style={{ color: "var(--dim)" }}>
+        {bt.total_trades}t{" "}
+        {bt.win_rate != null && (
+          <span style={{ color: "var(--ghost)" }}>
+            · {(bt.win_rate * 100).toFixed(0)}%
+          </span>
+        )}
+      </span>
+
+      {/* mini bar */}
+      <div
+        style={{
+          height: 8,
+          background: "var(--elevated)",
+          borderRadius: 1,
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            height: "100%",
+            width: `${barPct}%`,
+            background: pnlPos ? "var(--bull)" : "var(--bear)",
+            borderRadius: 1,
+          }}
+        />
+      </div>
+
+      <span
+        style={{
+          color: pnlPos ? "var(--bull)" : "var(--bear)",
+          fontWeight: 600,
+          minWidth: 88,
+          textAlign: "right",
+        }}
+      >
+        {pnlPos ? "+" : "−"}
+        {Math.abs(pnl).toFixed(1)} pts
+      </span>
+    </Link>
+  );
+}
+
+// ── PLAYBOOK — 6 numbered stages in trade lifecycle order ───────────────────
+
+function PlaybookSection({
+  rendered,
+  timeframe,
+  direction,
+}: {
+  rendered: RenderedSections;
+  timeframe: string;
+  direction: string;
+}) {
+  const exit = [
+    ...(rendered.timeStop ? [rendered.timeStop] : []),
+    ...rendered.exitConditions,
+  ];
+
+  return (
+    <section className="mb-10">
+      <SectionRule label="PLAYBOOK" note={`${direction}-only · ${timeframe}`} />
+
+      <div className="flex flex-col" style={{ gap: 20 }}>
+        <PlaybookStage
+          number="01"
+          name="SESSION"
+          value={rendered.whenItFires ?? "Always active — no session filter"}
+          muted={!rendered.whenItFires}
+        />
+        <PlaybookStage
+          number="02"
+          name="SIGNAL BAR"
+          value={rendered.signalBar[0] ?? "—"}
+          continuation={rendered.signalBar.slice(1)}
+        />
+        <PlaybookStage
+          number="03"
+          name="ENTRY"
+          value={rendered.entry[0] ?? "—"}
+          continuation={rendered.entry.slice(1)}
+        />
+        <PlaybookStage number="04" name="STOP" value={rendered.stopLoss} />
+        <PlaybookStage number="05" name="TARGET" value={rendered.takeProfit} />
+        <PlaybookStage
+          number="06"
+          name="EXIT"
+          value={exit[0] ?? "No time-based exit"}
+          continuation={exit.slice(1)}
+          muted={exit.length === 0}
+        />
+      </div>
+
+      {rendered.indicators.length > 0 && (
+        <div
+          className="flex flex-wrap items-baseline gap-2"
+          style={{
+            marginTop: 20,
+            paddingTop: 14,
+            borderTop: "1px dashed var(--line)",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 10,
+              letterSpacing: "0.08em",
+              color: "var(--ghost)",
+            }}
+          >
+            INDICATORS
+          </span>
+          {rendered.indicators.map((ind) => (
+            <span
+              key={ind.id}
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 11,
+                color: "var(--dim)",
+              }}
+            >
+              <span style={{ color: "var(--ink)" }}>{ind.id}</span> {ind.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PlaybookStage({
+  number,
+  name,
+  value,
+  continuation,
+  muted,
+}: {
+  number: string;
+  name: string;
+  value: string;
+  continuation?: string[];
+  muted?: boolean;
+}) {
+  return (
+    <div
+      className="grid items-baseline"
+      style={{
+        gridTemplateColumns: "32px 110px minmax(0, 1fr)",
+        columnGap: 16,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 15,
+          fontWeight: 700,
+          color: muted ? "var(--ghost)" : "var(--brand)",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {number}
+      </span>
+      <span
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.08em",
+          color: "var(--ink)",
+        }}
+      >
+        {name}
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontFamily: "var(--font-nunito)",
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: muted ? "var(--ghost)" : "var(--ink)",
+            fontStyle: muted ? "italic" : "normal",
+          }}
+        >
+          {value}
+        </div>
+        {continuation && continuation.length > 0 && (
+          <ul
+            style={{
+              listStyle: "none",
+              padding: 0,
+              margin: "4px 0 0 0",
+            }}
+          >
+            {continuation.map((c, i) => (
+              <li
+                key={i}
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  color: "var(--dim)",
+                  lineHeight: 1.5,
+                  paddingLeft: 12,
+                  position: "relative",
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    color: "var(--ghost)",
+                  }}
+                >
+                  ─
+                </span>
+                {c}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
 
-function VisibilityChip({ vis }: { vis: "private" | "unlisted" | "public" }) {
-  const styles: Record<typeof vis, { bg: string; color: string; label: string }> = {
-    private: { bg: "var(--elevated)", color: "var(--dim)", label: "Private" },
-    unlisted: { bg: "var(--hold-bg)", color: "var(--hold)", label: "Unlisted" },
-    public: { bg: "var(--bull-bg)", color: "var(--bull)", label: "Public" },
-  };
-  const s = styles[vis];
+// ── TUNABLE — compact 3-col table ───────────────────────────────────────────
+
+function TunableSection({ tunables }: { tunables: TunableParameter[] }) {
   return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
-      style={{ background: s.bg, color: s.color }}
-    >
-      {s.label}
-    </span>
+    <section className="mb-10">
+      <SectionRule label={`TUNABLE · ${tunables.length}`} />
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <tbody>
+          {tunables.map((t) => (
+            <tr
+              key={t.name}
+              style={{ borderBottom: "1px solid rgba(141, 164, 178, 0.14)" }}
+            >
+              <td
+                style={{
+                  padding: "9px 12px 9px 0",
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  color: "var(--ink)",
+                  verticalAlign: "top",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {t.name}
+              </td>
+              <td
+                style={{
+                  padding: "9px 16px 9px 0",
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  color: "var(--dim)",
+                  verticalAlign: "top",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {t.min ?? "—"} … {t.max ?? "—"}
+              </td>
+              <td
+                style={{
+                  padding: "9px 0",
+                  fontFamily: "var(--font-nunito)",
+                  fontSize: 13,
+                  color: "var(--dim)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {t.description}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
-function StatusChip({ status }: { status: "draft" | "active" | "archived" }) {
-  if (status === "active") return null; // baseline, no chip
-  const styles: Record<"draft" | "archived", { bg: string; color: string }> = {
-    draft: { bg: "var(--hold-bg)", color: "var(--hold)" },
-    archived: { bg: "var(--elevated)", color: "var(--dim)" },
-  };
-  const s = styles[status];
+// ── PROVENANCE — origin verb + full lineage + tags ─────────────────────────
+
+function ProvenanceSection({
+  detail,
+  family,
+}: {
+  detail: StrategyDetail;
+  family: VersionFamilyEntry[];
+}) {
+  const originWord = deriveOriginWord(detail);
+  const priorVersions = family.filter((f) => !f.is_current);
+
   return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
-      style={{ background: s.bg, color: s.color }}
-    >
-      {status}
-    </span>
+    <section className="mb-10">
+      <SectionRule label="PROVENANCE" />
+
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: "110px minmax(0, 1fr)",
+          columnGap: 16,
+          rowGap: 10,
+          fontFamily: "var(--font-jb)",
+          fontSize: 12,
+        }}
+      >
+        <span
+          style={{
+            color: "var(--ghost)",
+            letterSpacing: "0.06em",
+          }}
+        >
+          ORIGIN
+        </span>
+        <span style={{ color: "var(--ink)" }}>
+          {originWord}
+          {detail.paper_source_url && (
+            <>
+              {" · "}
+              <a
+                href={detail.paper_source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "var(--brand)",
+                  textDecoration: "underline",
+                  textUnderlineOffset: 2,
+                }}
+              >
+                arXiv ↗
+              </a>
+            </>
+          )}
+        </span>
+
+        {priorVersions.length > 0 && (
+          <>
+            <span
+              style={{
+                color: "var(--ghost)",
+                letterSpacing: "0.06em",
+              }}
+            >
+              LINEAGE
+            </span>
+            <span>
+              {priorVersions.map((v, i) => (
+                <span key={v.id}>
+                  <Link
+                    href={`/dashboard/strategies/${v.id}`}
+                    style={{
+                      color: "var(--dim)",
+                      textDecoration: "underline",
+                      textUnderlineOffset: 2,
+                    }}
+                  >
+                    v{v.version}
+                  </Link>
+                  {i < priorVersions.length - 1 && (
+                    <span style={{ color: "var(--ghost)" }}> → </span>
+                  )}
+                </span>
+              ))}
+              <span style={{ color: "var(--ghost)" }}> → </span>
+              <span style={{ color: "var(--ink)" }}>v{detail.version}</span>
+            </span>
+          </>
+        )}
+
+        {detail.tags.length > 0 && (
+          <>
+            <span
+              style={{
+                color: "var(--ghost)",
+                letterSpacing: "0.06em",
+              }}
+            >
+              TAGS
+            </span>
+            <span style={{ color: "var(--dim)" }}>
+              {detail.tags.join(" · ")}
+            </span>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
+
+// Sprint 113: VersionTimeline / VisibilityChip / StatusChip removed — their
+// info is now carried inline by the IdentityStrip sub-line and the
+// ProvenanceSection lineage row.
 
 // ── SharePanel — Sprint 075a ──────────────────────────────────────────────────
 
