@@ -66,22 +66,28 @@ export default async function StrategiesPage() {
 
   const strategies = (rows ?? []) as unknown as StrategyRow[];
 
-  // Group by (created_by_user_id, name) — show only the latest non-archived
-  // version of each strategy family. Earlier versions are reachable via the
-  // detail page's version navigator (Sprint 061C).
-  const familyMap = new Map<string, StrategyRow>();
+  // Sprint 125: group by (created_by_user_id, name). Show LATEST version as
+  // the card headline, but also send every version's latest-backtest so the
+  // client's version chevrons can swap in-place without a route change.
+  const familyMap = new Map<string, StrategyRow[]>();
   for (const s of strategies) {
     const key = `${s.created_by_user_id ?? "—"}::${s.name}`;
-    const existing = familyMap.get(key);
-    if (!existing || s.version > existing.version) familyMap.set(key, s);
+    const arr = familyMap.get(key) ?? [];
+    arr.push(s);
+    familyMap.set(key, arr);
   }
-  const latest = [...familyMap.values()];
+  // Sort each family v1 → v(n).
+  for (const arr of familyMap.values()) {
+    arr.sort((a, b) => a.version - b.version);
+  }
+  const latest = [...familyMap.values()].map((arr) => arr[arr.length - 1]);
+  const allVersionsForListing = [...familyMap.values()].flat();
 
-  // Backtest counts + latest performance per strategy_id.
+  // Backtest counts + latest performance per strategy_id (all versions).
   const backtestCounts = new Map<string, number>();
   const latestBtMap = new Map<string, BacktestSummaryRow>();
-  if (latest.length > 0) {
-    const ids = latest.map((s) => s.id);
+  if (allVersionsForListing.length > 0) {
+    const ids = allVersionsForListing.map((s) => s.id);
     const { data: btRows } = await sb
       .from("ticket_backtests")
       .select("ticket_logic_id, win_rate, total_pnl_points, total_trades, created_at")
@@ -157,6 +163,26 @@ export default async function StrategiesPage() {
 
   const cards: StrategyCard[] = latest.map((s) => {
     const bt = latestBtMap.get(s.id);
+    // Sprint 125: attach all sibling versions with each version's own latest
+    // backtest so the card can toggle < v(n) >  without a route change.
+    const familyKey = `${s.created_by_user_id ?? "—"}::${s.name}`;
+    const siblings = familyMap.get(familyKey) ?? [];
+    const versions = siblings.map((sib) => {
+      const sbt = latestBtMap.get(sib.id);
+      return {
+        id: sib.id,
+        version: sib.version,
+        created_at: sib.created_at,
+        status: sib.status,
+        latest_backtest: sbt
+          ? {
+              win_rate: sbt.win_rate,
+              total_pnl_points: sbt.total_pnl_points,
+              total_trades: sbt.total_trades,
+            }
+          : null,
+      };
+    });
     return {
       id: s.id,
       name: s.name,
@@ -179,6 +205,8 @@ export default async function StrategiesPage() {
       ticker: s.ticker ?? null,
       tags: s.tags ?? [],
       paper_extracted: (s.tags ?? []).includes("paper-extracted"),
+      // Sprint 125: sibling versions with per-version bt for the chevron toggle.
+      versions,
       latest_backtest: bt
         ? {
             win_rate: bt.win_rate,

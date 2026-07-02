@@ -8,6 +8,19 @@ import { useTier } from "../DashboardShell";
 // Kept identical to the server contract from page.tsx — the redesign is
 // purely presentation.
 
+/** Sprint 125: one sibling version's snapshot for the card's chevron toggle. */
+export interface StrategyVersionSnapshot {
+  id: string;
+  version: number;
+  status: string;
+  created_at: string;
+  latest_backtest: {
+    win_rate: number | null;
+    total_pnl_points: number | null;
+    total_trades: number;
+  } | null;
+}
+
 export interface StrategyCard {
   id: string;
   name: string;
@@ -30,6 +43,8 @@ export interface StrategyCard {
   ticker: string | null;
   tags: string[];
   paper_extracted: boolean;
+  /** Sprint 125: all sibling versions for in-card < v(n) > toggling. */
+  versions: StrategyVersionSnapshot[];
   latest_backtest?: {
     win_rate: number | null;
     total_pnl_points: number | null;
@@ -49,6 +64,9 @@ export interface PaperRow {
 }
 
 type Tab = "mine" | "public";
+
+// Sprint 125: sort dimensions the user can pick from the top-right chip.
+type SortKey = "points" | "winrate" | "recency";
 
 // ─── Sprint 121: recency chip ────────────────────────────────────────────────
 // The value we care about is "when was this strategy last tuned" — which for
@@ -137,65 +155,9 @@ function originTag(card: StrategyCard): OriginTag {
 // bounce-fade-close + bounce-fade-long → family "bounce-fade".
 // mcp-test-rsi-cross → family "mcp-test".
 
-function familyOf(name: string): string {
-  const parts = name.split("-");
-  if (parts.length <= 1) return name;
-  return parts.slice(0, 2).join("-");
-}
-
-interface Family {
-  name: string;
-  members: StrategyCard[];
-  // If every member of the family shares the same paper origin, we surface
-  // it on the family divider so provenance reads at the group scale.
-  sharedPaper: { id: string; title: string | null } | null;
-}
-
-function groupByFamily(cards: StrategyCard[]): Family[] {
-  const bucket = new Map<string, StrategyCard[]>();
-  for (const c of cards) {
-    const f = familyOf(c.name);
-    const arr = bucket.get(f) ?? [];
-    arr.push(c);
-    bucket.set(f, arr);
-  }
-
-  const families: Family[] = [];
-  for (const [name, members] of bucket) {
-    // Sort within family: net-pnl descending, untested last.
-    members.sort((a, b) => {
-      const pa = a.latest_backtest?.total_pnl_points ?? -Infinity;
-      const pb = b.latest_backtest?.total_pnl_points ?? -Infinity;
-      return pb - pa;
-    });
-
-    // Detect a shared paper across all family members.
-    let shared: Family["sharedPaper"] = null;
-    const firstPaper = members[0]?.parent_paper_id;
-    if (firstPaper && members.every((m) => m.parent_paper_id === firstPaper)) {
-      shared = {
-        id: firstPaper,
-        title: members[0]?.parent_paper_title ?? null,
-      };
-    }
-
-    families.push({ name, members, sharedPaper: shared });
-  }
-
-  // Sort families: winning ones first (max positive pnl), then by name.
-  families.sort((a, b) => {
-    const bestA = Math.max(
-      ...a.members.map((m) => m.latest_backtest?.total_pnl_points ?? -Infinity),
-    );
-    const bestB = Math.max(
-      ...b.members.map((m) => m.latest_backtest?.total_pnl_points ?? -Infinity),
-    );
-    if (bestA !== bestB) return bestB - bestA;
-    return a.name.localeCompare(b.name);
-  });
-
-  return families;
-}
+// Sprint 125: family-grouping (Sprint 112) removed. Each card now represents
+// one family (the latest version) with in-card chevrons to walk siblings.
+// Sort is user-controlled at the top instead of pinned to family + PnL desc.
 
 // ─── Public entry point ──────────────────────────────────────────────────────
 
@@ -215,6 +177,10 @@ export function StrategiesClient({
     () => cards.filter((c) => !c.is_mine && c.visibility === "public"),
     [cards],
   );
+
+  // Sprint 125: sort state, defaults to points-descending (biggest winners
+  // first when the tab is Mine, or biggest published winners on Public).
+  const [sortKey, setSortKey] = useState<SortKey>("points");
 
   const visible = tab === "mine" ? mine : publik;
 
@@ -239,7 +205,11 @@ export function StrategiesClient({
     return { totalPnl, winners, losers, untested, total: visible.length };
   }, [visible]);
 
-  const families = useMemo(() => groupByFamily(visible), [visible]);
+  // Sprint 125: sort the visible cards (family-level, one card each).
+  const sortedCards = useMemo(
+    () => sortCards(visible, sortKey),
+    [visible, sortKey],
+  );
 
   return (
     <div className="mx-auto pb-12" style={{ maxWidth: 1100, color: "var(--ink)" }}>
@@ -267,15 +237,106 @@ export function StrategiesClient({
         )}
       </header>
 
-      {/* Sprint 121: scoreboard replaces the thin caption. Answers "is my
-          stable making money?" at a glance. */}
+      {/* Sprint 121: scoreboard answers "is my stable making money?". */}
       <Scoreboard sb={scoreboard} tab={tab} />
+
+      {/* Sprint 125: sort chip. Family grouping is gone — one card per
+          family, cards sort against each other. */}
+      <SortChip sortKey={sortKey} onChange={setSortKey} count={sortedCards.length} />
 
       {visible.length === 0 ? (
         <EmptyState tab={tab} />
       ) : (
-        <FamilyListing families={families} />
+        <StrategyCardsGrid cards={sortedCards} />
       )}
+    </div>
+  );
+}
+
+// ─── Sprint 125: sort helpers ────────────────────────────────────────────────
+// Sorts operate on the LATEST version's numbers per card (which is what the
+// card shows when it first paints — chevrons can then reveal earlier versions
+// but don't re-sort the deck).
+
+function sortCards(cards: StrategyCard[], key: SortKey): StrategyCard[] {
+  const copy = [...cards];
+  copy.sort((a, b) => {
+    if (key === "points") {
+      const pa = a.latest_backtest?.total_pnl_points ?? -Infinity;
+      const pb = b.latest_backtest?.total_pnl_points ?? -Infinity;
+      return pb - pa;
+    }
+    if (key === "winrate") {
+      const wa = a.latest_backtest?.win_rate ?? -Infinity;
+      const wb = b.latest_backtest?.win_rate ?? -Infinity;
+      return wb - wa;
+    }
+    // recency — freshest first
+    return (
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  });
+  return copy;
+}
+
+function SortChip({
+  sortKey,
+  onChange,
+  count,
+}: {
+  sortKey: SortKey;
+  onChange: (k: SortKey) => void;
+  count: number;
+}) {
+  const options: { key: SortKey; label: string }[] = [
+    { key: "points", label: "PTS ↓" },
+    { key: "winrate", label: "WR ↓" },
+    { key: "recency", label: "TUNED ↓" },
+  ];
+  return (
+    <div
+      className="flex items-center justify-between"
+      style={{
+        marginBottom: 16,
+        fontFamily: "var(--font-jb)",
+        fontSize: 11,
+        letterSpacing: "0.06em",
+      }}
+    >
+      <span style={{ color: "var(--ghost)" }}>
+        {count} {count === 1 ? "strategy" : "strategies"}
+      </span>
+      <div
+        className="flex gap-1 p-1"
+        style={{
+          background: "var(--elevated)",
+          borderRadius: 6,
+        }}
+      >
+        {options.map((o) => {
+          const active = o.key === sortKey;
+          return (
+            <button
+              key={o.key}
+              onClick={() => onChange(o.key)}
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 11,
+                padding: "4px 10px",
+                background: active ? "var(--surface)" : "transparent",
+                color: active ? "var(--ink)" : "var(--dim)",
+                border: "none",
+                borderRadius: 4,
+                cursor: "pointer",
+                letterSpacing: "0.06em",
+                boxShadow: active ? "var(--card-shadow)" : "none",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -398,317 +459,237 @@ function ScoreboardCell({
   );
 }
 
-// ─── Family-grouped listing ──────────────────────────────────────────────────
+// ─── Sprint 125: card grid ───────────────────────────────────────────────────
 
-function FamilyListing({ families }: { families: Family[] }) {
-  // Guard: if there's only one family, dividers become decoration —
-  // fall through to a flat listing without the ═══ rules.
-  const showDividers = families.length > 1;
-
+function StrategyCardsGrid({ cards }: { cards: StrategyCard[] }) {
   return (
-    <div className="flex flex-col" style={{ gap: showDividers ? 24 : 0 }}>
-      {families.map((f) => (
-        <section key={f.name}>
-          {showDividers && <FamilyDivider family={f} />}
-          <div className="flex flex-col">
-            {f.members.map((m, i) => {
-              // Sprint 114: detect forks by name pattern rather than the DB
-              // forked_from_id. The prior version-was-archived case broke the
-              // id lookup silently — `sandy-s1-long-fork-4p35` was forked from
-              // sandy-s1-long v3, but only v4 is active/visible, so the id
-              // check failed and the row rendered flush-left as a peer.
-              const isNested = m.name.includes("-fork-");
-              return (
-                <StrategyRow
-                  key={m.id}
-                  card={m}
-                  nested={isNested}
-                  showTopRule={showDividers ? i === 0 : i > 0}
-                />
-              );
-            })}
-          </div>
-        </section>
+    <div
+      className="grid gap-3"
+      style={{
+        gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+      }}
+    >
+      {cards.map((c) => (
+        <StrategyCardTile key={c.id} card={c} />
       ))}
     </div>
   );
 }
 
-function FamilyDivider({ family }: { family: Family }) {
-  return (
-    <div
-      className="flex items-center gap-3"
-      style={{
-        fontFamily: "var(--font-jb)",
-        fontSize: 11,
-        letterSpacing: "0.14em",
-        color: "var(--ink)",
-        fontWeight: 600,
-        marginBottom: 6,
-        marginTop: 2,
-      }}
-    >
-      <span aria-hidden style={{ color: "var(--line2)" }}>
-        ═══
-      </span>
-      <span style={{ textTransform: "uppercase" }}>{family.name}</span>
-      {family.sharedPaper && (
-        <>
-          <span aria-hidden style={{ color: "var(--line2)" }}>
-            ═══
-          </span>
-          <span
-            style={{
-              color: "var(--brand)",
-              fontWeight: 500,
-              letterSpacing: "0.02em",
-            }}
-            title={family.sharedPaper.title ?? undefined}
-          >
-            arXiv
-            {family.sharedPaper.title
-              ? ` · ${truncate(family.sharedPaper.title, 48)}`
-              : ""}
-          </span>
-        </>
-      )}
-      <span
-        aria-hidden
-        style={{ flex: 1, color: "var(--line2)", overflow: "hidden", whiteSpace: "nowrap" }}
-      >
-        ══════════════════════════════════════════════════════════════════
-      </span>
-    </div>
+function StrategyCardTile({ card }: { card: StrategyCard }) {
+  // Sprint 125: per-card version chevrons. selectedIdx points into
+  // card.versions; the tile's PnL / wr / trades / recency swap to match.
+  const currentIdx = Math.max(
+    0,
+    card.versions.findIndex((v) => v.id === card.id),
   );
-}
-
-// ─── Strategy row ────────────────────────────────────────────────────────────
-
-function StrategyRow({
-  card,
-  nested,
-  showTopRule,
-}: {
-  card: StrategyCard;
-  nested: boolean;
-  showTopRule: boolean;
-}) {
-  // Sprint 121: verdict pill removed. The PnL number already tells the user
-  // what the pill was duplicating; the chip was competing with the anchor.
+  const [selectedIdx, setSelectedIdx] = useState(currentIdx);
+  const selected = card.versions[selectedIdx] ?? {
+    id: card.id,
+    version: card.version,
+    status: card.status,
+    created_at: card.created_at,
+    latest_backtest: card.latest_backtest
+      ? {
+          win_rate: card.latest_backtest.win_rate,
+          total_pnl_points: card.latest_backtest.total_pnl_points,
+          total_trades: card.latest_backtest.total_trades,
+        }
+      : null,
+  };
   const origin = originTag(card);
-  const bt = card.latest_backtest;
+  const bt = selected.latest_backtest;
   const pnl = bt?.total_pnl_points ?? null;
   const wr = bt?.win_rate ?? null;
   const trades = bt?.total_trades ?? 0;
   const pnlPos = (pnl ?? 0) >= 0;
-  const recency = recencyLabel(card.created_at);
+  const recency = recencyLabel(selected.created_at);
   const recencyColor =
     recency.tone === "fresh"
-      ? "var(--ghost)"
+      ? "var(--dim)"
       : recency.tone === "aged"
-        ? "var(--dim)"
+        ? "var(--ghost)"
         : "var(--bear)";
+  const canPrev = selectedIdx > 0;
+  const canNext = selectedIdx < card.versions.length - 1;
 
   return (
-    <Link
-      href={`/dashboard/strategies/${card.id}`}
-      className="grid items-center"
+    <div
       style={{
-        // Layout: [rail | prefix marks | nesting | name-block | wr | pnl | tuned | trades | origin]
-        gridTemplateColumns:
-          "3px auto auto minmax(0, 1fr) auto auto auto auto auto",
-        gap: 12,
-        padding: "12px 8px 12px 0",
-        borderTop: showTopRule ? "1px solid var(--line)" : "none",
-        textDecoration: "none",
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderLeft: `3px solid ${origin.color}`,
+        borderRadius: 8,
+        padding: "14px 16px 12px 16px",
+        boxShadow: "var(--card-shadow)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
       }}
     >
-      {/* left-edge origin rail */}
-      <span
-        aria-hidden
-        style={{
-          alignSelf: "stretch",
-          width: 3,
-          background: origin.color,
-          borderRadius: 1,
-        }}
-      />
-
-      {/* Sprint 121: prefix marks — active scalper (▶) + watched (⭐). Two
-          fixed cells so alignment stays honest across rows that carry zero,
-          one, or both marks. */}
-      <span
-        aria-hidden
-        title={
-          card.is_my_scalper
-            ? "This is your active scalper"
-            : card.watched_by_me
-              ? "You are watching this strategy"
-              : undefined
-        }
-        style={{
-          fontFamily: "var(--font-jb)",
-          fontSize: 12,
-          lineHeight: 1,
-          width: 32,
-          display: "inline-flex",
-          gap: 4,
-          justifyContent: "flex-start",
-          alignItems: "center",
-        }}
-      >
-        <span
-          aria-hidden
-          style={{
-            color: "var(--bull)",
-            visibility: card.is_my_scalper ? "visible" : "hidden",
-          }}
-        >
-          ▶
-        </span>
-        <span
-          aria-hidden
-          style={{
-            color: "var(--brand)",
-            visibility: card.watched_by_me ? "visible" : "hidden",
-          }}
-        >
-          ★
-        </span>
-      </span>
-
-      {/* nesting glyph for forks whose parent is also in this family */}
-      <span
-        aria-hidden
-        style={{
-          fontFamily: "var(--font-jb)",
-          color: "var(--ghost)",
-          fontSize: 13,
-          width: 16,
-          textAlign: "center",
-          visibility: nested ? "visible" : "hidden",
-        }}
-      >
-        └
-      </span>
-
-      {/* name + version */}
-      <div
-        className="flex items-baseline gap-2 flex-wrap"
-        style={{ minWidth: 0 }}
-      >
-        <span
+      {/* header: name + marks + version chevrons */}
+      <div className="flex items-baseline gap-2 flex-wrap">
+        {card.is_my_scalper && (
+          <span
+            aria-label="active scalper"
+            style={{ color: "var(--bull)", fontFamily: "var(--font-jb)", fontSize: 12 }}
+          >
+            ▶
+          </span>
+        )}
+        {card.watched_by_me && (
+          <span
+            aria-label="watched"
+            style={{ color: "var(--brand)", fontFamily: "var(--font-jb)", fontSize: 12 }}
+          >
+            ★
+          </span>
+        )}
+        <Link
+          href={`/dashboard/strategies/${selected.id}`}
           className="font-display font-bold"
           style={{
-            fontSize: 14,
+            fontSize: 15,
             color: "var(--ink)",
+            textDecoration: "none",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            minWidth: 0,
+            flex: 1,
           }}
+          title={card.name}
         >
           {card.name}
-        </span>
-        <span
-          style={{
-            fontFamily: "var(--font-jb)",
-            fontSize: 11,
-            color: "var(--ghost)",
-          }}
-        >
-          v{card.version}
+        </Link>
+      </div>
+
+      {/* meta row: ticker + origin word */}
+      <div
+        className="flex items-baseline gap-2 flex-wrap"
+        style={{ fontFamily: "var(--font-jb)", fontSize: 11 }}
+      >
+        {card.ticker && (
+          <span style={{ color: "var(--dim)" }}>{card.ticker}</span>
+        )}
+        <span style={{ color: "var(--ghost)" }}>·</span>
+        <span title={origin.detail} style={{ color: origin.color, fontWeight: 500 }}>
+          {origin.word}
         </span>
       </div>
 
-      {/* WR */}
-      <span
-        className="num"
-        style={{
-          fontFamily: "var(--font-jb)",
-          fontSize: 12,
-          color: wr == null ? "var(--ghost)" : "var(--dim)",
-          fontVariantNumeric: "tabular-nums",
-          textAlign: "right",
-          minWidth: 44,
-        }}
-      >
-        {wr == null ? "—" : `${(wr * 100).toFixed(0)}%`}
-      </span>
+      {/* version chevrons */}
+      {card.versions.length > 1 && (
+        <div
+          className="flex items-center gap-2"
+          style={{ fontFamily: "var(--font-jb)", fontSize: 11 }}
+        >
+          <button
+            onClick={() => canPrev && setSelectedIdx(selectedIdx - 1)}
+            disabled={!canPrev}
+            aria-label="previous version"
+            style={{
+              background: "transparent",
+              border: "1px solid var(--line)",
+              borderRadius: 3,
+              color: canPrev ? "var(--ink)" : "var(--ghost)",
+              cursor: canPrev ? "pointer" : "default",
+              padding: "2px 8px",
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+            }}
+          >
+            ‹
+          </button>
+          <span
+            style={{
+              color: "var(--ghost)",
+              letterSpacing: "0.04em",
+              fontVariantNumeric: "tabular-nums",
+              minWidth: 40,
+              textAlign: "center",
+            }}
+          >
+            v{selected.version} of v{card.versions[card.versions.length - 1].version}
+          </span>
+          <button
+            onClick={() => canNext && setSelectedIdx(selectedIdx + 1)}
+            disabled={!canNext}
+            aria-label="next version"
+            style={{
+              background: "transparent",
+              border: "1px solid var(--line)",
+              borderRadius: 3,
+              color: canNext ? "var(--ink)" : "var(--ghost)",
+              cursor: canNext ? "pointer" : "default",
+              padding: "2px 8px",
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+            }}
+          >
+            ›
+          </button>
+        </div>
+      )}
 
-      {/* PnL — the visual anchor. Sprint 121: bumped to fontSize 16 so it
-          wins the row instead of tying with everything else. */}
-      <span
-        className="num"
-        style={{
-          fontFamily: "var(--font-jb)",
-          fontSize: 16,
-          fontWeight: 700,
-          color: pnl == null ? "var(--ghost)" : pnlPos ? "var(--bull)" : "var(--bear)",
-          fontVariantNumeric: "tabular-nums",
-          textAlign: "right",
-          minWidth: 84,
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {pnl == null
-          ? "—"
-          : `${pnlPos ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
-      </span>
+      {/* headline: PnL is the anchor */}
+      <div>
+        <div
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 24,
+            fontWeight: 700,
+            fontVariantNumeric: "tabular-nums",
+            letterSpacing: "-0.02em",
+            color:
+              pnl == null ? "var(--ghost)" : pnlPos ? "var(--bull)" : "var(--bear)",
+          }}
+        >
+          {pnl == null
+            ? "—"
+            : `${pnlPos ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
+          <span
+            style={{
+              fontSize: 12,
+              color: "var(--ghost)",
+              fontWeight: 500,
+              marginLeft: 4,
+            }}
+          >
+            pts
+          </span>
+        </div>
+      </div>
 
-      {/* Sprint 121: recency chip. Older = quieter until it crosses stale. */}
-      <span
-        title={new Date(card.created_at).toLocaleDateString()}
-        style={{
-          fontFamily: "var(--font-jb)",
-          fontSize: 10,
-          color: recencyColor,
-          letterSpacing: "0.02em",
-          minWidth: 56,
-          textAlign: "right",
-        }}
-      >
-        {recency.label}
-      </span>
-
-      {/* TRADES */}
-      <span
-        className="num"
+      {/* stats strip */}
+      <div
+        className="flex items-baseline gap-3 flex-wrap"
         style={{
           fontFamily: "var(--font-jb)",
           fontSize: 11,
+          fontVariantNumeric: "tabular-nums",
           color: "var(--dim)",
-          fontVariantNumeric: "tabular-nums",
-          textAlign: "right",
-          minWidth: 32,
         }}
       >
-        {trades > 0 ? `${trades}t` : "—"}
-      </span>
-
-      {/* Origin word (right-aligned) with detail on hover */}
-      <span
-        title={origin.detail}
-        style={{
-          fontFamily: "var(--font-jb)",
-          fontSize: 11,
-          fontWeight: 500,
-          color: origin.color,
-          letterSpacing: "0.02em",
-          minWidth: 44,
-          textAlign: "right",
-        }}
-      >
-        {origin.word}
-      </span>
-    </Link>
+        <span>
+          <span style={{ color: "var(--ghost)" }}>WR </span>
+          {wr == null ? "—" : `${(wr * 100).toFixed(0)}%`}
+        </span>
+        <span style={{ color: "var(--ghost)" }}>·</span>
+        <span>{trades > 0 ? `${trades}t` : "—"}</span>
+        <span style={{ color: "var(--ghost)" }}>·</span>
+        <span
+          title={new Date(selected.created_at).toLocaleDateString()}
+          style={{ color: recencyColor }}
+        >
+          {recency.label}
+        </span>
+      </div>
+    </div>
   );
 }
 
 // ─── Utility bits ────────────────────────────────────────────────────────────
-
-function truncate(s: string, n: number): string {
-  return s.length <= n ? s : `${s.slice(0, n - 1)}…`;
-}
 
 function TabButton({
   active,
