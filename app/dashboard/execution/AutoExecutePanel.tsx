@@ -149,34 +149,68 @@ export function AutoExecutePanel() {
   const hasActiveGrant = activeGrants.length > 0;
 
   return (
-    <div
-      className="rounded-lg p-4 border"
-      style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
-          Auto-execute
-        </h2>
-        {hasActiveGrant && (
-          <span
-            className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-            style={{ background: "var(--bull-bg)", color: "var(--bull)" }}
-          >
-            Active
-          </span>
-        )}
-      </div>
+    <div>
+      {/* Sprint 115: match the rest of the Execution page's mono-terminal
+          rules. Numbered stage 03 slots into the deploy checklist between
+          02 SIGNAL and 04 TRADE. */}
+      <SectionRule
+        label="03 · PERMISSION"
+        right={
+          hasActiveGrant ? (
+            <span
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.08em",
+                color: "var(--bull)",
+              }}
+            >
+              ● ACTIVE
+            </span>
+          ) : (
+            <span
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                color: "var(--ghost)",
+              }}
+            >
+              ○ IDLE
+            </span>
+          )
+        }
+      />
 
       {!expanded && !hasActiveGrant ? (
         <>
-          <p className="text-xs mb-3" style={{ color: "var(--dim)" }}>
-            Let Atlas auto-fire trades within a cap you set. Uses ERC-7715
-            spend permissions on Base Smart Wallet.
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--dim)",
+              marginBottom: 12,
+              lineHeight: 1.6,
+            }}
+          >
+            Let Atlas auto-fire trades within a daily USDC cap. ERC-7715 spend
+            permission on Base Smart Wallet.
           </p>
           <button
             onClick={() => setExpanded(true)}
-            className="w-full py-2 rounded-md text-xs font-medium transition-colors border"
-            style={{ borderColor: "var(--brand)", color: "var(--brand)", background: "transparent" }}
+            style={{
+              width: "100%",
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              padding: "8px 14px",
+              borderRadius: 4,
+              border: "1px solid var(--brand)",
+              background: "transparent",
+              color: "var(--brand)",
+              cursor: "pointer",
+              letterSpacing: "0.02em",
+            }}
           >
             Enable auto-execute
           </button>
@@ -184,20 +218,41 @@ export function AutoExecutePanel() {
       ) : hasActiveGrant ? (
         <div className="flex flex-col gap-2">
           {loadingGrants ? (
-            <p className="text-xs" style={{ color: "var(--ghost)" }}>Loading grants…</p>
+            <p
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 11,
+                color: "var(--ghost)",
+              }}
+            >
+              Loading grants…
+            </p>
           ) : (
             activeGrants.map((g) => (
-              <ActiveGrantRow key={g.id} grant={g} onRevoke={() => onRevoke(g.id)} />
+              <ActiveGrantRow
+                key={g.id}
+                grant={g}
+                onRevoke={() => onRevoke(g.id)}
+              />
             ))
           )}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
           <div>
-            <label className="text-xs mb-1 block" style={{ color: "var(--ghost)" }}>
-              Daily cap (USDC)
+            <label
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                color: "var(--ghost)",
+                letterSpacing: "0.08em",
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
+              DAILY CAP · USDC
             </label>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <input
                 type="range"
                 min={1}
@@ -208,8 +263,15 @@ export function AutoExecutePanel() {
                 style={{ accentColor: "var(--brand)" }}
               />
               <span
-                className="text-xs font-mono px-2 py-1 rounded"
-                style={{ background: "var(--elevated)", color: "var(--ink)", minWidth: 60, textAlign: "center" }}
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                  minWidth: 56,
+                  textAlign: "right",
+                  fontVariantNumeric: "tabular-nums",
+                }}
               >
                 ${capUsdc}
               </span>
@@ -217,36 +279,100 @@ export function AutoExecutePanel() {
           </div>
 
           <div
-            className="text-[11px] rounded-md p-2"
-            style={{ background: "var(--elevated)", color: "var(--dim)" }}
+            className="grid"
+            style={{
+              gridTemplateColumns: "90px minmax(0, 1fr)",
+              rowGap: 6,
+              columnGap: 12,
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              paddingTop: 8,
+              borderTop: "1px dashed var(--line)",
+            }}
           >
-            You are authorising Atlas to spend up to <strong>${capUsdc}/day</strong> of USDC,{" "}
-            <strong>only on the gTrade contract</strong>, for <strong>{PERIOD_DAYS} days</strong>.
-            Atlas holds a server-side signer scoped to this cap; revoke anytime.
+            <span
+              style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}
+            >
+              CAP
+            </span>
+            <span style={{ color: "var(--ink)", textAlign: "right" }}>
+              ${capUsdc}/day
+            </span>
+            <span
+              style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}
+            >
+              SCOPE
+            </span>
+            <span style={{ color: "var(--ink)", textAlign: "right" }}>
+              gTrade only
+            </span>
+            <span
+              style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}
+            >
+              EXPIRY
+            </span>
+            <span style={{ color: "var(--ink)", textAlign: "right" }}>
+              {PERIOD_DAYS} days
+            </span>
+            {spenderAddress && (
+              <>
+                <span
+                  style={{
+                    color: "var(--ghost)",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  SPENDER
+                </span>
+                <span
+                  style={{ color: "var(--dim)", textAlign: "right" }}
+                >
+                  {spenderAddress.slice(0, 6)}…{spenderAddress.slice(-4)}
+                </span>
+              </>
+            )}
           </div>
-
-          {spenderAddress && (
-            <div className="text-[10px] font-mono" style={{ color: "var(--ghost)" }}>
-              Spender: {spenderAddress.slice(0, 6)}…{spenderAddress.slice(-4)}
-            </div>
-          )}
 
           <button
             onClick={onGrant}
             disabled={granting || loadingSpender}
-            className="w-full py-2 rounded-md text-xs font-medium transition-colors"
             style={{
-              background: granting || loadingSpender ? "var(--elevated)" : "var(--brand)",
-              color: granting || loadingSpender ? "var(--ghost)" : "#fff",
+              width: "100%",
+              fontFamily: "var(--font-jb)",
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "10px 14px",
+              borderRadius: 4,
+              border: `1px solid ${granting || loadingSpender ? "var(--line)" : "var(--brand)"}`,
+              background:
+                granting || loadingSpender
+                  ? "var(--elevated)"
+                  : "var(--brand)",
+              color:
+                granting || loadingSpender ? "var(--ghost)" : "#fff",
+              cursor:
+                granting || loadingSpender ? "not-allowed" : "pointer",
+              letterSpacing: "0.06em",
             }}
           >
-            {granting ? "Awaiting wallet…" : loadingSpender ? "Loading spender…" : "Grant permission"}
+            {granting
+              ? "Awaiting wallet…"
+              : loadingSpender
+                ? "Loading spender…"
+                : "Grant permission"}
           </button>
 
           <button
             onClick={() => setExpanded(false)}
-            className="w-full py-1 text-[10px]"
-            style={{ color: "var(--ghost)", background: "transparent", border: "none" }}
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 10,
+              color: "var(--ghost)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              letterSpacing: "0.06em",
+            }}
           >
             Cancel
           </button>
@@ -254,10 +380,52 @@ export function AutoExecutePanel() {
       )}
 
       {error && (
-        <p className="text-xs mt-2" style={{ color: "var(--bear)" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--bear)",
+            marginTop: 8,
+            lineHeight: 1.5,
+          }}
+        >
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+// Sprint 115: same SectionRule idiom as the rest of the app.
+function SectionRule({
+  label,
+  right,
+}: {
+  label: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3"
+      style={{
+        marginBottom: 12,
+        paddingBottom: 8,
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.14em",
+          color: "var(--ink)",
+        }}
+      >
+        {label}
+      </span>
+      <span aria-hidden style={{ flex: 1 }} />
+      {right}
     </div>
   );
 }
@@ -278,37 +446,58 @@ function ActiveGrantRow({
   });
   return (
     <div
-      className="rounded-md p-2 flex flex-col gap-1"
-      style={{ background: "var(--elevated)" }}
+      className="grid"
+      style={{
+        gridTemplateColumns: "90px minmax(0, 1fr)",
+        rowGap: 6,
+        columnGap: 12,
+        fontFamily: "var(--font-jb)",
+        fontSize: 11,
+        fontVariantNumeric: "tabular-nums",
+      }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs" style={{ color: "var(--ghost)" }}>
-          Daily cap
-        </span>
-        <span className="text-sm font-mono font-medium" style={{ color: "var(--ink)" }}>
-          ${capUsdc.toFixed(2)}
-        </span>
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs" style={{ color: "var(--ghost)" }}>
-          Expires
-        </span>
-        <span className="text-xs font-mono" style={{ color: "var(--ink)" }}>
-          {expiresLabel}
-        </span>
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs" style={{ color: "var(--ghost)" }}>
-          Spender
-        </span>
-        <span className="text-[10px] font-mono" style={{ color: "var(--dim)" }}>
-          {grant.spender_address.slice(0, 6)}…{grant.spender_address.slice(-4)}
-        </span>
-      </div>
+      <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+        DAILY CAP
+      </span>
+      <span
+        style={{
+          color: "var(--ink)",
+          fontWeight: 600,
+          textAlign: "right",
+        }}
+      >
+        ${capUsdc.toFixed(2)}
+      </span>
+
+      <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+        EXPIRES
+      </span>
+      <span style={{ color: "var(--ink)", textAlign: "right" }}>
+        {expiresLabel}
+      </span>
+
+      <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+        SPENDER
+      </span>
+      <span style={{ color: "var(--dim)", textAlign: "right" }}>
+        {grant.spender_address.slice(0, 6)}…{grant.spender_address.slice(-4)}
+      </span>
+
       <button
         onClick={onRevoke}
-        className="text-[10px] mt-1 py-1 rounded-md border"
-        style={{ borderColor: "var(--bear)", color: "var(--bear)", background: "transparent" }}
+        style={{
+          gridColumn: "1 / -1",
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          padding: "6px 10px",
+          borderRadius: 3,
+          border: "1px solid var(--bear)",
+          background: "transparent",
+          color: "var(--bear)",
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+          marginTop: 4,
+        }}
       >
         Revoke
       </button>
