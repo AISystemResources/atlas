@@ -103,6 +103,19 @@ export default async function StrategiesPage() {
     (profile as { scalper_strategy_id: string | null } | null)
       ?.scalper_strategy_id ?? null;
 
+  // Sprint 121: which strategies is the caller watching? Batched lookup so
+  // every row can carry its own ⭐ prefix in the listing.
+  const watchedSet = new Set<string>();
+  {
+    const { data: watchRows } = await sb
+      .from("watched_strategies")
+      .select("strategy_id")
+      .eq("user_id", userId);
+    for (const r of (watchRows ?? []) as Array<{ strategy_id: string }>) {
+      watchedSet.add(r.strategy_id);
+    }
+  }
+
   // Sprint 102: enrich rows with provenance — paper title for paper-extracted
   // strategies, source strategy name for forks. Two batched lookups so the
   // card can render "From arXiv: <title>" / "Forked from <name>" directly.
@@ -160,6 +173,8 @@ export default async function StrategiesPage() {
       owner_label: s.created_by_user_id === userId ? "you" : truncateUser(s.created_by_user_id),
       backtest_count: backtestCounts.get(s.id) ?? 0,
       is_my_scalper: s.id === myScalperId,
+      // Sprint 121: watch marker + recency signal.
+      watched_by_me: watchedSet.has(s.id),
       created_at: s.created_at,
       ticker: s.ticker ?? null,
       tags: s.tags ?? [],
