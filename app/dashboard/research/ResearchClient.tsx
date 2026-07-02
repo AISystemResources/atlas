@@ -84,10 +84,29 @@ function fmtPts(n: number | null): string {
 // --brand carries the "paper begat strategy" thesis. 2px left rail in --bull
 // says "this paper is proven" without a badge.
 
+// Sprint 140: collapse the extracted-strategies list to one row per strategy
+// family (unique name). Keep the highest version's row. Prevents the Research
+// page from showing v1/v2/v3 of the same strategy as separate rows — the
+// version chevrons were killed on the Strategies listing in Sprint 139;
+// applying the same principle here.
+function collapseToLatestPerFamily(list: ExtractedStrategy[]): ExtractedStrategy[] {
+  const bestByName = new Map<string, ExtractedStrategy>();
+  for (const s of list) {
+    const prev = bestByName.get(s.name);
+    if (!prev || s.version > prev.version) bestByName.set(s.name, s);
+  }
+  // Preserve stable order: sort by best-version PnL descending so winners
+  // surface first (matches user intuition on this page).
+  return Array.from(bestByName.values()).sort(
+    (a, b) => (b.total_pnl_points ?? -Infinity) - (a.total_pnl_points ?? -Infinity),
+  );
+}
+
 function InUseCard({ paper, animate }: { paper: PaperRow; animate: boolean }) {
   const arxivId = arxivIdFromUrl(paper.source_url, paper.source);
-  const visible = paper.extracted_strategies.slice(0, 3);
-  const extra = paper.extracted_strategies.length - visible.length;
+  const collapsed = collapseToLatestPerFamily(paper.extracted_strategies);
+  const visible = collapsed.slice(0, 3);
+  const extra = collapsed.length - visible.length;
 
   return (
     <article
