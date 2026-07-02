@@ -20,6 +20,7 @@ import {
   type PendingProposal,
   type PromotionInsight,
   type PromotionInsightChange,
+  type StructuralPromotionView,
 } from "./StrategyDetailClient";
 
 interface StrategyRow {
@@ -364,6 +365,38 @@ export default async function StrategyDetailPage({
     }
   }
 
+  // Sprint 137: structural-promotion "why" — for v2+ rows created via
+  // promote_with_body_change (the structural body-change path). Those rows
+  // have no ticket_backtest_insights entry, but they stamp
+  //   "Promoted from <name> v<N> via structural change. Change: <SUMMARY>.
+  //    Rationale: <LONGFORM>. Model: <MODEL>"
+  // into their description. Parse it here so the WHY panel can render "what
+  // changed and why" even when the promotion took the structural path.
+  // If a distillation insight already exists, that wins — no need for this
+  // fallback (ratchet promotes are richer with A/B forward data).
+  let structuralPromotion: StructuralPromotionView | null = null;
+  if (!promotionInsight && row.parent_version_id && row.description) {
+    structuralPromotion = parseStructuralDescription(
+      row.description,
+      row.created_at,
+    );
+    // Reuse the same body-diff walk as the ratchet path so PLAYBOOK stage
+    // tinting still lights up on structural changes.
+    if (structuralPromotion) {
+      const { data: parentRow } = await sb
+        .from("ticket_logics")
+        .select("body")
+        .eq("id", row.parent_version_id)
+        .maybeSingle();
+      const parentBody = (parentRow as { body: unknown } | null)?.body ?? null;
+      if (parentBody !== null) {
+        const bodyChangePaths: string[][] = [];
+        diffJson(parentBody, row.body, [], bodyChangePaths);
+        structuralPromotion.body_change_paths = bodyChangePaths;
+      }
+    }
+  }
+
   // Forked-from info, if any.
   let forkedFromLabel: string | null = null;
   if (row.forked_from_id) {
@@ -503,6 +536,7 @@ export default async function StrategyDetailPage({
       pendingProposals={pendingProposals}
       nextVersion={nextVersion}
       promotionInsight={promotionInsight}
+      structuralPromotion={structuralPromotion}
       pointValue={pointValue}
     />
   );
@@ -565,4 +599,58 @@ function diffJson(
   for (const k of keys) {
     diffJson(objA[k], objB[k], [...path, k], out);
   }
+}
+
+/**
+ * Sprint 137: parse a structural-promotion description into its parts.
+ * promote_with_body_change stamps the description in a fixed shape:
+ *   "Promoted from <name> v<N> via structural change. Change: <SUMMARY>.
+ *    Rationale: <LONGFORM>. Model: <MODEL>"
+ * Returns null if the description doesn't match this shape (e.g. hand-written,
+ * or from create_ticket_logic).
+ */
+function parseStructuralDescription(
+  description: string,
+  createdAt: string,
+): StructuralPromotionView | null {
+  if (!description.includes("via structural change")) return null;
+
+  // Model is a suffix; strip first so it doesn't leak into rationale.
+  let rest = description;
+  let model: string | null = null;
+  const modelMatch = rest.match(/(?:^|\s)Model:\s*([^\s]+.*?)\s*$/);
+  if (modelMatch) {
+    model = modelMatch[1].trim();
+    rest = rest.slice(0, modelMatch.index).trim();
+  }
+
+  // Rationale = everything after "Rationale:".
+  let rationale: string | null = null;
+  const rationaleIdx = rest.indexOf("Rationale:");
+  if (rationaleIdx >= 0) {
+    rationale = rest.slice(rationaleIdx + "Rationale:".length).trim();
+    // strip a single trailing period the stamp adds.
+    rationale = rationale.replace(/\.\s*$/, "");
+    rest = rest.slice(0, rationaleIdx).trim();
+  }
+
+  // Change summary = everything between "Change:" and end of rest.
+  let changeSummary: string | null = null;
+  const changeIdx = rest.indexOf("Change:");
+  if (changeIdx >= 0) {
+    changeSummary = rest.slice(changeIdx + "Change:".length).trim();
+    changeSummary = changeSummary.replace(/\.\s*$/, "");
+  }
+
+  // At minimum a change summary should be present — otherwise we don't have
+  // anything worth rendering distinct from the version chevrons.
+  if (!changeSummary) return null;
+
+  return {
+    change_summary: changeSummary,
+    rationale,
+    model,
+    created_at: createdAt,
+    body_change_paths: [],
+  };
 }
