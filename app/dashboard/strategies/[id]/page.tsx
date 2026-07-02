@@ -149,6 +149,12 @@ export default async function StrategyDetailPage({
   let pendingProposals: PendingProposal[] = [];
   if (isOwner && backtests.length > 0) {
     const backtestIds = backtests.map((b) => b.id);
+    // Sprint 123: filter PENDING to Claude-family insights only. Sprint 095
+    // removed all server-side LLM inference, so Groq/Llama/Gemini rows in
+    // ticket_backtest_insights are legacy from before the pivot. Historical
+    // insights that already promoted (v2, v3, ...) remain visible in the
+    // WHY panel — that's honest trace. But un-promoted Llama proposals are
+    // stale and should not surface as actionable "Promote to vN" buttons.
     const { data: insightRows } = await sb
       .from("ticket_backtest_insights")
       .select(
@@ -157,6 +163,7 @@ export default async function StrategyDetailPage({
       .in("backtest_id", backtestIds)
       .eq("recommendation", "promote")
       .is("promoted_to_version_id", null)
+      .ilike("model", "%claude%")
       .order("created_at", { ascending: false });
 
     type ProposedChangeRow = {

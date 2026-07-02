@@ -665,38 +665,42 @@ function AbStatCell({
 }
 
 /**
- * Sprint 079C.1: visual differentiator for the multi-reviewer story.
- * Strip provider prefix + version tail to a short family label, and
- * tint by family so the user can scan a list of proposals and see
- * "Llama said X, Claude said Y" at a glance.
+ * Sprint 079C.1: visual differentiator for the reviewer story.
+ * Sprint 123: Groq/Llama/Gemini branches removed — Atlas is Claude/MCP only
+ * post-Sprint 095. Legacy insights from those providers still exist in
+ * ticket_backtest_insights but render without a distinctive chip; their
+ * model string appears as neutral text so historical trace remains honest
+ * without visually privileging a decommissioned provider.
  */
 function ModelChip({ model }: { model: string }) {
   const lower = model.toLowerCase();
-  let label = model;
-  let bg = "var(--elevated)";
-  let fg = "var(--ghost)";
   if (lower.includes("claude")) {
     const m = lower.match(/claude-(opus|sonnet|haiku)-?[\d.]*/);
-    label = m ? `claude-${m[1]}` : "claude";
-    bg = "var(--brand-bg, var(--elevated))";
-    fg = "var(--brand)";
-  } else if (lower.includes("llama")) {
-    const m = lower.match(/llama-?([\d.]+)/);
-    label = m ? `llama-${m[1]}` : "llama";
-    bg = "var(--hold-bg, var(--elevated))";
-    fg = "var(--hold)";
-  } else if (lower.includes("gemini")) {
-    label = "gemini";
-    bg = "var(--bull-bg, var(--elevated))";
-    fg = "var(--bull)";
+    const label = m ? `claude-${m[1]}` : "claude";
+    return (
+      <span
+        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wide"
+        style={{
+          background: "var(--brand-bg, var(--elevated))",
+          color: "var(--brand)",
+        }}
+        title={model}
+      >
+        {label}
+      </span>
+    );
   }
+  // Legacy: any non-Claude insight renders as neutral text so it doesn't
+  // compete for attention. Retained here (not hidden) so v2+ history that
+  // was legitimately produced by a decommissioned engine still shows a
+  // truthful attribution.
   return (
     <span
       className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wide"
-      style={{ background: bg, color: fg }}
-      title={model}
+      style={{ background: "var(--elevated)", color: "var(--ghost)" }}
+      title={`${model} · legacy provider (pre-Sprint 095)`}
     >
-      {label}
+      legacy
     </span>
   );
 }
@@ -1035,18 +1039,16 @@ function AbDeltaChip({ insight }: { insight: PromotionInsight }) {
 }
 
 // Sprint 122: short attribution label for PROVENANCE PAPERS links.
+// Sprint 123: Groq/Llama/Gemini branches removed — Claude/MCP only. Legacy
+// attributions degrade to "legacy" so the UI doesn't imply the provider is
+// current.
 function shortModelLabel(model: string): string {
   const lower = model.toLowerCase();
   if (lower.includes("claude")) {
     const m = lower.match(/claude-(opus|sonnet|haiku)-?[\d.]*/);
     return m ? `claude-${m[1]}` : "claude";
   }
-  if (lower.includes("llama")) {
-    const m = lower.match(/llama-?([\d.]+)/);
-    return m ? `llama-${m[1]}` : "llama";
-  }
-  if (lower.includes("gemini")) return "gemini";
-  return model;
+  return "legacy";
 }
 
 function timeAgo(iso: string): string {
