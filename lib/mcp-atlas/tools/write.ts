@@ -121,6 +121,58 @@ export const WRITE_TOOL_DEFS = [
     },
   },
   {
+    name: "promote_with_body_change",
+    description:
+      "Sprint 130: promote an owner's strategy to v(N+1) with a STRUCTURAL body change — new/removed " +
+      "conditions, new indicators, restructured entry/exit AST. Complements promote_ticket_logic_version " +
+      "(which only tunes existing tunable_parameters via ratchet). Use this when the LLM's distillation " +
+      "diagnosis calls for a structural fix (e.g., adding a trend-regime filter, swapping the entry " +
+      "mechanism) rather than a numeric parameter tune. Preserves lineage via parent_version_id so the " +
+      "improvement journey is versioned honestly. Body is validated by the same schema the rest of the " +
+      "system uses. Rationale + model are stamped on the new row's description for provenance.",
+    annotations: {
+      title: "Promote with body change",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        parent_logic_id: {
+          type: "string",
+          description: "UUID of the parent ticket_logics row. Owner-only.",
+        },
+        new_body: {
+          type: "object",
+          description:
+            "Full TicketLogicBody JSON for v(N+1). Same shape as create_ticket_logic's body arg. " +
+            "The AI can restructure freely within schema constraints — add/remove indicators, add/remove " +
+            "entry.conditions, adjust computed{} expressions, etc. Schema gotcha: tunable_parameters[].path " +
+            "entries are ALL strings including array indices.",
+        },
+        rationale: {
+          type: "string",
+          maxLength: 4000,
+          description: "1-2 paragraph rationale for the structural change. Stamped on the new version.",
+        },
+        model: {
+          type: "string",
+          description:
+            "Your model identifier (e.g. 'anthropic/claude-opus-4-7'). For provenance in the description.",
+        },
+        changes_summary: {
+          type: "string",
+          maxLength: 1000,
+          description:
+            "1-line summary of what changed structurally, e.g. 'Added EMA(50)-slope regime filter to entry.conditions'.",
+        },
+      },
+      required: ["parent_logic_id", "new_body"],
+    },
+  },
+  {
     name: "fork_ticket_logic",
     description:
       "Clone a public or unlisted strategy into the caller's library. Starts a fresh v1 chain under the " +
@@ -839,6 +891,122 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           name: (newRow as { name: string }).name,
           version: (newRow as { version: number }).version,
           status: "draft",
+        });
+      }
+
+      case "promote_with_body_change": {
+        // Sprint 130: structural promotion path. Complements
+        // promote_ticket_logic_version which only tunes existing tunable
+        // parameter values via the ratchet mechanism. This tool lets the
+        // AI restructure the body — add/remove conditions, indicators,
+        // computed expressions — and version it with proper lineage
+        // (parent_version_id) so the improvement journey stays honest.
+        const parentId =
+          typeof args.parent_logic_id === "string" ? args.parent_logic_id : "";
+        const rationale =
+          typeof args.rationale === "string" ? args.rationale.trim() : "";
+        const model = typeof args.model === "string" ? args.model.trim() : "";
+        const changesSummary =
+          typeof args.changes_summary === "string"
+            ? args.changes_summary.trim()
+            : "";
+        if (!parentId) return toolError("parent_logic_id required", "invalid_request");
+        if (typeof args.new_body !== "object" || args.new_body === null) {
+          return toolError("new_body must be an object", "invalid_request");
+        }
+
+        // Validate the body via the same schema everything else uses.
+        const { parseTicketLogicBody } = await import("@/lib/strategies/schema");
+        let parsedBody;
+        try {
+          parsedBody = parseTicketLogicBody(args.new_body);
+        } catch (err) {
+          return toolError(
+            `new_body validation failed: ${err instanceof Error ? err.message : String(err)}`,
+            "invalid_request",
+          );
+        }
+
+        const sb = getServiceClient();
+
+        const { data: parentData } = await sb
+          .from("ticket_logics")
+          .select(
+            "id, name, version, body, created_by_user_id, ticker, tags, parent_paper_id",
+          )
+          .eq("id", parentId)
+          .maybeSingle();
+        const parent = parentData as
+          | {
+              id: string;
+              name: string;
+              version: number;
+              body: unknown;
+              created_by_user_id: string | null;
+              ticker: string | null;
+              tags: string[] | null;
+              parent_paper_id: string | null;
+            }
+          | null;
+        if (!parent) return toolError("parent ticket_logic not found", "not_found");
+        if (parent.created_by_user_id !== userId) {
+          return toolError(
+            "promote_with_body_change is owner-only; fork this strategy first to evolve it",
+            "forbidden",
+          );
+        }
+
+        // Determine next version: max(version) for this name + 1.
+        const { data: topRow } = await sb
+          .from("ticket_logics")
+          .select("version")
+          .eq("name", parent.name)
+          .eq("created_by_user_id", userId)
+          .order("version", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const nextVersion =
+          ((topRow as { version: number } | null)?.version ?? parent.version) + 1;
+
+        const description = [
+          `Promoted from ${parent.name} v${parent.version} via structural change.`,
+          changesSummary ? `Change: ${changesSummary}.` : null,
+          rationale ? `Rationale: ${rationale}` : null,
+          model ? `Model: ${model}` : null,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        const { data: newRow, error: insErr } = await sb
+          .from("ticket_logics")
+          .insert({
+            name: parent.name,
+            version: nextVersion,
+            parent_version_id: parent.id,
+            forked_from_id: null,
+            parent_paper_id: parent.parent_paper_id,
+            description,
+            body: parsedBody,
+            status: "draft",
+            created_by: model || "structural_promotion",
+            created_by_user_id: userId,
+            visibility: "private",
+            ticker: parent.ticker,
+            tags: parent.tags ?? [],
+          })
+          .select("id, name, version")
+          .single();
+        if (insErr || !newRow) {
+          return toolError(`insert failed: ${insErr?.message ?? "no row"}`);
+        }
+
+        return textContent({
+          new_logic_id: (newRow as { id: string }).id,
+          name: (newRow as { name: string }).name,
+          version: (newRow as { version: number }).version,
+          status: "draft",
+          note:
+            "Structural v(N+1) created. Run run_ticket_backtest on the new version to compare vs parent on the same window.",
         });
       }
 
