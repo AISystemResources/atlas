@@ -1,88 +1,78 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { connectSmartWallet, grantSpendPermission } from "@/lib/execution/smart-wallet";
-import { GTRADE_DIAMOND_BASE, USDC_BASE, USDC_DECIMALS } from "@/lib/execution/gtrade";
+import { connectSmartWallet, createSubAccount } from "@/lib/execution/smart-wallet";
 
-// Sprint 109 Phase 2: opt-in Auto-Execute panel.
+// Sprint 118: Coinbase Smart Sub-Accounts. Replaces the dead ERC-7715 path
+// (Sprint 109 Phase 2). The flow is:
+//   1. User clicks "Enable auto-execute"
+//   2. Atlas ensures a server-side spender key exists (Sprint 109b infra)
+//   3. Atlas calls wallet_addSubAccount registering the spender key as the
+//      initial signer — creates a nested smart account under the user's
+//      Smart Wallet
+//   4. UI shows the sub-account address; user tops it up with USDC
+//   5. When a signal fires, the dispatcher (Sprint 119) signs a
+//      UserOperation from the sub-account and submits via a bundler
 //
-// Sits in the left rail below the Wallet card. Users who want the server to
-// sign gTrade trades on their behalf (within a pre-authorised USDC cap on
-// gTrade only) connect a Base Smart Wallet here and grant an ERC-7715
-// permission. This is entirely separate from the browser wallet used for
-// manual trades — the two flows coexist.
+// Trust: the sub-account holds its OWN funds. Blast radius if the server
+// is compromised = whatever's in the sub-account. User controls exposure
+// by controlling top-ups.
 
-const DEFAULT_CAP_USDC = 10;
-const MAX_CAP_USDC = 50;
-const PERIOD_DAYS = 30;
+interface SubAccount {
+  address: string;
+  spender_address: string;
+  factory: string | null;
+  factory_data: string | null;
+  created_at: string;
+}
 
-// Sprint 117: wallet providers throw non-Error objects (plain object with
-// code/message/data). Pull out a human-readable message no matter what
-// shape the wallet chose.
-function describeGrantError(err: unknown, stage: string): string {
+// Sprint 117 error surfacing. Wallet providers throw plain objects like
+//   { code: 4001, message: "user rejected" }
+// which fail `instanceof Error`, so we pull message/code out ourselves.
+function describeSubAccountError(err: unknown, stage: string): string {
   if (typeof err === "string") return `${stage}: ${err}`;
   if (err && typeof err === "object") {
-    const e = err as { message?: unknown; code?: unknown; data?: unknown };
-    const message =
-      typeof e.message === "string" && e.message.length > 0
-        ? e.message
-        : null;
+    const e = err as { message?: unknown; code?: unknown };
+    const message = typeof e.message === "string" ? e.message : null;
     const code =
-      typeof e.code === "number" || typeof e.code === "string"
-        ? `code=${e.code}`
-        : null;
-    // Common Coinbase/MetaMask codes worth calling out specifically.
+      typeof e.code === "number" || typeof e.code === "string" ? `code=${e.code}` : null;
     if (e.code === 4001) return "You cancelled the wallet prompt.";
     if (e.code === 4200 || e.code === -32601) {
-      return `${stage}: wallet does not support this method (${e.code}). ERC-7715 wallet_grantPermissions may not be enabled in this Smart Wallet build.`;
+      return `${stage}: wallet does not support wallet_addSubAccount (${e.code}). Update your Coinbase Wallet.`;
     }
     const parts = [stage, message, code].filter(Boolean);
     if (parts.length > 1) return parts.join(" · ");
   }
-  if (err instanceof Error && err.message) {
-    return `${stage}: ${err.message}`;
-  }
+  if (err instanceof Error && err.message) return `${stage}: ${err.message}`;
   return `${stage}: unknown error (check console)`;
 }
 
-interface ActivePermission {
-  id: string;
-  spender_address: string;
-  allowance_wei: string;
-  expires_at: string;
-  grant_tx_hash: string;
-}
-
 export function AutoExecutePanel() {
-  const [spenderAddress, setSpenderAddress] = useState<string | null>(null);
-  const [loadingSpender, setLoadingSpender] = useState(false);
-  const [activeGrants, setActiveGrants] = useState<ActivePermission[]>([]);
-  const [loadingGrants, setLoadingGrants] = useState(false);
-  const [capUsdc, setCapUsdc] = useState(DEFAULT_CAP_USDC);
-  const [granting, setGranting] = useState(false);
-  const [error, setError] = useState("");
+  const [subAccount, setSubAccount] = useState<SubAccount | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
-  const loadGrants = useCallback(async () => {
-    setLoadingGrants(true);
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/v1/spend-permissions");
+      const res = await fetch("/api/v1/sub-accounts");
       if (res.ok) {
-        const json = (await res.json()) as { permissions: ActivePermission[] };
-        setActiveGrants(json.permissions ?? []);
+        const j = (await res.json()) as { sub_account: SubAccount | null };
+        setSubAccount(j.sub_account);
       }
     } finally {
-      setLoadingGrants(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadGrants();
-  }, [loadGrants]);
+    load();
+  }, [load]);
 
   async function ensureSpender(): Promise<string | null> {
-    if (spenderAddress) return spenderAddress;
-    setLoadingSpender(true);
     setError("");
     try {
       const res = await fetch("/api/v1/spender-key");
@@ -91,114 +81,86 @@ export function AutoExecutePanel() {
         throw new Error(j.error ?? `HTTP ${res.status}`);
       }
       const j = (await res.json()) as { spender_address: string };
-      setSpenderAddress(j.spender_address);
       return j.spender_address;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "spender key load failed");
+      setError(describeSubAccountError(err, "spender"));
       return null;
-    } finally {
-      setLoadingSpender(false);
     }
   }
 
-  async function onGrant() {
+  async function onCreate() {
     setError("");
     const spender = await ensureSpender();
     if (!spender) return;
-    setGranting(true);
-    let stage: "connect" | "grant" | "record" = "connect";
+    setCreating(true);
+    let stage: "connect" | "create" | "record" = "connect";
     try {
-      // Step 1: connect Smart Wallet if not already open.
       stage = "connect";
       const { provider } = await connectSmartWallet();
 
-      // Step 2: request the permission grant.
-      stage = "grant";
-      const allowanceWei = (BigInt(Math.round(capUsdc * 10 ** USDC_DECIMALS))).toString();
-      const periodSeconds = PERIOD_DAYS * 24 * 3600;
-      const expiresAt = Math.floor(Date.now() / 1000) + periodSeconds;
+      stage = "create";
+      const info = await createSubAccount({ provider, spenderAddress: spender });
 
-      const result = await grantSpendPermission({
-        provider,
-        spenderAddress: spender,
-        tokenAddress: USDC_BASE,
-        contractTarget: GTRADE_DIAMOND_BASE,
-        allowanceWei,
-        periodSeconds,
-        expiresAtEpochSeconds: expiresAt,
-      });
-
-      // Step 3: record server-side. The wallet response shape varies; we
-      // pass through whatever tx hash / receipt we can find.
       stage = "record";
-      const grantTxHash = extractTxHash(result) ?? "0x-pending";
-
-      const recordRes = await fetch("/api/v1/spend-permissions", {
+      const recordRes = await fetch("/api/v1/sub-accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          sub_account_address: info.address,
           spender_address: spender,
-          token_address: USDC_BASE,
-          contract_target: GTRADE_DIAMOND_BASE,
-          allowance_wei: allowanceWei,
-          period_seconds: periodSeconds,
-          grant_tx_hash: grantTxHash,
-          expires_at: new Date(expiresAt * 1000).toISOString(),
+          factory: info.factory ?? null,
+          factory_data: info.factoryData ?? null,
         }),
       });
-
       if (!recordRes.ok) {
         const j = (await recordRes.json()) as { error?: string };
         throw new Error(j.error ?? `HTTP ${recordRes.status}`);
       }
 
-      await loadGrants();
+      await load();
+      setExpanded(false);
     } catch (err) {
-      // Sprint 117: wallet providers throw plain objects like
-      //   { code: 4001, message: "user rejected" }
-      // which fail `instanceof Error`, so the old code showed "grant
-      // failed" with zero diagnostic. Extract .message / .code / raw
-      // form so we can see what actually broke — especially with the
-      // ERC-7715 wallet_grantPermissions call which many wallets don't
-      // fully support.
-      setError(describeGrantError(err, stage));
-      // Log to console too so a user can copy-paste for support.
-      console.error(`[auto-execute] grant failed at stage=${stage}:`, err);
+      setError(describeSubAccountError(err, stage));
+      console.error(`[auto-execute] sub-account create failed at stage=${stage}:`, err);
     } finally {
-      setGranting(false);
+      setCreating(false);
     }
   }
 
-  async function onRevoke(grantId: string) {
-    if (!confirm("Revoke this permission grant? Atlas will stop auto-executing trades until you grant a new one.")) {
+  async function onRevoke() {
+    if (
+      !confirm(
+        "Revoke this sub-account? Atlas will stop auto-executing until you create a new one. Funds you already deposited remain in the sub-account.",
+      )
+    ) {
       return;
     }
     setError("");
     try {
-      const res = await fetch(`/api/v1/spend-permissions?id=${encodeURIComponent(grantId)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch("/api/v1/sub-accounts", { method: "DELETE" });
       if (!res.ok) {
         const j = (await res.json()) as { error?: string };
         throw new Error(j.error ?? `HTTP ${res.status}`);
       }
-      await loadGrants();
+      await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "revoke failed");
+      setError(describeSubAccountError(err, "revoke"));
     }
   }
 
-  const hasActiveGrant = activeGrants.length > 0;
+  async function onCopyAddress() {
+    if (!subAccount) return;
+    await navigator.clipboard.writeText(subAccount.address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
 
   return (
     <div>
-      {/* Sprint 115: match the rest of the Execution page's mono-terminal
-          rules. Numbered stage 03 slots into the deploy checklist between
-          02 SIGNAL and 04 TRADE. */}
       <SectionRule
         label="03 · PERMISSION"
         right={
-          hasActiveGrant ? (
+          subAccount ? (
             <span
               style={{
                 fontFamily: "var(--font-jb)",
@@ -225,7 +187,24 @@ export function AutoExecutePanel() {
         }
       />
 
-      {!expanded && !hasActiveGrant ? (
+      {loading && !subAccount && !expanded ? (
+        <p
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--ghost)",
+          }}
+        >
+          Loading…
+        </p>
+      ) : subAccount ? (
+        <ActiveSubAccountView
+          subAccount={subAccount}
+          onCopy={onCopyAddress}
+          copied={copied}
+          onRevoke={onRevoke}
+        />
+      ) : !expanded ? (
         <>
           <p
             style={{
@@ -236,8 +215,9 @@ export function AutoExecutePanel() {
               lineHeight: 1.6,
             }}
           >
-            Let Atlas auto-fire trades within a daily USDC cap. ERC-7715 spend
-            permission on Base Smart Wallet.
+            Let Atlas auto-fire trades from a nested Smart Wallet sub-account
+            that you top up with USDC. Server holds a scoped signer; sub-account
+            holds its own funds.
           </p>
           <button
             onClick={() => setExpanded(true)}
@@ -257,168 +237,12 @@ export function AutoExecutePanel() {
             Enable auto-execute
           </button>
         </>
-      ) : hasActiveGrant ? (
-        <div className="flex flex-col gap-2">
-          {loadingGrants ? (
-            <p
-              style={{
-                fontFamily: "var(--font-jb)",
-                fontSize: 11,
-                color: "var(--ghost)",
-              }}
-            >
-              Loading grants…
-            </p>
-          ) : (
-            activeGrants.map((g) => (
-              <ActiveGrantRow
-                key={g.id}
-                grant={g}
-                onRevoke={() => onRevoke(g.id)}
-              />
-            ))
-          )}
-        </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <div>
-            <label
-              style={{
-                fontFamily: "var(--font-jb)",
-                fontSize: 10,
-                color: "var(--ghost)",
-                letterSpacing: "0.08em",
-                display: "block",
-                marginBottom: 6,
-              }}
-            >
-              DAILY CAP · USDC
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={1}
-                max={MAX_CAP_USDC}
-                value={capUsdc}
-                onChange={(e) => setCapUsdc(Number(e.target.value))}
-                className="flex-1"
-                style={{ accentColor: "var(--brand)" }}
-              />
-              <span
-                style={{
-                  fontFamily: "var(--font-jb)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--ink)",
-                  minWidth: 56,
-                  textAlign: "right",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                ${capUsdc}
-              </span>
-            </div>
-          </div>
-
-          <div
-            className="grid"
-            style={{
-              gridTemplateColumns: "90px minmax(0, 1fr)",
-              rowGap: 6,
-              columnGap: 12,
-              fontFamily: "var(--font-jb)",
-              fontSize: 11,
-              paddingTop: 8,
-              borderTop: "1px dashed var(--line)",
-            }}
-          >
-            <span
-              style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}
-            >
-              CAP
-            </span>
-            <span style={{ color: "var(--ink)", textAlign: "right" }}>
-              ${capUsdc}/day
-            </span>
-            <span
-              style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}
-            >
-              SCOPE
-            </span>
-            <span style={{ color: "var(--ink)", textAlign: "right" }}>
-              gTrade only
-            </span>
-            <span
-              style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}
-            >
-              EXPIRY
-            </span>
-            <span style={{ color: "var(--ink)", textAlign: "right" }}>
-              {PERIOD_DAYS} days
-            </span>
-            {spenderAddress && (
-              <>
-                <span
-                  style={{
-                    color: "var(--ghost)",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  SPENDER
-                </span>
-                <span
-                  style={{ color: "var(--dim)", textAlign: "right" }}
-                >
-                  {spenderAddress.slice(0, 6)}…{spenderAddress.slice(-4)}
-                </span>
-              </>
-            )}
-          </div>
-
-          <button
-            onClick={onGrant}
-            disabled={granting || loadingSpender}
-            style={{
-              width: "100%",
-              fontFamily: "var(--font-jb)",
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "10px 14px",
-              borderRadius: 4,
-              border: `1px solid ${granting || loadingSpender ? "var(--line)" : "var(--brand)"}`,
-              background:
-                granting || loadingSpender
-                  ? "var(--elevated)"
-                  : "var(--brand)",
-              color:
-                granting || loadingSpender ? "var(--ghost)" : "#fff",
-              cursor:
-                granting || loadingSpender ? "not-allowed" : "pointer",
-              letterSpacing: "0.06em",
-            }}
-          >
-            {granting
-              ? "Awaiting wallet…"
-              : loadingSpender
-                ? "Loading spender…"
-                : "Grant permission"}
-          </button>
-
-          <button
-            onClick={() => setExpanded(false)}
-            style={{
-              fontFamily: "var(--font-jb)",
-              fontSize: 10,
-              color: "var(--ghost)",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              letterSpacing: "0.06em",
-            }}
-          >
-            Cancel
-          </button>
-        </div>
+        <CreateSubAccountForm
+          creating={creating}
+          onCreate={onCreate}
+          onCancel={() => setExpanded(false)}
+        />
       )}
 
       {error && (
@@ -434,6 +258,218 @@ export function AutoExecutePanel() {
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+// ── ActiveSubAccountView ─────────────────────────────────────────────────────
+// Shown when the user has a sub-account. Address + copy button + funding
+// coaching + revoke.
+
+function ActiveSubAccountView({
+  subAccount,
+  onCopy,
+  copied,
+  onRevoke,
+}: {
+  subAccount: SubAccount;
+  onCopy: () => void;
+  copied: boolean;
+  onRevoke: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: "90px minmax(0, 1fr)",
+          rowGap: 6,
+          columnGap: 12,
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+          SUB-ACCOUNT
+        </span>
+        <span
+          style={{
+            color: "var(--ink)",
+            textAlign: "right",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={subAccount.address}
+        >
+          {subAccount.address.slice(0, 6)}…{subAccount.address.slice(-4)}
+        </span>
+
+        <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+          SIGNER
+        </span>
+        <span
+          style={{
+            color: "var(--dim)",
+            textAlign: "right",
+          }}
+        >
+          {subAccount.spender_address.slice(0, 6)}…
+          {subAccount.spender_address.slice(-4)}
+        </span>
+
+        <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+          SCOPE
+        </span>
+        <span style={{ color: "var(--ink)", textAlign: "right" }}>gTrade DIA</span>
+      </div>
+
+      <button
+        onClick={onCopy}
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          padding: "6px 10px",
+          borderRadius: 3,
+          border: "1px solid var(--line)",
+          background: "var(--surface)",
+          color: "var(--ink)",
+          cursor: "pointer",
+          letterSpacing: "0.02em",
+        }}
+      >
+        {copied ? "Copied ✓" : "Copy full address"}
+      </button>
+
+      <p
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 10,
+          color: "var(--ghost)",
+          lineHeight: 1.6,
+          paddingTop: 6,
+          borderTop: "1px dashed var(--line)",
+        }}
+      >
+        Fund this address with USDC on Base. When a signal fires, Atlas
+        signs a trade from the sub-account. Only what you deposited can be
+        spent — the sub-account can never touch your main wallet.
+      </p>
+
+      <button
+        onClick={onRevoke}
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          padding: "6px 10px",
+          borderRadius: 3,
+          border: "1px solid var(--bear)",
+          background: "transparent",
+          color: "var(--bear)",
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+        }}
+      >
+        Revoke
+      </button>
+    </div>
+  );
+}
+
+// ── CreateSubAccountForm ─────────────────────────────────────────────────────
+
+function CreateSubAccountForm({
+  creating,
+  onCreate,
+  onCancel,
+}: {
+  creating: boolean;
+  onCreate: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: "90px minmax(0, 1fr)",
+          rowGap: 6,
+          columnGap: 12,
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+        }}
+      >
+        <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+          FUNDING
+        </span>
+        <span style={{ color: "var(--ink)", textAlign: "right" }}>
+          You top up · USDC
+        </span>
+        <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+          SCOPE
+        </span>
+        <span style={{ color: "var(--ink)", textAlign: "right" }}>
+          gTrade DIA only
+        </span>
+        <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+          REVOCABLE
+        </span>
+        <span style={{ color: "var(--ink)", textAlign: "right" }}>
+          Anytime
+        </span>
+      </div>
+
+      <p
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 10,
+          color: "var(--ghost)",
+          lineHeight: 1.6,
+          paddingTop: 6,
+          borderTop: "1px dashed var(--line)",
+        }}
+      >
+        Creates a nested Smart Wallet sub-account. The Atlas server acts as
+        a delegated signer. Your main wallet stays untouched — auto-execute
+        can only spend what you deposit into the sub-account.
+      </p>
+
+      <button
+        onClick={onCreate}
+        disabled={creating}
+        style={{
+          width: "100%",
+          fontFamily: "var(--font-jb)",
+          fontSize: 13,
+          fontWeight: 600,
+          padding: "10px 14px",
+          borderRadius: 4,
+          border: `1px solid ${creating ? "var(--line)" : "var(--brand)"}`,
+          background: creating ? "var(--elevated)" : "var(--brand)",
+          color: creating ? "var(--ghost)" : "#fff",
+          cursor: creating ? "not-allowed" : "pointer",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {creating ? "Awaiting wallet…" : "Create sub-account"}
+      </button>
+
+      <button
+        onClick={onCancel}
+        disabled={creating}
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 10,
+          color: "var(--ghost)",
+          background: "transparent",
+          border: "none",
+          cursor: creating ? "not-allowed" : "pointer",
+          letterSpacing: "0.06em",
+        }}
+      >
+        Cancel
+      </button>
     </div>
   );
 }
@@ -470,95 +506,4 @@ function SectionRule({
       {right}
     </div>
   );
-}
-
-function ActiveGrantRow({
-  grant,
-  onRevoke,
-}: {
-  grant: ActivePermission;
-  onRevoke: () => void;
-}) {
-  const capUsdc = Number(grant.allowance_wei) / 10 ** USDC_DECIMALS;
-  // Expiry rendered as raw date — computing "days left" from Date.now()
-  // during render trips the React compiler's impurity rule.
-  const expiresLabel = new Date(grant.expires_at).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-  return (
-    <div
-      className="grid"
-      style={{
-        gridTemplateColumns: "90px minmax(0, 1fr)",
-        rowGap: 6,
-        columnGap: 12,
-        fontFamily: "var(--font-jb)",
-        fontSize: 11,
-        fontVariantNumeric: "tabular-nums",
-      }}
-    >
-      <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
-        DAILY CAP
-      </span>
-      <span
-        style={{
-          color: "var(--ink)",
-          fontWeight: 600,
-          textAlign: "right",
-        }}
-      >
-        ${capUsdc.toFixed(2)}
-      </span>
-
-      <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
-        EXPIRES
-      </span>
-      <span style={{ color: "var(--ink)", textAlign: "right" }}>
-        {expiresLabel}
-      </span>
-
-      <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
-        SPENDER
-      </span>
-      <span style={{ color: "var(--dim)", textAlign: "right" }}>
-        {grant.spender_address.slice(0, 6)}…{grant.spender_address.slice(-4)}
-      </span>
-
-      <button
-        onClick={onRevoke}
-        style={{
-          gridColumn: "1 / -1",
-          fontFamily: "var(--font-jb)",
-          fontSize: 11,
-          padding: "6px 10px",
-          borderRadius: 3,
-          border: "1px solid var(--bear)",
-          background: "transparent",
-          color: "var(--bear)",
-          cursor: "pointer",
-          letterSpacing: "0.04em",
-          marginTop: 4,
-        }}
-      >
-        Revoke
-      </button>
-    </div>
-  );
-}
-
-function extractTxHash(result: unknown): string | null {
-  if (typeof result === "string" && result.startsWith("0x")) return result;
-  if (result && typeof result === "object") {
-    const obj = result as Record<string, unknown>;
-    if (typeof obj.txHash === "string") return obj.txHash;
-    if (typeof obj.transactionHash === "string") return obj.transactionHash;
-    if (typeof obj.hash === "string") return obj.hash;
-    // ERC-7715 grants may return an array of permissions with hashes
-    if (Array.isArray(obj.permissions) && obj.permissions.length > 0) {
-      const first = obj.permissions[0] as Record<string, unknown>;
-      if (typeof first.txHash === "string") return first.txHash;
-    }
-  }
-  return null;
 }
