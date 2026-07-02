@@ -380,6 +380,44 @@ export default async function StrategyDetailPage({
     paperSourceUrl = (paperRow as { source_url: string } | null)?.source_url ?? null;
   }
 
+  // Sprint 122: N:N paper links. Join through strategy_paper_links so we can
+  // surface convergent-inspiration papers (multiple papers → one strategy).
+  const linkedPapers: Array<{
+    paper_id: string;
+    title: string;
+    source_url: string | null;
+    inspiration_note: string | null;
+    added_by_model: string | null;
+    is_origin: boolean;
+  }> = [];
+  {
+    const { data: linkRows } = await sb
+      .from("strategy_paper_links")
+      .select(
+        "paper_id, inspiration_note, added_by_model, signal_papers!inner(id, title, source_url)",
+      )
+      .eq("strategy_id", row.id)
+      .order("added_at", { ascending: true });
+    type LinkRow = {
+      paper_id: string;
+      inspiration_note: string | null;
+      added_by_model: string | null;
+      signal_papers: { id: string; title: string; source_url: string | null };
+    };
+    for (const r of (linkRows ?? []) as unknown as LinkRow[]) {
+      const isOrigin =
+        r.inspiration_note === "origin" || r.paper_id === row.parent_paper_id;
+      linkedPapers.push({
+        paper_id: r.paper_id,
+        title: r.signal_papers.title,
+        source_url: r.signal_papers.source_url,
+        inspiration_note: r.inspiration_note,
+        added_by_model: r.added_by_model,
+        is_origin: isOrigin,
+      });
+    }
+  }
+
   // Render the body to structured prose server-side.
   const body = parseTicketLogicBody(row.body);
   const rendered = renderTicketLogicBody(body);
@@ -427,6 +465,7 @@ export default async function StrategyDetailPage({
     tags: row.tags ?? [],
     paper_extracted: (row.tags ?? []).includes("paper-extracted"),
     paper_source_url: paperSourceUrl,
+    linked_papers: linkedPapers,
     shares,
     watched_by_me: watchedByMe,
   };

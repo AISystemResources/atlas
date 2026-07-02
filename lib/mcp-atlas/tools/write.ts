@@ -295,8 +295,45 @@ export const WRITE_TOOL_DEFS = [
           enum: ["private", "unlisted", "public"],
           description: "Defaults to 'private'. Public strategies are forkable by other Atlas users.",
         },
+        parent_paper_id: {
+          type: "string",
+          description:
+            "Sprint 122: optional UUID of the signal_papers row that inspired this strategy. Persisted as the immutable ORIGIN and auto-mirrored into strategy_paper_links. Use link_paper_to_strategy afterwards to add additional convergent-inspiration papers.",
+        },
       },
       required: ["name", "ticker", "body"],
+    },
+  },
+  {
+    name: "link_paper_to_strategy",
+    description:
+      "Sprint 122: link an additional paper to an existing strategy — used when the reasoning LLM recognises that a newly-read paper supports the same trading thesis as an already-authored strategy (thesis convergence). The strategy's original parent_paper_id remains its immutable ORIGIN; this adds a supplementary link. Idempotent (upsert). Caller must own the strategy.",
+    annotations: {
+      title: "Link paper to strategy",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        strategy_id: {
+          type: "string",
+          description: "UUID of the ticket_logics row.",
+        },
+        paper_id: {
+          type: "string",
+          description: "UUID of the signal_papers row.",
+        },
+        inspiration_note: {
+          type: "string",
+          maxLength: 500,
+          description:
+            "One-sentence note on why THIS paper informs THIS strategy (the overlap the LLM noticed).",
+        },
+      },
+      required: ["strategy_id", "paper_id", "inspiration_note"],
     },
   },
 ] as const;
@@ -972,6 +1009,10 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           : [];
         const userDescription =
           typeof args.description === "string" ? args.description.trim() : "";
+        const parentPaperId =
+          typeof args.parent_paper_id === "string" && args.parent_paper_id.length > 0
+            ? args.parent_paper_id
+            : null;
 
         if (!name) return toolError("name is required", "invalid_request");
         if (!ticker) return toolError("ticker is required", "invalid_request");
@@ -1024,6 +1065,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             version: 1,
             parent_version_id: null,
             forked_from_id: null,
+            parent_paper_id: parentPaperId,
             description,
             body: parsedBody,
             status: "active",
@@ -1040,12 +1082,92 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           return toolError(`create failed: ${insErr?.message ?? "no row"}`);
         }
 
+        const newStrategyId = (inserted as { id: string }).id;
+
+        // Sprint 122: mirror the origin paper into strategy_paper_links so
+        // the N:N surface is consistent from row one. Not fatal if it fails
+        // (backfill migration also covers this).
+        if (parentPaperId) {
+          await sb.from("strategy_paper_links").upsert(
+            {
+              strategy_id: newStrategyId,
+              paper_id: parentPaperId,
+              inspiration_note: "origin",
+              added_by_model: null,
+            },
+            { onConflict: "strategy_id,paper_id" },
+          );
+        }
+
         return textContent({
-          id: (inserted as { id: string }).id,
+          id: newStrategyId,
           name: (inserted as { name: string }).name,
           version: (inserted as { version: number }).version,
           ticker: (inserted as { ticker: string }).ticker,
           visibility: (inserted as { visibility: string }).visibility,
+        });
+      }
+
+      case "link_paper_to_strategy": {
+        // Sprint 122: additive convergent-inspiration link.
+        const strategyId =
+          typeof args.strategy_id === "string" ? args.strategy_id : "";
+        const paperId =
+          typeof args.paper_id === "string" ? args.paper_id : "";
+        const inspirationNote =
+          typeof args.inspiration_note === "string"
+            ? args.inspiration_note.trim()
+            : "";
+        const modelHeader =
+          typeof args.model === "string" && args.model.length > 0
+            ? args.model
+            : null;
+
+        if (!strategyId) return toolError("strategy_id required", "invalid_request");
+        if (!paperId) return toolError("paper_id required", "invalid_request");
+        if (!inspirationNote) return toolError("inspiration_note required", "invalid_request");
+
+        const sb = getServiceClient();
+
+        // Ownership check — the caller must own the strategy.
+        const { data: strategyRow } = await sb
+          .from("ticket_logics")
+          .select("id, created_by_user_id, name")
+          .eq("id", strategyId)
+          .maybeSingle();
+        if (!strategyRow) return toolError("strategy not found", "not_found");
+        if (
+          (strategyRow as { created_by_user_id: string }).created_by_user_id !== userId
+        ) {
+          return toolError("you don't own this strategy", "forbidden");
+        }
+
+        // Paper must exist.
+        const { data: paperRow } = await sb
+          .from("signal_papers")
+          .select("id, title")
+          .eq("id", paperId)
+          .maybeSingle();
+        if (!paperRow) return toolError("paper not found", "not_found");
+
+        const { error: linkErr } = await sb.from("strategy_paper_links").upsert(
+          {
+            strategy_id: strategyId,
+            paper_id: paperId,
+            inspiration_note: inspirationNote,
+            added_by_model: modelHeader,
+          },
+          { onConflict: "strategy_id,paper_id" },
+        );
+
+        if (linkErr) return toolError(`link failed: ${linkErr.message}`);
+
+        return textContent({
+          ok: true,
+          strategy_id: strategyId,
+          strategy_name: (strategyRow as { name: string }).name,
+          paper_id: paperId,
+          paper_title: (paperRow as { title: string }).title,
         });
       }
 
