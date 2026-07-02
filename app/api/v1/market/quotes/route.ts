@@ -11,6 +11,9 @@ export interface Quote {
   change: number | null;
   changePercent: number | null;
   name: string | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  previousClose: number | null;
 }
 
 /**
@@ -57,7 +60,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         return rowSym === yahooSym || fromYahoo(rowSym) === symbol;
       });
       if (!q) {
-        return { symbol, price: null, change: null, changePercent: null, name: null };
+        return {
+          symbol, price: null, change: null, changePercent: null, name: null,
+          dayHigh: null, dayLow: null, previousClose: null,
+        };
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rec = q as any;
@@ -71,7 +77,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           : typeof rec.longName === "string"
             ? rec.longName
             : null;
-      return { symbol, price, change, changePercent, name };
+      const dayHigh = typeof rec.regularMarketDayHigh === "number" ? rec.regularMarketDayHigh : null;
+      const dayLow = typeof rec.regularMarketDayLow === "number" ? rec.regularMarketDayLow : null;
+      const previousClose =
+        typeof rec.regularMarketPreviousClose === "number" ? rec.regularMarketPreviousClose : null;
+      return { symbol, price, change, changePercent, name, dayHigh, dayLow, previousClose };
     });
 
     return NextResponse.json({ success: true, data: quotes, error: null });
