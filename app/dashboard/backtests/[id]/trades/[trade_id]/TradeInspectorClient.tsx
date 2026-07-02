@@ -272,8 +272,10 @@ export function TradeInspectorClient({
           ticks: {
             color: tokens.ghost,
             font: { size: 9 },
-            autoSkip: false,
-            maxRotation: 0,
+            autoSkip: true,
+            autoSkipPadding: 8,
+            maxRotation: 45,
+            minRotation: 45,
           },
           grid: { color: tokens.line },
         },
