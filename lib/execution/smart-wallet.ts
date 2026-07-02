@@ -84,66 +84,63 @@ export async function connectSmartWallet(): Promise<SmartWalletConnectResult> {
 }
 
 /**
- * Sprint 109 Phase 2: ERC-7715 permission grant. Requests the Smart Wallet
- * to authorise the server-side `spender` address to spend up to
- * `allowanceWei` of USDC (on Base) targeting the gTrade Diamond contract
- * over `periodSeconds`. Returns the grant response containing the on-chain
- * receipt / permission data the server then records to spend_permissions.
+ * Sprint 118: Coinbase Smart Sub-Accounts. Replaces the ERC-7715
+ * `grantSpendPermission` path which Coinbase Wallet SDK v2.5.7 does not
+ * actually implement (never opens a signing UI, times out, auto-rejects
+ * as code 4001 — see Sprint 117 error diagnostic).
  *
- * Shape of the response varies by wallet implementation; we pass through
- * the raw result and let the caller record what's returned. The gate we
- * care about is: did the wallet accept and produce a permission tuple?
+ * `wallet_addSubAccount` creates a nested ERC-4337 smart account under
+ * the user's Smart Wallet. We register our server-side spender address as
+ * the initial signer (type: "address") so the dispatcher can sign
+ * UserOperations from the sub-account when signals fire.
+ *
+ * Trust model:
+ *   - The sub-account holds its OWN funds (user tops up separately)
+ *   - Blast radius if server is compromised = whatever's in the sub-account
+ *   - User revokes by not topping up / calling wallet_revokeSubAccount
  */
-export interface GrantPermissionParams {
+export interface CreateSubAccountParams {
   provider: EthereumProvider;
+  /** Server-side spender EOA address that will sign UserOperations. */
   spenderAddress: string;
-  tokenAddress: string;
-  contractTarget: string;
-  allowanceWei: string;
-  periodSeconds: number;
-  expiresAtEpochSeconds: number;
 }
 
-export async function grantSpendPermission(
-  params: GrantPermissionParams,
-): Promise<unknown> {
-  const { provider, spenderAddress, tokenAddress, contractTarget, allowanceWei, periodSeconds, expiresAtEpochSeconds } = params;
+/** Shape returned by wallet_addSubAccount. */
+export interface SubAccountInfo {
+  address: string;
+  /** ERC-4337 account factory address — needed by the bundler for the
+   *  first UserOperation to deploy the sub-account counterfactually. */
+  factory?: string;
+  /** ABI-encoded factory init calldata for counterfactual deployment. */
+  factoryData?: string;
+}
 
-  return provider.request({
-    method: "wallet_grantPermissions",
+export async function createSubAccount(
+  params: CreateSubAccountParams,
+): Promise<SubAccountInfo> {
+  const { provider, spenderAddress } = params;
+
+  const result = (await provider.request({
+    method: "wallet_addSubAccount",
     params: [
       {
-        chainId: "0x2105", // Base mainnet
-        expiry: expiresAtEpochSeconds,
-        signer: {
-          type: "account",
-          data: { address: spenderAddress },
-        },
-        permissions: [
-          {
-            type: "erc20-token-spend",
-            data: {
-              token: tokenAddress,
-              amount: allowanceWei,
+        account: {
+          type: "create",
+          keys: [
+            {
+              type: "address",
+              publicKey: spenderAddress,
             },
-            policies: [
-              {
-                type: "token-allowance",
-                data: {
-                  allowance: allowanceWei,
-                  period: periodSeconds,
-                },
-              },
-              {
-                type: "contract-call",
-                data: {
-                  target: contractTarget,
-                },
-              },
-            ],
-          },
-        ],
+          ],
+        },
       },
     ],
-  });
+  })) as SubAccountInfo;
+
+  if (!result || typeof result.address !== "string") {
+    throw new Error(
+      `wallet_addSubAccount returned an unexpected shape: ${JSON.stringify(result)}`,
+    );
+  }
+  return result;
 }
