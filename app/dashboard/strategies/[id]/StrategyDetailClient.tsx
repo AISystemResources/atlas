@@ -171,6 +171,16 @@ export interface StrategyDetail {
   tags: string[];
   paper_extracted: boolean;
   paper_source_url: string | null;
+  // Sprint 122: N:N paper links. Origin paper first, then convergent
+  // inspirations added later via link_paper_to_strategy.
+  linked_papers: Array<{
+    paper_id: string;
+    title: string;
+    source_url: string | null;
+    inspiration_note: string | null;
+    added_by_model: string | null;
+    is_origin: boolean;
+  }>;
   shares: StrategyShareEntry[];
   // Sprint 109 Phase 3: is this strategy in the caller's watched_strategies?
   watched_by_me: boolean;
@@ -1024,6 +1034,21 @@ function AbDeltaChip({ insight }: { insight: PromotionInsight }) {
   );
 }
 
+// Sprint 122: short attribution label for PROVENANCE PAPERS links.
+function shortModelLabel(model: string): string {
+  const lower = model.toLowerCase();
+  if (lower.includes("claude")) {
+    const m = lower.match(/claude-(opus|sonnet|haiku)-?[\d.]*/);
+    return m ? `claude-${m[1]}` : "claude";
+  }
+  if (lower.includes("llama")) {
+    const m = lower.match(/llama-?([\d.]+)/);
+    return m ? `llama-${m[1]}` : "llama";
+  }
+  if (lower.includes("gemini")) return "gemini";
+  return model;
+}
+
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
   const ms = Date.now() - then;
@@ -1717,6 +1742,68 @@ function ProvenanceSection({
             </>
           )}
         </span>
+
+        {detail.linked_papers.length > 0 && (
+          <>
+            <span
+              style={{
+                color: "var(--ghost)",
+                letterSpacing: "0.06em",
+              }}
+            >
+              PAPERS
+            </span>
+            <div className="flex flex-col" style={{ gap: 6 }}>
+              {detail.linked_papers.map((p) => (
+                <div
+                  key={p.paper_id}
+                  style={{
+                    fontFamily: "var(--font-jb)",
+                    fontSize: 12,
+                    color: "var(--ink)",
+                  }}
+                >
+                  {p.source_url ? (
+                    <a
+                      href={p.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: "var(--ink)",
+                        textDecoration: "underline",
+                        textUnderlineOffset: 2,
+                      }}
+                    >
+                      {p.title}
+                    </a>
+                  ) : (
+                    <span>{p.title}</span>
+                  )}
+                  <span style={{ color: "var(--ghost)", marginLeft: 8 }}>
+                    {p.is_origin ? "origin" : "also cited"}
+                    {p.added_by_model && (
+                      <> · by {shortModelLabel(p.added_by_model)}</>
+                    )}
+                  </span>
+                  {p.inspiration_note && !p.is_origin && (
+                    <div
+                      style={{
+                        fontFamily: "var(--font-nunito)",
+                        fontSize: 12,
+                        color: "var(--dim)",
+                        marginTop: 2,
+                        lineHeight: 1.45,
+                        maxWidth: 620,
+                      }}
+                    >
+                      {p.inspiration_note}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         {priorVersions.length > 0 && (
           <>
