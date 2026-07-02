@@ -217,16 +217,49 @@ export default async function StrategyDetailPage({
   // Sprint 120: the WHY behind this version. If this row was promoted from an
   // LLM insight (v2+), find the insight row where promoted_to_version_id = us.
   // Carries the model + rationale + proposed_changes that produced this v.
+  // Sprint 120b: also fetch ab_comparison (the honest forward A/B delta) and
+  // the parent's body so we can compute a full body-level diff (SESSION,
+  // weekday, and entry-condition changes that don't map to a declared tunable).
   let promotionInsight: PromotionInsight | null = null;
   {
     const { data: insightRow } = await sb
       .from("ticket_backtest_insights")
       .select(
-        "id, backtest_id, model, rationale, proposed_changes, winning_pattern, losing_pattern, created_at",
+        "id, backtest_id, model, rationale, proposed_changes, ab_comparison, winning_pattern, losing_pattern, created_at",
       )
       .eq("promoted_to_version_id", row.id)
       .maybeSingle();
     if (insightRow) {
+      type AbControl = {
+        total_trades: number;
+        win_rate: number | null;
+        total_pnl_dollars: number;
+        max_drawdown_dollars: number;
+      };
+      type AbComparison =
+        | null
+        | { status: "no_changes" }
+        | {
+            status: "insufficient_forward_data";
+            forward_window: {
+              start_date: string;
+              end_date: string;
+              days_requested: number;
+            };
+            bars_returned: number;
+            reason: string;
+          }
+        | {
+            status: "ok";
+            forward_window: {
+              start_date: string;
+              end_date: string;
+              days_requested: number;
+            };
+            control: AbControl;
+            treatment: AbControl;
+            delta: AbControl;
+          };
       type Row = {
         id: string;
         backtest_id: string;
@@ -241,17 +274,13 @@ export default async function StrategyDetailPage({
           clamp_reason?: string;
           reason: string;
         }> | null;
+        ab_comparison: AbComparison;
         winning_pattern: string | null;
         losing_pattern: string | null;
         created_at: string;
       };
       const r = insightRow as Row;
-      // Parent version PnL for the delta hint.
-      let parentPnl: number | null = null;
-      if (row.parent_version_id) {
-        parentPnl = latestPnlByVersionId.get(row.parent_version_id) ?? null;
-      }
-      const selfPnl = latestPnlByVersionId.get(row.id) ?? null;
+
       const changes: PromotionInsightChange[] = (r.proposed_changes ?? []).map(
         (c) => ({
           name: c.name,
@@ -262,6 +291,42 @@ export default async function StrategyDetailPage({
           reason: c.reason,
         }),
       );
+
+      // Sprint 120b: HONEST delta. The forward A/B in ab_comparison was run
+      // on the SAME bars (control body vs treatment body over the same window
+      // right after the backtest end). That's what the LLM's proposal
+      // actually earned in a controlled test. The raw v1-bt vs v2-bt delta
+      // I showed in Sprint 120 was misleading — the two backtests can be
+      // on unrelated windows and units differ from the rationale.
+      let abDeltaDollars: number | null = null;
+      let abStatus: PromotionInsight["ab_status"] = null;
+      let abWindow: PromotionInsight["ab_window"] = null;
+      if (r.ab_comparison) {
+        abStatus = r.ab_comparison.status;
+        if (r.ab_comparison.status === "ok") {
+          abDeltaDollars = r.ab_comparison.delta.total_pnl_dollars;
+          abWindow = r.ab_comparison.forward_window;
+        } else if (r.ab_comparison.status === "insufficient_forward_data") {
+          abWindow = r.ab_comparison.forward_window;
+        }
+      }
+
+      // Sprint 120b: body-level diff. Pull the parent body so we can walk
+      // both trees and report EVERY changed key path — SESSION, weekday,
+      // indicator params, entry conditions — not just the declared tunables.
+      const bodyChangePaths: string[][] = [];
+      if (row.parent_version_id) {
+        const { data: parentRow } = await sb
+          .from("ticket_logics")
+          .select("body")
+          .eq("id", row.parent_version_id)
+          .maybeSingle();
+        const parentBody = (parentRow as { body: unknown } | null)?.body ?? null;
+        if (parentBody !== null) {
+          diffJson(parentBody, row.body, [], bodyChangePaths);
+        }
+      }
+
       promotionInsight = {
         insight_id: r.id,
         backtest_id: r.backtest_id,
@@ -271,8 +336,10 @@ export default async function StrategyDetailPage({
         losing_pattern: r.losing_pattern,
         created_at: r.created_at,
         changes,
-        parent_pnl_points: parentPnl,
-        current_pnl_points: selfPnl,
+        ab_status: abStatus,
+        ab_delta_dollars: abDeltaDollars,
+        ab_window: abWindow,
+        body_change_paths: bodyChangePaths,
       };
     }
   }
@@ -380,4 +447,57 @@ function truncateUser(userId: string | null): string {
   if (!userId) return "—";
   if (userId.startsWith("user_")) return `@${userId.slice(5, 11)}`;
   return `@${userId.slice(0, 6)}`;
+}
+
+/**
+ * Sprint 120b: recursive JSON deep-diff. Walks two trees and records the
+ * full path of every leaf that differs OR every subtree that only exists on
+ * one side. Used to surface all body-level changes on the WHY panel so
+ * SESSION / weekday / entry-condition edits light up even when the LLM
+ * didn't declare them as tunable proposed_changes.
+ *
+ * Arrays are diffed element-wise up to the shared length; extra elements on
+ * either side count as changes with a numeric index in the path.
+ */
+function diffJson(
+  a: unknown,
+  b: unknown,
+  path: string[],
+  out: string[][],
+): void {
+  if (a === b) return;
+  if (a === null || b === null || a === undefined || b === undefined) {
+    out.push([...path]);
+    return;
+  }
+  if (typeof a !== typeof b) {
+    out.push([...path]);
+    return;
+  }
+  if (typeof a !== "object") {
+    // primitives — !== already caught inequality above
+    out.push([...path]);
+    return;
+  }
+  const aIsArr = Array.isArray(a);
+  const bIsArr = Array.isArray(b);
+  if (aIsArr !== bIsArr) {
+    out.push([...path]);
+    return;
+  }
+  if (aIsArr && bIsArr) {
+    const arrA = a as unknown[];
+    const arrB = b as unknown[];
+    const len = Math.max(arrA.length, arrB.length);
+    for (let i = 0; i < len; i++) {
+      diffJson(arrA[i], arrB[i], [...path, String(i)], out);
+    }
+    return;
+  }
+  const objA = a as Record<string, unknown>;
+  const objB = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(objA), ...Object.keys(objB)]);
+  for (const k of keys) {
+    diffJson(objA[k], objB[k], [...path, k], out);
+  }
 }

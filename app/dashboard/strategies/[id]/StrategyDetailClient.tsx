@@ -54,8 +54,18 @@ export interface PromotionInsight {
   losing_pattern: string | null;
   created_at: string;
   changes: PromotionInsightChange[];
-  parent_pnl_points: number | null;
-  current_pnl_points: number | null;
+  // Sprint 120b: HONEST delta from the server-run forward A/B on the same
+  // bars. Replaces the misleading raw v(n-1)-bt vs v(n)-bt delta that Sprint
+  // 120 shipped, which mixed windows and units. Null when no A/B was run
+  // (e.g., recommendation was 'keep' with no proposed_changes).
+  ab_status: "ok" | "no_changes" | "insufficient_forward_data" | null;
+  ab_delta_dollars: number | null;
+  ab_window: { start_date: string; end_date: string } | null;
+  // Sprint 120b: every JSON path where the current version's body differs
+  // from the parent's. Used to expand PLAYBOOK stage tinting so
+  // SESSION/weekday/entry-condition edits are visible, not just the tunable
+  // parameters the LLM declared as proposed_changes.
+  body_change_paths: string[][];
 }
 
 export interface BacktestListEntry {
@@ -352,6 +362,7 @@ export function StrategyDetailClient({
             ? computeChangedStageNumbers(
                 promotionInsight.changes,
                 detail.tunable_parameters,
+                promotionInsight.body_change_paths,
               )
             : new Set()
         }
@@ -694,26 +705,49 @@ export function tunablePathToStageNumber(
 ): string | null {
   if (!path || path.length === 0) return null;
   const [p0, p1] = path;
+  // 01 SESSION covers the session window itself + valid_weekdays. Sprint
+  // 120b: valid_weekdays lives at the top level; when a promotion changes
+  // it we still want stage 01 to light up.
   if (p0 === "session_window") return "01";
-  if (p0 === "computed") return "03"; // entry_price and friends
+  if (p0 === "valid_weekdays") return "01";
+  if (p0 === "timezone") return "01";
+  // 02 SIGNAL BAR — indicator definitions + entry.conditions predicate
+  // trees. Entry conditions are the "when do we call this bar a signal"
+  // logic (RSI cross, KC touch, close vs EMA, …).
+  if (p0 === "indicators") return "02";
+  if (p0 === "entry" && p1 === "conditions") return "02";
+  // 03 ENTRY — entry price expression + sizing.
+  if (p0 === "computed") return "03";
   if (p0 === "entry") return "03";
   if (p0 === "exit") {
     if (p1 === "stop_loss") return "04";
     if (p1 === "take_profit") return "05";
     if (p1 === "time_stop" || p1 === "exit_conditions") return "06";
+    if (p1 === "stages") return "06";
     return "06";
   }
+  if (p0 === "sl_method") return "04";
   return null;
 }
 
 export function computeChangedStageNumbers(
   changes: PromotionInsightChange[],
   tunables: TunableParameter[],
+  bodyChangePaths: string[][] = [],
 ): Set<string> {
   const byName = new Map(tunables.map((t) => [t.name, t.path]));
   const out = new Set<string>();
+  // Declared tunable changes from the LLM's proposed_changes.
   for (const c of changes) {
     const path = byName.get(c.name);
+    const stage = tunablePathToStageNumber(path);
+    if (stage) out.add(stage);
+  }
+  // Sprint 120b: any other body-level differences vs the parent. A promotion
+  // can edit the body beyond the declared tunables (e.g., a session-window
+  // shift, weekday narrowing, entry-condition rewrite). Those must light up
+  // too or the PLAYBOOK tint lies by omission.
+  for (const path of bodyChangePaths) {
     const stage = tunablePathToStageNumber(path);
     if (stage) out.add(stage);
   }
@@ -820,18 +854,6 @@ function WhyPanel({
   tunables: TunableParameter[];
 }) {
   const parentV = currentVersion - 1;
-  const parentPnl = insight.parent_pnl_points;
-  const selfPnl = insight.current_pnl_points;
-  const deltaAvailable = parentPnl != null && selfPnl != null;
-  const deltaAbs = deltaAvailable ? selfPnl - parentPnl : null;
-  const deltaColor =
-    deltaAbs == null
-      ? "var(--ghost)"
-      : deltaAbs > 0
-        ? "var(--bull)"
-        : deltaAbs < 0
-          ? "var(--bear)"
-          : "var(--dim)";
   const pathByName = new Map(tunables.map((t) => [t.name, t.path] as const));
 
   return (
@@ -845,25 +867,10 @@ function WhyPanel({
         style={{ marginBottom: 12 }}
       >
         <ModelChip model={insight.model} />
-        {deltaAvailable && (
-          <span
-            style={{
-              fontFamily: "var(--font-jb)",
-              fontSize: 12,
-              color: "var(--dim)",
-              fontVariantNumeric: "tabular-nums",
-              letterSpacing: "0.02em",
-            }}
-          >
-            v{parentV} {fmtPts(parentPnl)}
-            <span style={{ margin: "0 6px", color: "var(--ghost)" }}>→</span>
-            v{currentVersion} {fmtPts(selfPnl)}
-            <span style={{ color: deltaColor, marginLeft: 8, fontWeight: 600 }}>
-              (Δ {deltaAbs != null && deltaAbs >= 0 ? "+" : "−"}
-              {deltaAbs != null ? Math.abs(deltaAbs).toFixed(1) : "—"} pts)
-            </span>
-          </span>
-        )}
+        {/* Sprint 120b: honest forward-A/B delta in dollars — the same-bars
+            comparison the server ran, not a raw v(n-1) vs v(n) latest-bt
+            diff on possibly-unrelated windows. */}
+        <AbDeltaChip insight={insight} />
       </div>
       {insight.rationale && (
         <p
@@ -935,9 +942,86 @@ function WhyPanel({
   );
 }
 
-function fmtPts(v: number | null): string {
-  if (v == null) return "—";
-  return `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}`;
+/**
+ * Sprint 120b: chip showing the forward-A/B result — the honest number.
+ *
+ * The forward A/B runs a control (parent body) against a treatment (parent
+ * body + this insight's proposed_changes) over a fresh out-of-sample window
+ * right after the source backtest ended. Both arms see the SAME bars, so
+ * the delta cleanly measures what the LLM's proposal earned.
+ *
+ * The earlier Sprint 120 chip compared "v(n-1)'s latest bt" to "v(n)'s latest
+ * bt" — those can be on unrelated windows, producing points-sums that look
+ * 100–1000× larger than the LLM's actual effect (the rationale is talking
+ * about a $-scale improvement inside a single controlled test).
+ */
+function AbDeltaChip({ insight }: { insight: PromotionInsight }) {
+  const style: React.CSSProperties = {
+    fontFamily: "var(--font-jb)",
+    fontSize: 12,
+    color: "var(--dim)",
+    fontVariantNumeric: "tabular-nums",
+    letterSpacing: "0.02em",
+  };
+  if (insight.ab_status === null) {
+    return (
+      <span
+        style={{ ...style, color: "var(--ghost)" }}
+        title="No A/B row on this insight — the promotion predates the forward-A/B harness or was applied before it could run."
+      >
+        A/B · not run
+      </span>
+    );
+  }
+  if (insight.ab_status === "no_changes") {
+    return (
+      <span
+        style={{ ...style, color: "var(--ghost)" }}
+        title="This promotion applied no parameter changes, so the forward A/B has nothing to compare."
+      >
+        A/B · no parameter changes
+      </span>
+    );
+  }
+  if (insight.ab_status === "insufficient_forward_data") {
+    return (
+      <span
+        style={{ ...style, color: "var(--hold)" }}
+        title={
+          insight.ab_window
+            ? `Forward window ${insight.ab_window.start_date} → ${insight.ab_window.end_date} did not have enough bars to run the A/B.`
+            : "The forward window did not have enough bars to run the A/B."
+        }
+      >
+        A/B · insufficient forward data
+      </span>
+    );
+  }
+  const d = insight.ab_delta_dollars;
+  const color =
+    d == null
+      ? "var(--ghost)"
+      : d > 0
+        ? "var(--bull)"
+        : d < 0
+          ? "var(--bear)"
+          : "var(--dim)";
+  const sign = d != null && d >= 0 ? "+" : "−";
+  return (
+    <span style={style}>
+      <span style={{ color: "var(--ghost)", letterSpacing: "0.04em" }}>
+        A/B forward Δ
+      </span>{" "}
+      <span style={{ color, fontWeight: 600 }}>
+        {sign}${d != null ? Math.abs(d).toFixed(2) : "—"}
+      </span>
+      {insight.ab_window && (
+        <span style={{ color: "var(--ghost)", marginLeft: 8 }}>
+          on {insight.ab_window.start_date} → {insight.ab_window.end_date}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function timeAgo(iso: string): string {
