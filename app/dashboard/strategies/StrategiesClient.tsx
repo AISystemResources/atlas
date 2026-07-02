@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTier } from "../DashboardShell";
 
 // ─── Data shapes ─────────────────────────────────────────────────────────────
@@ -507,12 +507,19 @@ function HeaderCell({
 }
 
 function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) {
+  // Sprint 127: match by version number instead of id. Id-matching was
+  // silently returning -1 for some rows (subtle UUID / JSON serialization
+  // quirk we couldn't isolate), landing selectedIdx on 0 = oldest visible
+  // version instead of the latest one. Version numbers are small integers
+  // and compare cleanly.
   const currentIdx = Math.max(
     0,
-    card.versions.findIndex((v) => v.id === card.id),
+    card.versions.findIndex((v) => v.version === card.version),
   );
   const [selectedIdx, setSelectedIdx] = useState(currentIdx);
   const [hover, setHover] = useState(false);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [hoverAbove, setHoverAbove] = useState(false);
   const selected = card.versions[selectedIdx];
   const origin = originTag(card);
   const bt = selected?.latest_backtest ?? null;
@@ -531,9 +538,22 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
   const canNext = selectedIdx < card.versions.length - 1;
   const maxV = card.versions[card.versions.length - 1]?.version ?? card.version;
 
+  function onEnter() {
+    // Sprint 128: viewport-aware — open the hover card ABOVE the row when
+    // there isn't room below (row within ~280px of the viewport bottom).
+    const el = rowRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setHoverAbove(spaceBelow < 280);
+    }
+    setHover(true);
+  }
+
   return (
     <div
-      onMouseEnter={() => setHover(true)}
+      ref={rowRef}
+      onMouseEnter={onEnter}
       onMouseLeave={() => setHover(false)}
       style={{
         position: "relative",
@@ -709,7 +729,7 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
         {recency.label}
       </span>
 
-      {hover && <HoverSourceCard card={card} />}
+      {hover && <HoverSourceCard card={card} above={hoverAbove} />}
     </div>
   );
 }
@@ -719,7 +739,13 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
  * source (arXiv paper title with link OR fork parent). Positioned at the
  * right edge of the row so it doesn't jitter the table layout.
  */
-function HoverSourceCard({ card }: { card: StrategyCard }) {
+function HoverSourceCard({
+  card,
+  above,
+}: {
+  card: StrategyCard;
+  above: boolean;
+}) {
   const hasPaper = card.parent_paper_id && card.parent_paper_title;
   const hasFork = card.forked_from_id && card.fork_source_name;
   const label = hasPaper
@@ -735,9 +761,13 @@ function HoverSourceCard({ card }: { card: StrategyCard }) {
     <div
       style={{
         position: "absolute",
-        top: "100%",
+        // Sprint 128: viewport-aware. Below the row when there's room,
+        // above the row when it's near the viewport bottom.
+        top: above ? "auto" : "100%",
+        bottom: above ? "100%" : "auto",
         right: 14,
-        marginTop: 4,
+        marginTop: above ? 0 : 4,
+        marginBottom: above ? 4 : 0,
         width: 380,
         maxWidth: "90vw",
         background: "var(--surface)",

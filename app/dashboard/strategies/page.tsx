@@ -66,9 +66,10 @@ export default async function StrategiesPage() {
 
   const strategies = (rows ?? []) as unknown as StrategyRow[];
 
-  // Sprint 125: group by (created_by_user_id, name). Show LATEST version as
-  // the card headline, but also send every version's latest-backtest so the
-  // client's version chevrons can swap in-place without a route change.
+  // Sprint 125: group by (created_by_user_id, name). Show LATEST non-archived
+  // version as the card headline. Sprint 127: fetch ALL versions per family
+  // (including archived) in a separate query so the chevron widget can walk
+  // the FULL improvement journey, not just the currently-active versions.
   const familyMap = new Map<string, StrategyRow[]>();
   for (const s of strategies) {
     const key = `${s.created_by_user_id ?? "—"}::${s.name}`;
@@ -76,12 +77,48 @@ export default async function StrategiesPage() {
     arr.push(s);
     familyMap.set(key, arr);
   }
-  // Sort each family v1 → v(n).
   for (const arr of familyMap.values()) {
     arr.sort((a, b) => a.version - b.version);
   }
   const latest = [...familyMap.values()].map((arr) => arr[arr.length - 1]);
-  const allVersionsForListing = [...familyMap.values()].flat();
+
+  // Sprint 127: separate query for the FULL version history per family
+  // (including archived). The card headline still comes from `latest` above,
+  // but the chevrons need the complete arc so users can walk v1 → v(n).
+  const allVersionsByFamily = new Map<string, StrategyRow[]>();
+  if (latest.length > 0) {
+    const names = [...new Set(latest.map((s) => s.name))];
+    const ownerIds = [
+      ...new Set(
+        latest
+          .map((s) => s.created_by_user_id)
+          .filter((v): v is string => v != null),
+      ),
+    ];
+    const { data: allRows } = await sb
+      .from("ticket_logics")
+      .select(
+        "id, name, version, parent_version_id, forked_from_id, parent_paper_id, created_by, description, status, visibility, created_by_user_id, created_at, ticker, tags",
+      )
+      .in("name", names)
+      .in("created_by_user_id", ownerIds)
+      .order("version", { ascending: true });
+    for (const s of (allRows ?? []) as unknown as StrategyRow[]) {
+      const key = `${s.created_by_user_id ?? "—"}::${s.name}`;
+      const arr = allVersionsByFamily.get(key) ?? [];
+      arr.push(s);
+      allVersionsByFamily.set(key, arr);
+    }
+  }
+
+  // Union of non-archived + full-history for the backtest lookup below.
+  const allVersionsForListing = [
+    ...new Map(
+      [...familyMap.values(), ...allVersionsByFamily.values()]
+        .flat()
+        .map((s) => [s.id, s] as const),
+    ).values(),
+  ];
 
   // Backtest counts + latest performance per strategy_id (all versions).
   const backtestCounts = new Map<string, number>();
@@ -167,10 +204,13 @@ export default async function StrategiesPage() {
 
   const cards: StrategyCard[] = latest.map((s) => {
     const bt = latestBtMap.get(s.id);
-    // Sprint 125: attach all sibling versions with each version's own latest
-    // backtest so the card can toggle < v(n) >  without a route change.
+    // Sprint 127: pull ALL siblings (including archived) from the full-history
+    // map, not the non-archived-only familyMap. Sprint 125's chevron widget
+    // otherwise silently tops out at whatever's non-archived — e.g.,
+    // sandy-s1-long only exposes v3+v4 while v1+v2 are archived in DB.
     const familyKey = `${s.created_by_user_id ?? "—"}::${s.name}`;
-    const siblings = familyMap.get(familyKey) ?? [];
+    const siblings =
+      allVersionsByFamily.get(familyKey) ?? familyMap.get(familyKey) ?? [];
     const versions = siblings.map((sib) => {
       const sbt = latestBtMap.get(sib.id);
       return {
