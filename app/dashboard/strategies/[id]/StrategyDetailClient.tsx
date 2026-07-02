@@ -1464,17 +1464,7 @@ function ProofSection({ backtests }: { backtests: BacktestListEntry[] }) {
             padding: "8px 0",
           }}
         >
-          No runs yet.{" "}
-          <Link
-            href="/dashboard/backtests"
-            style={{
-              color: "var(--brand)",
-              textDecoration: "underline",
-              textUnderlineOffset: 2,
-            }}
-          >
-            Run a backtest →
-          </Link>
+          No runs yet. Run a backtest from your connected Claude/ChatGPT MCP session.
         </p>
       ) : (
         <div className="flex flex-col">

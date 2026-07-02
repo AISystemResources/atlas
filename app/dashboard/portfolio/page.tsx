@@ -18,19 +18,6 @@ export type StrategyHealth = {
   } | null;
 };
 
-export type BacktestTradeLite = {
-  id: string;
-  entry_ts: string;
-  entry_price: number;
-  exit_ts: string | null;
-  exit_price: number | null;
-  exit_reason: string | null;
-  pnl_points: number | null;
-  qty: number | null;
-  ticker: string;
-  strategy_name: string;
-};
-
 export default async function PortfolioPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
@@ -51,7 +38,7 @@ export default async function PortfolioPage() {
   }
 
   // Pro path — analytics dashboard
-  const [strategiesResult, pendingResult, tradesResult] = await Promise.all([
+  const [strategiesResult, pendingResult] = await Promise.all([
     sb.from("ticket_logics")
       .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_points, total_trades, created_at)")
       .eq("status", "active")
@@ -60,11 +47,6 @@ export default async function PortfolioPage() {
     sb.from("ticket_logics")
       .select("id", { count: "exact", head: true })
       .eq("status", "proposed"),
-
-    sb.from("ticket_backtest_trades")
-      .select("id, entry_ts, entry_price, exit_ts, exit_price, exit_reason, pnl_points, qty, ticket_backtests(ticker, ticket_logics(name))")
-      .order("entry_ts", { ascending: false })
-      .limit(20),
   ]);
 
   const strategies: StrategyHealth[] = ((strategiesResult.data ?? []) as Record<string, unknown>[]).map((row) => {
@@ -88,29 +70,11 @@ export default async function PortfolioPage() {
 
   const pendingCount = pendingResult.count ?? 0;
 
-  const recentTrades: BacktestTradeLite[] = ((tradesResult.data ?? []) as Record<string, unknown>[]).map((row) => {
-    const bt = row["ticket_backtests"] as Record<string, unknown> | null;
-    const tl = bt?.["ticket_logics"] as Record<string, unknown> | null;
-    return {
-      id: row["id"] as string,
-      entry_ts: row["entry_ts"] as string,
-      entry_price: row["entry_price"] as number,
-      exit_ts: row["exit_ts"] as string | null,
-      exit_price: row["exit_price"] as number | null,
-      exit_reason: row["exit_reason"] as string | null,
-      pnl_points: row["pnl_points"] as number | null,
-      qty: row["qty"] as number | null,
-      ticker: (bt?.["ticker"] as string) ?? "—",
-      strategy_name: (tl?.["name"] as string) ?? "—",
-    };
-  });
-
   return (
     <PortfolioPageClient
       tier="pro"
       strategies={strategies}
       pendingCount={pendingCount}
-      recentTrades={recentTrades}
     />
   );
 }

@@ -3,13 +3,10 @@
 import { useState, useEffect } from "react";
 import { PortfolioTab } from "../DashboardClient";
 import { FreeDashboard, type PublicStrategyPreview } from "./FreeDashboard";
-import type { StrategyHealth, BacktestTradeLite } from "./page";
+import type { StrategyHealth } from "./page";
 
 const API_URL = "/api";
 
-// Sprint 103: discriminated union — the two tiers see materially different
-// dashboards, so the shape they need is materially different. Forcing all
-// props through the same bag was masking that.
 type Props =
   | {
       tier: "free";
@@ -19,7 +16,6 @@ type Props =
       tier: "pro";
       strategies: StrategyHealth[];
       pendingCount: number;
-      recentTrades: BacktestTradeLite[];
     };
 
 export function PortfolioPageClient(props: Props) {
@@ -65,7 +61,6 @@ export function PortfolioPageClient(props: Props) {
           tier={props.tier}
           strategies={props.strategies}
           pendingCount={props.pendingCount}
-          recentTrades={props.recentTrades}
         />
       )}
     </div>
