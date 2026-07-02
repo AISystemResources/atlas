@@ -70,6 +70,20 @@ export interface PromotionInsight {
   body_change_paths: string[][];
 }
 
+// Sprint 137: structural-promotion "why" view.
+// promote_with_body_change stamps changes_summary + rationale into the new
+// row's description (no ticket_backtest_insights row is created). We parse
+// that description server-side and hand the pieces here so the WHY panel
+// can render the same "what changed and why" story it does for ratchet
+// promotions.
+export interface StructuralPromotionView {
+  change_summary: string;
+  rationale: string | null;
+  model: string | null;
+  created_at: string;
+  body_change_paths: string[][];
+}
+
 export interface BacktestListEntry {
   id: string;
   ticker: string;
@@ -195,6 +209,7 @@ export function StrategyDetailClient({
   pendingProposals,
   nextVersion,
   promotionInsight,
+  structuralPromotion,
   pointValue,
 }: {
   detail: StrategyDetail;
@@ -203,6 +218,9 @@ export function StrategyDetailClient({
   pendingProposals: PendingProposal[];
   nextVersion: number;
   promotionInsight: PromotionInsight | null;
+  /** Sprint 137: parsed from the description when a body-change promotion
+      is the source of this version (no distillation-insight row exists). */
+  structuralPromotion: StructuralPromotionView | null;
   /** Sprint 124: user's point-to-dollar ratio for the WHY panel's dollar echo. */
   pointValue: number;
 }) {
@@ -338,6 +356,15 @@ export function StrategyDetailClient({
           currentVersion={detail.version}
           tunables={detail.tunable_parameters}
           pointValue={pointValue}
+        />
+      )}
+
+      {/* Sprint 137: WHY this version — structural (body-change) fallback.
+          Only renders if there's no ratchet insight (that path is richer). */}
+      {!promotionInsight && structuralPromotion && (
+        <StructuralWhyPanel
+          promotion={structuralPromotion}
+          currentVersion={detail.version}
         />
       )}
 
@@ -1076,6 +1103,124 @@ function WhyPanel({
         >
           No parameter changes — this promotion was cosmetic (metadata only).
         </p>
+      )}
+    </section>
+  );
+}
+
+// Sprint 137: WHY panel for structural (body-change) promotions.
+// No A/B forward delta or per-tunable diff — instead: the one-line change
+// summary, the LLM's rationale, the model tag, and the raw body-diff paths
+// so the reader can see which parts of the strategy were rewritten.
+function StructuralWhyPanel({
+  promotion,
+  currentVersion,
+}: {
+  promotion: StructuralPromotionView;
+  currentVersion: number;
+}) {
+  const parentV = currentVersion - 1;
+  return (
+    <section className="mb-10">
+      <SectionRule
+        label={`WHY v${currentVersion}`}
+        note={`from v${parentV} · ${timeAgo(promotion.created_at)}`}
+      />
+      <div
+        className="flex items-center gap-3 flex-wrap"
+        style={{ marginBottom: 12 }}
+      >
+        {promotion.model && <ModelChip model={promotion.model} />}
+        <span
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 10,
+            letterSpacing: "0.08em",
+            color: "var(--brand)",
+            background: "rgba(200,16,46,0.08)",
+            border: "1px solid rgba(200,16,46,0.25)",
+            padding: "2px 7px",
+            borderRadius: 4,
+          }}
+        >
+          STRUCTURAL
+        </span>
+      </div>
+
+      {/* One-line change summary — the headline. */}
+      <p
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--ink)",
+          marginBottom: 14,
+          maxWidth: 720,
+        }}
+      >
+        {promotion.change_summary}
+      </p>
+
+      {/* Long-form rationale. */}
+      {promotion.rationale && (
+        <p
+          style={{
+            fontFamily: "var(--font-nunito)",
+            fontSize: 14,
+            lineHeight: 1.55,
+            color: "var(--ink)",
+            marginBottom: 14,
+            maxWidth: 720,
+          }}
+        >
+          {promotion.rationale}
+        </p>
+      )}
+
+      {/* Body-diff paths — every part of the strategy body that changed. */}
+      {promotion.body_change_paths.length > 0 && (
+        <div>
+          <div
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 10,
+              letterSpacing: "0.08em",
+              color: "var(--ghost)",
+              marginBottom: 8,
+            }}
+          >
+            CHANGED BODY PATHS · {promotion.body_change_paths.length}
+          </div>
+          <div className="flex flex-col" style={{ gap: 4 }}>
+            {promotion.body_change_paths.slice(0, 12).map((p, i) => (
+              <span
+                key={i}
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  color: "var(--dim)",
+                  padding: "4px 0",
+                  borderBottom: "1px solid rgba(141, 164, 178, 0.14)",
+                }}
+              >
+                {p.join(".")}
+              </span>
+            ))}
+            {promotion.body_change_paths.length > 12 && (
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  color: "var(--ghost)",
+                  fontStyle: "italic",
+                  paddingTop: 4,
+                }}
+              >
+                +{promotion.body_change_paths.length - 12} more…
+              </span>
+            )}
+          </div>
+        </div>
       )}
     </section>
   );

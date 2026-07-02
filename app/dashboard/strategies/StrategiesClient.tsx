@@ -693,15 +693,10 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
           : `${pnlPos ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
       </span>
 
-      {/* WR */}
-      <span
-        style={{
-          color: wr == null ? "var(--ghost)" : "var(--dim)",
-          textAlign: "right",
-        }}
-      >
-        {wr == null ? "—" : `${(wr * 100).toFixed(0)}%`}
-      </span>
+      {/* WR — Sprint 138: horizontal green/red bar; whichever side wins is
+          the accented color and label, the other side fades. */}
+      <WinRateBar wr={wr} />
+
 
       {/* trades */}
       <span style={{ color: "var(--dim)", textAlign: "right" }}>
@@ -721,6 +716,81 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
       </span>
 
       {hover && <HoverSourceCard card={card} above={hoverAbove} />}
+    </div>
+  );
+}
+
+/**
+ * Sprint 138: WR cell — horizontal green/red bar telling the win/lose story
+ * at a glance. Green sits on the left, red on the right, split at the
+ * winrate. Whichever side is dominant gets the saturated colour + label; the
+ * other side fades. A trader's eye lands on the accented number first.
+ */
+function WinRateBar({ wr }: { wr: number | null }) {
+  if (wr == null) {
+    return (
+      <span
+        style={{
+          color: "var(--ghost)",
+          textAlign: "right",
+          fontFamily: "var(--font-jb)",
+          fontSize: 12,
+        }}
+      >
+        —
+      </span>
+    );
+  }
+  const pct = Math.round(wr * 100);
+  const isWin = pct >= 50;
+  return (
+    <div
+      className="flex items-center"
+      style={{ gap: 8, justifyContent: "flex-end", minWidth: 92 }}
+    >
+      <span
+        className="num"
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 12,
+          fontWeight: 600,
+          fontVariantNumeric: "tabular-nums",
+          color: isWin ? "var(--bull)" : "var(--bear)",
+          minWidth: 30,
+          textAlign: "right",
+        }}
+      >
+        {pct}%
+      </span>
+      <div
+        aria-label={`${pct}% winrate`}
+        style={{
+          position: "relative",
+          width: 52,
+          height: 6,
+          borderRadius: 3,
+          overflow: "hidden",
+          background: "var(--elevated)",
+          display: "flex",
+        }}
+      >
+        {/* Left = green (wins) */}
+        <div
+          style={{
+            width: `${pct}%`,
+            background: "var(--bull)",
+            opacity: isWin ? 1 : 0.35,
+          }}
+        />
+        {/* Right = red (losses) */}
+        <div
+          style={{
+            width: `${100 - pct}%`,
+            background: "var(--bear)",
+            opacity: isWin ? 0.35 : 1,
+          }}
+        />
+      </div>
     </div>
   );
 }
