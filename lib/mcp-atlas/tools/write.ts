@@ -1010,7 +1010,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             description,
             body: parsedBody,
             status: "draft",
-            created_by: model || "structural_promotion",
+            created_by: "distillation",
             created_by_user_id: userId,
             visibility: "private",
             ticker: parent.ticker,
