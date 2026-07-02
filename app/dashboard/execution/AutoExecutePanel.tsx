@@ -16,6 +16,35 @@ const DEFAULT_CAP_USDC = 10;
 const MAX_CAP_USDC = 50;
 const PERIOD_DAYS = 30;
 
+// Sprint 117: wallet providers throw non-Error objects (plain object with
+// code/message/data). Pull out a human-readable message no matter what
+// shape the wallet chose.
+function describeGrantError(err: unknown, stage: string): string {
+  if (typeof err === "string") return `${stage}: ${err}`;
+  if (err && typeof err === "object") {
+    const e = err as { message?: unknown; code?: unknown; data?: unknown };
+    const message =
+      typeof e.message === "string" && e.message.length > 0
+        ? e.message
+        : null;
+    const code =
+      typeof e.code === "number" || typeof e.code === "string"
+        ? `code=${e.code}`
+        : null;
+    // Common Coinbase/MetaMask codes worth calling out specifically.
+    if (e.code === 4001) return "You cancelled the wallet prompt.";
+    if (e.code === 4200 || e.code === -32601) {
+      return `${stage}: wallet does not support this method (${e.code}). ERC-7715 wallet_grantPermissions may not be enabled in this Smart Wallet build.`;
+    }
+    const parts = [stage, message, code].filter(Boolean);
+    if (parts.length > 1) return parts.join(" · ");
+  }
+  if (err instanceof Error && err.message) {
+    return `${stage}: ${err.message}`;
+  }
+  return `${stage}: unknown error (check console)`;
+}
+
 interface ActivePermission {
   id: string;
   spender_address: string;
@@ -77,11 +106,14 @@ export function AutoExecutePanel() {
     const spender = await ensureSpender();
     if (!spender) return;
     setGranting(true);
+    let stage: "connect" | "grant" | "record" = "connect";
     try {
       // Step 1: connect Smart Wallet if not already open.
+      stage = "connect";
       const { provider } = await connectSmartWallet();
 
       // Step 2: request the permission grant.
+      stage = "grant";
       const allowanceWei = (BigInt(Math.round(capUsdc * 10 ** USDC_DECIMALS))).toString();
       const periodSeconds = PERIOD_DAYS * 24 * 3600;
       const expiresAt = Math.floor(Date.now() / 1000) + periodSeconds;
@@ -98,6 +130,7 @@ export function AutoExecutePanel() {
 
       // Step 3: record server-side. The wallet response shape varies; we
       // pass through whatever tx hash / receipt we can find.
+      stage = "record";
       const grantTxHash = extractTxHash(result) ?? "0x-pending";
 
       const recordRes = await fetch("/api/v1/spend-permissions", {
@@ -121,7 +154,16 @@ export function AutoExecutePanel() {
 
       await loadGrants();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "grant failed");
+      // Sprint 117: wallet providers throw plain objects like
+      //   { code: 4001, message: "user rejected" }
+      // which fail `instanceof Error`, so the old code showed "grant
+      // failed" with zero diagnostic. Extract .message / .code / raw
+      // form so we can see what actually broke — especially with the
+      // ERC-7715 wallet_grantPermissions call which many wallets don't
+      // fully support.
+      setError(describeGrantError(err, stage));
+      // Log to console too so a user can copy-paste for support.
+      console.error(`[auto-execute] grant failed at stage=${stage}:`, err);
     } finally {
       setGranting(false);
     }
