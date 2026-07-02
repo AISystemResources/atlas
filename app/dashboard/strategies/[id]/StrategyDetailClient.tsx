@@ -1109,9 +1109,8 @@ function WhyPanel({
 }
 
 // Sprint 137: WHY panel for structural (body-change) promotions.
-// No A/B forward delta or per-tunable diff — instead: the one-line change
-// summary, the LLM's rationale, the model tag, and the raw body-diff paths
-// so the reader can see which parts of the strategy were rewritten.
+// Sprint 139: side-by-side layout (description | what changed) with plain
+// English translations of the JSON body paths for non-technical readers.
 function StructuralWhyPanel({
   promotion,
   currentVersion,
@@ -1120,6 +1119,9 @@ function StructuralWhyPanel({
   currentVersion: number;
 }) {
   const parentV = currentVersion - 1;
+  const changesInPlainEnglish = promotion.body_change_paths
+    .map(humanizeBodyPath)
+    .filter((s, i, arr) => arr.indexOf(s) === i);
   return (
     <section className="mb-10">
       <SectionRule
@@ -1147,83 +1149,184 @@ function StructuralWhyPanel({
         </span>
       </div>
 
-      {/* One-line change summary — the headline. */}
-      <p
-        style={{
-          fontFamily: "var(--font-jb)",
-          fontSize: 13,
-          fontWeight: 600,
-          color: "var(--ink)",
-          marginBottom: 14,
-          maxWidth: 720,
-        }}
+      {/* Side-by-side: description (left) · plain-English changes (right). */}
+      <div
+        className="grid gap-8"
+        style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)" }}
       >
-        {promotion.change_summary}
-      </p>
-
-      {/* Long-form rationale. */}
-      {promotion.rationale && (
-        <p
-          style={{
-            fontFamily: "var(--font-nunito)",
-            fontSize: 14,
-            lineHeight: 1.55,
-            color: "var(--ink)",
-            marginBottom: 14,
-            maxWidth: 720,
-          }}
-        >
-          {promotion.rationale}
-        </p>
-      )}
-
-      {/* Body-diff paths — every part of the strategy body that changed. */}
-      {promotion.body_change_paths.length > 0 && (
-        <div>
-          <div
+        <div className="min-w-0">
+          <p
             style={{
               fontFamily: "var(--font-jb)",
-              fontSize: 10,
-              letterSpacing: "0.08em",
-              color: "var(--ghost)",
-              marginBottom: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--ink)",
+              marginBottom: 12,
             }}
           >
-            CHANGED BODY PATHS · {promotion.body_change_paths.length}
-          </div>
-          <div className="flex flex-col" style={{ gap: 4 }}>
-            {promotion.body_change_paths.slice(0, 12).map((p, i) => (
-              <span
-                key={i}
-                style={{
-                  fontFamily: "var(--font-jb)",
-                  fontSize: 11,
-                  color: "var(--dim)",
-                  padding: "4px 0",
-                  borderBottom: "1px solid rgba(141, 164, 178, 0.14)",
-                }}
-              >
-                {p.join(".")}
-              </span>
-            ))}
-            {promotion.body_change_paths.length > 12 && (
-              <span
-                style={{
-                  fontFamily: "var(--font-jb)",
-                  fontSize: 11,
-                  color: "var(--ghost)",
-                  fontStyle: "italic",
-                  paddingTop: 4,
-                }}
-              >
-                +{promotion.body_change_paths.length - 12} more…
-              </span>
-            )}
-          </div>
+            {promotion.change_summary}
+          </p>
+          {promotion.rationale && (
+            <p
+              style={{
+                fontFamily: "var(--font-nunito)",
+                fontSize: 14,
+                lineHeight: 1.55,
+                color: "var(--ink)",
+              }}
+            >
+              {promotion.rationale}
+            </p>
+          )}
         </div>
-      )}
+
+        {changesInPlainEnglish.length > 0 && (
+          <div className="min-w-0">
+            <div
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                color: "var(--ghost)",
+                marginBottom: 10,
+              }}
+            >
+              WHAT CHANGED · {changesInPlainEnglish.length}
+            </div>
+            <ul className="flex flex-col" style={{ gap: 0, paddingLeft: 0, listStyle: "none" }}>
+              {changesInPlainEnglish.slice(0, 14).map((label, i) => (
+                <li
+                  key={i}
+                  style={{
+                    fontFamily: "var(--font-nunito)",
+                    fontSize: 13,
+                    color: "var(--ink)",
+                    padding: "7px 0",
+                    borderBottom: "1px solid rgba(141, 164, 178, 0.14)",
+                  }}
+                >
+                  {label}
+                </li>
+              ))}
+              {changesInPlainEnglish.length > 14 && (
+                <li
+                  style={{
+                    fontFamily: "var(--font-jb)",
+                    fontSize: 11,
+                    color: "var(--ghost)",
+                    fontStyle: "italic",
+                    paddingTop: 6,
+                  }}
+                >
+                  +{changesInPlainEnglish.length - 14} more…
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+      </div>
     </section>
   );
+}
+
+/**
+ * Sprint 139: turn a JSON body-diff path into a plain-English label a finance
+ * user with zero coding background can parse. Removes array indices and
+ * meta-fields (like tunable_parameters.N.description) that are noise to
+ * traders. Collapses multiple paths that describe the same concept.
+ */
+function humanizeBodyPath(path: string[]): string {
+  const p = path;
+  const head = p[0];
+  const tail = p[p.length - 1];
+
+  // Session window edits.
+  if (head === "session_window") {
+    if (tail === "start") return "Session start time";
+    if (tail === "end") return "Session end time";
+    if (tail === "timezone") return "Session timezone";
+    return "Trading session window";
+  }
+
+  // Weekday allow-list.
+  if (head === "valid_weekdays") return "Trading days of the week";
+
+  // Direction / timeframe / universe.
+  if (head === "direction") return "Trade direction (long/short)";
+  if (head === "timeframe") return "Bar timeframe";
+  if (head === "universe") return "Ticker universe";
+
+  // Indicators added / renamed / retuned.
+  if (head === "indicators") {
+    // e.g. ["indicators", "2", "params", "period"]
+    if (p.length === 1) return "Set of indicators";
+    if (tail === "period") return "Indicator lookback period";
+    if (tail === "multiplier") return "Indicator multiplier";
+    if (tail === "id" || tail === "type") return "Added or renamed an indicator";
+    if (p.includes("params")) return "Indicator settings";
+    return "Set of indicators";
+  }
+
+  // Entry conditions.
+  if (head === "entry") {
+    if (p[1] === "conditions") return "Entry conditions (rules to fire a trade)";
+    if (p[1] === "sizing") {
+      if (tail === "value") return "Position size (dollars per trade)";
+      if (tail === "method") return "Position sizing method";
+      return "Position sizing";
+    }
+    return "Entry logic";
+  }
+
+  // Exit logic.
+  if (head === "exit") {
+    if (p[1] === "stop_loss") {
+      if (tail === "value") return "Stop-loss distance";
+      return "Stop-loss placement";
+    }
+    if (p[1] === "take_profit") {
+      if (tail === "value") return "Take-profit distance";
+      return "Take-profit placement";
+    }
+    if (p[1] === "time_stop") return "Time-stop rule (e.g. end of day)";
+    if (p[1] === "sl_method") {
+      if (tail === "value") return "Stop-loss ATR multiple";
+      return "Stop-loss method";
+    }
+    return "Exit logic";
+  }
+
+  // Computed helpers (entry price, thresholds).
+  if (head === "computed") {
+    const which = p[1];
+    if (which === "entry_price") return "Entry price formula";
+    if (which === "signal_bar_width") return "Signal-bar width formula";
+    if (which === "width_threshold") return "Wide-bar filter threshold";
+    if (which === "vol_regime_ceiling") return "Calm-vol regime ceiling";
+    if (which === "vol_regime_floor") return "Vol-elevation regime floor";
+    if (which === "body_threshold") return "Body-magnitude threshold";
+    if (which === "magnitude_threshold") return "Overreaction magnitude threshold";
+    if (which === "deep_above_fair") return "Deep-above-fair threshold";
+    if (which === "deep_below_fair") return "Deep-below-fair threshold";
+    if (which === "cumulative_body_mag") return "Cumulative body-magnitude formula";
+    if (which === "bar_body") return "Bar body-size formula";
+    if (which) return `Formula: ${which.replace(/_/g, " ")}`;
+    return "Derived formulas";
+  }
+
+  // Tunable parameter metadata — usually noise.
+  if (head === "tunable_parameters") {
+    if (tail === "description") return "Parameter descriptions (docs only)";
+    if (tail === "value") return "Default parameter value";
+    if (tail === "min" || tail === "max") return "Parameter bounds";
+    if (tail === "name") return "Renamed a tunable parameter";
+    if (tail === "path") return "Repointed a tunable parameter";
+    return "Tunable parameter metadata";
+  }
+
+  // Fallback: title-case the last segment.
+  const last = tail || "unknown";
+  return last.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**
