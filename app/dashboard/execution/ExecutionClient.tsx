@@ -774,28 +774,45 @@ export function ExecutionClient() {
         )}
       </div>
 
-      {/* Trade panel — Sprint 115 mono-terminal restyle. Wordy EBC and
-          ^DJI-scaling explainers moved to hover-titles; the important
-          state is the header note. */}
-      {signal && signal.signal !== null && (
-        <div>
-          <SectionRule
-            label="04 · TRADE"
-            right={
-              <span
-                title="EBC matrix: Manual = you approve every trade. AI-open / AI-close / Full-auto require Smart Wallet Spend Permissions — post-capstone."
-                style={{
-                  fontFamily: "var(--font-jb)",
-                  fontSize: 10,
-                  color: "var(--dim)",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                EBC · MANUAL
-              </span>
-            }
-          />
-
+      {/* Sprint 116: `04 · TRADE` renders in every state — even before a
+          signal fires — so the deploy checklist stays honest and the
+          right column doesn't collapse. Empty state coaches back to
+          `02 · SIGNAL`. */}
+      <div>
+        <SectionRule
+          label="04 · TRADE"
+          right={
+            <span
+              title="EBC matrix: Manual = you approve every trade. AI-open / AI-close / Full-auto require Smart Wallet Spend Permissions — post-capstone."
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                color: "var(--dim)",
+                letterSpacing: "0.06em",
+              }}
+            >
+              EBC · MANUAL
+            </span>
+          }
+        />
+        {!signal || signal.signal === null ? (
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--ghost)",
+              lineHeight: 1.6,
+              fontStyle: "italic",
+            }}
+          >
+            Waiting for a LONG or SHORT from{" "}
+            <span style={{ color: "var(--dim)", fontStyle: "normal" }}>
+              02&nbsp;·&nbsp;SIGNAL
+            </span>
+            . The trade form appears once a signal fires.
+          </p>
+        ) : (
+          <>
           {signal.strategy.ticker === "^DJI" && (
             <p
               style={{
@@ -1068,8 +1085,9 @@ export function ExecutionClient() {
               {tradeStage.message}
             </p>
           )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       {/* Sprint 109 Phase 3: recent signal events for the caller. Refreshes
           every 30s so newly-detected auto-executions surface without reload. */}
