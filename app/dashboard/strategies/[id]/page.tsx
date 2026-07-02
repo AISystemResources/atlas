@@ -302,16 +302,28 @@ export default async function StrategyDetailPage({
       // Sprint 120b: HONEST delta. The forward A/B in ab_comparison was run
       // on the SAME bars (control body vs treatment body over the same window
       // right after the backtest end). That's what the LLM's proposal
-      // actually earned in a controlled test. The raw v1-bt vs v2-bt delta
-      // I showed in Sprint 120 was misleading — the two backtests can be
-      // on unrelated windows and units differ from the rationale.
+      // actually earned in a controlled test.
+      // Sprint 124: points-first. Prefer control/treatment total_pnl_points
+      // for the delta since ab_comparison.delta only carries dollar fields.
       let abDeltaDollars: number | null = null;
+      let abDeltaPoints: number | null = null;
       let abStatus: PromotionInsight["ab_status"] = null;
       let abWindow: PromotionInsight["ab_window"] = null;
       if (r.ab_comparison) {
         abStatus = r.ab_comparison.status;
         if (r.ab_comparison.status === "ok") {
           abDeltaDollars = r.ab_comparison.delta.total_pnl_dollars;
+          // Some older ab_comparison rows don't carry points on control /
+          // treatment; guard and fall back to null cleanly.
+          const cPts = (r.ab_comparison.control as {
+            total_pnl_points?: number;
+          }).total_pnl_points;
+          const tPts = (r.ab_comparison.treatment as {
+            total_pnl_points?: number;
+          }).total_pnl_points;
+          if (typeof cPts === "number" && typeof tPts === "number") {
+            abDeltaPoints = tPts - cPts;
+          }
           abWindow = r.ab_comparison.forward_window;
         } else if (r.ab_comparison.status === "insufficient_forward_data") {
           abWindow = r.ab_comparison.forward_window;
@@ -345,6 +357,7 @@ export default async function StrategyDetailPage({
         changes,
         ab_status: abStatus,
         ab_delta_dollars: abDeltaDollars,
+        ab_delta_points: abDeltaPoints,
         ab_window: abWindow,
         body_change_paths: bodyChangePaths,
       };
@@ -367,14 +380,19 @@ export default async function StrategyDetailPage({
   }
 
   // Am I currently using this as my scalper?
+  // Sprint 124: also load point_value_dollars so the WHY panel's dollar echo
+  // matches the user's Settings choice.
   const { data: profile } = await sb
     .from("profiles")
-    .select("scalper_strategy_id")
+    .select("scalper_strategy_id, point_value_dollars")
     .eq("id", userId)
     .maybeSingle();
   const isMyScalper =
     ((profile as { scalper_strategy_id: string | null } | null)
       ?.scalper_strategy_id ?? null) === row.id;
+  const pointValue =
+    (profile as { point_value_dollars: number | null } | null)
+      ?.point_value_dollars ?? 1;
 
   // If this strategy was extracted from a paper, fetch the source URL for the badge link.
   let paperSourceUrl: string | null = null;
@@ -485,6 +503,7 @@ export default async function StrategyDetailPage({
       pendingProposals={pendingProposals}
       nextVersion={nextVersion}
       promotionInsight={promotionInsight}
+      pointValue={pointValue}
     />
   );
 }

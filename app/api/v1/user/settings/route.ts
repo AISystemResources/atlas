@@ -24,6 +24,8 @@ const PatchSettingsSchema = z.object({
   // Sprint 048 Day 2 — 4-cell asymmetric autonomy flags
   ai_intervenes_open: z.boolean().optional(),
   ai_intervenes_close: z.boolean().optional(),
+  // Sprint 124 — points-first PnL display, per-user point-to-dollar ratio.
+  point_value_dollars: z.number().min(0.01).max(100).optional(),
 });
 
 function getServiceClient() {
@@ -45,7 +47,7 @@ export async function GET(req: Request): Promise<Response> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "id, boundary_mode, display_name, email, onboarding_completed, role, tier, ebc_state, ebc_consecutive_losses, ebc_recovery_wins, ai_intervenes_open, ai_intervenes_close"
+      "id, boundary_mode, display_name, email, onboarding_completed, role, tier, ebc_state, ebc_consecutive_losses, ebc_recovery_wins, ai_intervenes_open, ai_intervenes_close, point_value_dollars"
     )
     .eq("id", user.userId)
     .maybeSingle();
@@ -98,7 +100,7 @@ export async function PATCH(req: Request): Promise<Response> {
     return Response.json(
       {
         error:
-          "No valid fields provided. Writable fields: boundary_mode, display_name, ebc_reset, ai_intervenes_open, ai_intervenes_close.",
+          "No valid fields provided. Writable fields: boundary_mode, display_name, ebc_reset, ai_intervenes_open, ai_intervenes_close, point_value_dollars.",
       },
       { status: 422 }
     );
@@ -121,7 +123,7 @@ export async function PATCH(req: Request): Promise<Response> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "id, boundary_mode, display_name, email, onboarding_completed, role, tier, ebc_state, ebc_consecutive_losses, ebc_recovery_wins, ai_intervenes_open, ai_intervenes_close"
+      "id, boundary_mode, display_name, email, onboarding_completed, role, tier, ebc_state, ebc_consecutive_losses, ebc_recovery_wins, ai_intervenes_open, ai_intervenes_close, point_value_dollars"
     )
     .eq("id", user.userId)
     .maybeSingle();

@@ -426,6 +426,211 @@ function ManageBillingButton() {
   );
 }
 
+// Sprint 124: per-user PnL display ratio. Traders think in points, not
+// fractional dollars. This card lets the user configure "1 point = $X" so
+// the dollar echo on PnL surfaces (WHY panel, backtest detail, scoreboard)
+// matches their instrument's contract size instead of Atlas's opaque default.
+function DisplayPreferencesCard() {
+  const PRESETS = [0.1, 0.5, 1, 5, 10] as const;
+  const [value, setValue] = useState<number>(1);
+  const [initialLoaded, setInitialLoaded] = useState(false);
+  const [customInput, setCustomInput] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetchWithAuth("/api/v1/user/settings");
+        if (!res || !alive) return;
+        const json = (await res.json()) as { point_value_dollars?: number };
+        const v = typeof json.point_value_dollars === "number"
+          ? json.point_value_dollars
+          : 1;
+        setValue(v);
+        setCustomInput(String(v));
+      } catch {
+        // fall through with default
+      } finally {
+        if (alive) setInitialLoaded(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  async function persist(next: number) {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetchWithAuth("/api/v1/user/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ point_value_dollars: next }),
+      });
+      if (!res || !res.ok) {
+        const body = res ? await res.json().catch(() => ({})) : {};
+        setMsg((body as { error?: string }).error ?? "Save failed");
+        return;
+      }
+      setMsg("Saved.");
+      setTimeout(() => setMsg(null), 1800);
+    } catch {
+      setMsg("Network error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onPickPreset(preset: number) {
+    setValue(preset);
+    setCustomInput(String(preset));
+    persist(preset);
+  }
+
+  function onCommitCustom() {
+    const raw = Number(customInput);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      setMsg("Enter a positive number.");
+      return;
+    }
+    const clamped = Math.min(100, Math.max(0.01, raw));
+    setValue(clamped);
+    setCustomInput(String(clamped));
+    persist(clamped);
+  }
+
+  const isPreset = PRESETS.includes(value as typeof PRESETS[number]);
+  // Live example: a +100 pts win at the chosen ratio.
+  const exampleDollars = (100 * value).toFixed(2);
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 10,
+        padding: "16px 18px",
+        boxShadow: "var(--card-shadow)",
+      }}
+    >
+      <div
+        style={{
+          color: "var(--ghost)",
+          fontSize: 11,
+          fontFamily: "var(--font-jb)",
+          marginBottom: 4,
+        }}
+      >
+        DISPLAY · POINT VALUE
+      </div>
+      <p
+        style={{
+          color: "var(--dim)",
+          fontSize: 12,
+          lineHeight: 1.55,
+          marginBottom: 14,
+        }}
+      >
+        PnL is shown in points. Set what 1 point is worth to you — the dollar
+        echo on backtests, WHY panels, and the scoreboard multiplies by this.
+      </p>
+
+      <div className="flex flex-wrap gap-2" style={{ marginBottom: 12 }}>
+        {PRESETS.map((p) => {
+          const active = value === p;
+          return (
+            <button
+              key={p}
+              onClick={() => onPickPreset(p)}
+              disabled={saving || !initialLoaded}
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 12,
+                padding: "6px 14px",
+                borderRadius: 4,
+                border: `1px solid ${active ? "var(--brand)" : "var(--line)"}`,
+                background: active ? "var(--brand)" : "transparent",
+                color: active ? "#fff" : "var(--ink)",
+                cursor: saving ? "default" : "pointer",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              1pt = ${p.toFixed(p < 1 ? 2 : 0)}
+            </button>
+          );
+        })}
+        <div
+          className="flex items-center gap-2"
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            padding: "4px 8px",
+            border: `1px solid ${isPreset ? "var(--line)" : "var(--brand)"}`,
+            borderRadius: 4,
+            background: isPreset ? "transparent" : "rgba(200,16,46,0.06)",
+          }}
+        >
+          <span style={{ color: "var(--ghost)", fontSize: 11 }}>custom $</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0.01"
+            max="100"
+            value={customInput}
+            onChange={(e) => setCustomInput(e.target.value)}
+            onBlur={onCommitCustom}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            disabled={saving || !initialLoaded}
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              width: 68,
+              padding: "4px 6px",
+              background: "transparent",
+              border: "1px solid var(--line)",
+              borderRadius: 3,
+              color: "var(--ink)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          color: "var(--ghost)",
+          letterSpacing: "0.02em",
+        }}
+      >
+        Example: <span style={{ color: "var(--bull)" }}>+100.0 pts</span>
+        {" "}(≈{" "}
+        <span style={{ color: "var(--bull)" }}>+${exampleDollars}</span>
+        {" "}at current setting). Max $100 per point.
+      </div>
+
+      {msg && (
+        <div
+          style={{
+            marginTop: 8,
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: msg === "Saved." ? "var(--bull)" : "var(--bear)",
+          }}
+        >
+          {msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsTab({ tier }: { tier: "free" | "pro" }) {
   const tierColor = tier === "pro" ? "var(--tier-pro)" : "var(--dim)";
   const isPro = tier === "pro";
@@ -507,6 +712,9 @@ export function SettingsTab({ tier }: { tier: "free" | "pro" }) {
           ))}
         </div>
       </div>
+
+      {/* Sprint 124: Display preferences — point-to-dollar ratio for PnL. */}
+      <DisplayPreferencesCard />
 
       {/* MCP connector — Pro only. Free tier sees a CTA. */}
       <div style={{ marginBottom: 32 }}>

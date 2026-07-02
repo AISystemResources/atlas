@@ -60,6 +60,8 @@ export interface PromotionInsight {
   // (e.g., recommendation was 'keep' with no proposed_changes).
   ab_status: "ok" | "no_changes" | "insufficient_forward_data" | null;
   ab_delta_dollars: number | null;
+  /** Sprint 124: points-first display. treatment.total_pnl_points − control.total_pnl_points. */
+  ab_delta_points: number | null;
   ab_window: { start_date: string; end_date: string } | null;
   // Sprint 120b: every JSON path where the current version's body differs
   // from the parent's. Used to expand PLAYBOOK stage tinting so
@@ -193,6 +195,7 @@ export function StrategyDetailClient({
   pendingProposals,
   nextVersion,
   promotionInsight,
+  pointValue,
 }: {
   detail: StrategyDetail;
   family: VersionFamilyEntry[];
@@ -200,6 +203,8 @@ export function StrategyDetailClient({
   pendingProposals: PendingProposal[];
   nextVersion: number;
   promotionInsight: PromotionInsight | null;
+  /** Sprint 124: user's point-to-dollar ratio for the WHY panel's dollar echo. */
+  pointValue: number;
 }) {
   const router = useRouter();
   const [forkBusy, setForkBusy] = useState(false);
@@ -332,6 +337,7 @@ export function StrategyDetailClient({
           insight={promotionInsight}
           currentVersion={detail.version}
           tunables={detail.tunable_parameters}
+          pointValue={pointValue}
         />
       )}
 
@@ -862,10 +868,12 @@ function WhyPanel({
   insight,
   currentVersion,
   tunables,
+  pointValue,
 }: {
   insight: PromotionInsight;
   currentVersion: number;
   tunables: TunableParameter[];
+  pointValue: number;
 }) {
   const parentV = currentVersion - 1;
   const pathByName = new Map(tunables.map((t) => [t.name, t.path] as const));
@@ -881,10 +889,10 @@ function WhyPanel({
         style={{ marginBottom: 12 }}
       >
         <ModelChip model={insight.model} />
-        {/* Sprint 120b: honest forward-A/B delta in dollars — the same-bars
-            comparison the server ran, not a raw v(n-1) vs v(n) latest-bt
-            diff on possibly-unrelated windows. */}
-        <AbDeltaChip insight={insight} />
+        {/* Sprint 120b: honest forward-A/B delta — the same-bars comparison
+            the server ran. Sprint 124: points-first with a dollar echo
+            scaled by the user's point_value_dollars setting. */}
+        <AbDeltaChip insight={insight} pointValue={pointValue} />
       </div>
       {insight.rationale && (
         <p
@@ -969,7 +977,13 @@ function WhyPanel({
  * 100–1000× larger than the LLM's actual effect (the rationale is talking
  * about a $-scale improvement inside a single controlled test).
  */
-function AbDeltaChip({ insight }: { insight: PromotionInsight }) {
+function AbDeltaChip({
+  insight,
+  pointValue,
+}: {
+  insight: PromotionInsight;
+  pointValue: number;
+}) {
   const style: React.CSSProperties = {
     fontFamily: "var(--font-jb)",
     fontSize: 12,
@@ -1011,24 +1025,34 @@ function AbDeltaChip({ insight }: { insight: PromotionInsight }) {
       </span>
     );
   }
-  const d = insight.ab_delta_dollars;
+  // Sprint 124: points-first. Primary is points; dollars is the secondary
+  // echo, scaled by the user's point_value_dollars.
+  const pts = insight.ab_delta_points;
   const color =
-    d == null
+    pts == null
       ? "var(--ghost)"
-      : d > 0
+      : pts > 0
         ? "var(--bull)"
-        : d < 0
+        : pts < 0
           ? "var(--bear)"
           : "var(--dim)";
-  const sign = d != null && d >= 0 ? "+" : "−";
+  const sign = pts != null && pts >= 0 ? "+" : "−";
+  const ptsAbs = pts != null ? Math.abs(pts).toFixed(1) : "—";
+  const dollarsAbs =
+    pts != null ? (Math.abs(pts) * pointValue).toFixed(2) : null;
   return (
     <span style={style}>
       <span style={{ color: "var(--ghost)", letterSpacing: "0.04em" }}>
         A/B forward Δ
       </span>{" "}
       <span style={{ color, fontWeight: 600 }}>
-        {sign}${d != null ? Math.abs(d).toFixed(2) : "—"}
+        {sign}{ptsAbs} pts
       </span>
+      {dollarsAbs != null && (
+        <span style={{ color: "var(--ghost)", marginLeft: 6 }}>
+          (≈ {sign}${dollarsAbs})
+        </span>
+      )}
       {insight.ab_window && (
         <span style={{ color: "var(--ghost)", marginLeft: 8 }}>
           on {insight.ab_window.start_date} → {insight.ab_window.end_date}
