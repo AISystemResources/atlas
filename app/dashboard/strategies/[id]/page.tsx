@@ -18,6 +18,8 @@ import {
   type VersionFamilyEntry,
   type BacktestListEntry,
   type PendingProposal,
+  type PromotionInsight,
+  type PromotionInsightChange,
 } from "./StrategyDetailClient";
 
 interface StrategyRow {
@@ -74,17 +76,43 @@ export default async function StrategyDetailPage({
     .eq("created_by_user_id", row.created_by_user_id)
     .order("version", { ascending: true });
 
-  const family: VersionFamilyEntry[] = ((familyRows ?? []) as Array<{
+  const familyRowsTyped = (familyRows ?? []) as Array<{
     id: string;
     version: number;
     status: string;
     created_at: string;
-  }>).map((r) => ({
+  }>;
+
+  // Sprint 120: pull the best-effort latest backtest per sibling version so
+  // the timeline can show a PnL chip under each dot. One SELECT covers all
+  // siblings — we sort by created_at DESC and pick the first row per
+  // ticket_logic_id.
+  const familyIds = familyRowsTyped.map((r) => r.id);
+  const latestPnlByVersionId = new Map<string, number | null>();
+  if (familyIds.length > 0) {
+    const { data: familyBtRows } = await sb
+      .from("ticket_backtests")
+      .select("ticket_logic_id, total_pnl_points, created_at")
+      .in("ticket_logic_id", familyIds)
+      .order("created_at", { ascending: false });
+    for (const r of (familyBtRows ?? []) as Array<{
+      ticket_logic_id: string;
+      total_pnl_points: number | null;
+      created_at: string;
+    }>) {
+      if (!latestPnlByVersionId.has(r.ticket_logic_id)) {
+        latestPnlByVersionId.set(r.ticket_logic_id, r.total_pnl_points);
+      }
+    }
+  }
+
+  const family: VersionFamilyEntry[] = familyRowsTyped.map((r) => ({
     id: r.id,
     version: r.version,
     status: r.status,
     created_at: r.created_at,
     is_current: r.id === row.id,
+    latest_pnl_points: latestPnlByVersionId.get(r.id) ?? null,
   }));
 
   // Sprint 079E: surface the concrete next version number on the Promote
@@ -186,6 +214,69 @@ export default async function StrategyDetailPage({
     }));
   }
 
+  // Sprint 120: the WHY behind this version. If this row was promoted from an
+  // LLM insight (v2+), find the insight row where promoted_to_version_id = us.
+  // Carries the model + rationale + proposed_changes that produced this v.
+  let promotionInsight: PromotionInsight | null = null;
+  {
+    const { data: insightRow } = await sb
+      .from("ticket_backtest_insights")
+      .select(
+        "id, backtest_id, model, rationale, proposed_changes, winning_pattern, losing_pattern, created_at",
+      )
+      .eq("promoted_to_version_id", row.id)
+      .maybeSingle();
+    if (insightRow) {
+      type Row = {
+        id: string;
+        backtest_id: string;
+        model: string;
+        rationale: string | null;
+        proposed_changes: Array<{
+          name: string;
+          current_value: number;
+          proposed_value: number;
+          original_proposed_value?: number;
+          was_clamped?: boolean;
+          clamp_reason?: string;
+          reason: string;
+        }> | null;
+        winning_pattern: string | null;
+        losing_pattern: string | null;
+        created_at: string;
+      };
+      const r = insightRow as Row;
+      // Parent version PnL for the delta hint.
+      let parentPnl: number | null = null;
+      if (row.parent_version_id) {
+        parentPnl = latestPnlByVersionId.get(row.parent_version_id) ?? null;
+      }
+      const selfPnl = latestPnlByVersionId.get(row.id) ?? null;
+      const changes: PromotionInsightChange[] = (r.proposed_changes ?? []).map(
+        (c) => ({
+          name: c.name,
+          current_value: c.current_value,
+          applied_value: c.proposed_value,
+          original_proposed_value: c.original_proposed_value ?? c.proposed_value,
+          was_clamped: c.was_clamped ?? false,
+          reason: c.reason,
+        }),
+      );
+      promotionInsight = {
+        insight_id: r.id,
+        backtest_id: r.backtest_id,
+        model: r.model,
+        rationale: r.rationale,
+        winning_pattern: r.winning_pattern,
+        losing_pattern: r.losing_pattern,
+        created_at: r.created_at,
+        changes,
+        parent_pnl_points: parentPnl,
+        current_pnl_points: selfPnl,
+      };
+    }
+  }
+
   // Forked-from info, if any.
   let forkedFromLabel: string | null = null;
   if (row.forked_from_id) {
@@ -280,6 +371,7 @@ export default async function StrategyDetailPage({
       backtests={backtests}
       pendingProposals={pendingProposals}
       nextVersion={nextVersion}
+      promotionInsight={promotionInsight}
     />
   );
 }

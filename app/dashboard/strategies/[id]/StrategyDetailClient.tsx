@@ -29,6 +29,33 @@ export interface VersionFamilyEntry {
   status: string;
   created_at: string;
   is_current: boolean;
+  /** Sprint 120: latest backtest PnL for this version's dot on the timeline. */
+  latest_pnl_points: number | null;
+}
+
+// Sprint 120: the WHY panel — the insight that promoted the parent into
+// this version. v1 has no promotionInsight (origin story is handled from
+// paper/fork metadata already on the detail).
+export interface PromotionInsightChange {
+  name: string;
+  current_value: number;
+  applied_value: number;
+  original_proposed_value: number;
+  was_clamped: boolean;
+  reason: string;
+}
+
+export interface PromotionInsight {
+  insight_id: string;
+  backtest_id: string;
+  model: string;
+  rationale: string | null;
+  winning_pattern: string | null;
+  losing_pattern: string | null;
+  created_at: string;
+  changes: PromotionInsightChange[];
+  parent_pnl_points: number | null;
+  current_pnl_points: number | null;
 }
 
 export interface BacktestListEntry {
@@ -145,12 +172,14 @@ export function StrategyDetailClient({
   backtests,
   pendingProposals,
   nextVersion,
+  promotionInsight,
 }: {
   detail: StrategyDetail;
   family: VersionFamilyEntry[];
   backtests: BacktestListEntry[];
   pendingProposals: PendingProposal[];
   nextVersion: number;
+  promotionInsight: PromotionInsight | null;
 }) {
   const router = useRouter();
   const [forkBusy, setForkBusy] = useState(false);
@@ -272,6 +301,20 @@ export function StrategyDetailClient({
         </p>
       )}
 
+      {/* Sprint 120: version timeline — sibling versions with PnL under each */}
+      {family.length > 1 && (
+        <VersionTimeline family={family} />
+      )}
+
+      {/* Sprint 120: WHY this version — LLM rationale + changes for v2+ */}
+      {promotionInsight && (
+        <WhyPanel
+          insight={promotionInsight}
+          currentVersion={detail.version}
+          tunables={detail.tunable_parameters}
+        />
+      )}
+
       {/* Pending proposals — owner-only, action-required, top billing */}
       {detail.is_mine && pendingProposals.length > 0 && (
         <section className="mb-10">
@@ -304,6 +347,14 @@ export function StrategyDetailClient({
         rendered={detail.rendered}
         timeframe={detail.timeframe}
         direction={detail.direction}
+        changedStageNumbers={
+          promotionInsight
+            ? computeChangedStageNumbers(
+                promotionInsight.changes,
+                detail.tunable_parameters,
+              )
+            : new Set()
+        }
       />
 
       {/* TUNABLE — compact 3-col table */}
@@ -627,6 +678,266 @@ function ModelChip({ model }: { model: string }) {
       {label}
     </span>
   );
+}
+
+// ── Sprint 120: version-diff navigator + WHY panel ──────────────────────────
+
+/**
+ * Map a tunable's path prefix to a playbook stage number (01–06). The playbook
+ * has 6 numbered stages in trade-lifecycle order:
+ *   01 SESSION, 02 SIGNAL BAR, 03 ENTRY, 04 STOP, 05 TARGET, 06 EXIT.
+ * Tunable paths encode which JSON field the parameter tunes; the first 1–2
+ * elements are enough to decide which stage the change lives in.
+ */
+export function tunablePathToStageNumber(
+  path: string[] | undefined,
+): string | null {
+  if (!path || path.length === 0) return null;
+  const [p0, p1] = path;
+  if (p0 === "session_window") return "01";
+  if (p0 === "computed") return "03"; // entry_price and friends
+  if (p0 === "entry") return "03";
+  if (p0 === "exit") {
+    if (p1 === "stop_loss") return "04";
+    if (p1 === "take_profit") return "05";
+    if (p1 === "time_stop" || p1 === "exit_conditions") return "06";
+    return "06";
+  }
+  return null;
+}
+
+export function computeChangedStageNumbers(
+  changes: PromotionInsightChange[],
+  tunables: TunableParameter[],
+): Set<string> {
+  const byName = new Map(tunables.map((t) => [t.name, t.path]));
+  const out = new Set<string>();
+  for (const c of changes) {
+    const path = byName.get(c.name);
+    const stage = tunablePathToStageNumber(path);
+    if (stage) out.add(stage);
+  }
+  return out;
+}
+
+function VersionTimeline({ family }: { family: VersionFamilyEntry[] }) {
+  return (
+    <section className="mb-8">
+      <SectionRule label="VERSIONS" note={`${family.length} shipped`} />
+      <div
+        className="flex items-start"
+        style={{
+          gap: 0,
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {family.map((v, i) => {
+          const pnl = v.latest_pnl_points;
+          const pnlColor =
+            pnl == null
+              ? "var(--ghost)"
+              : pnl >= 0
+                ? "var(--bull)"
+                : "var(--bear)";
+          const showConnector = i < family.length - 1;
+          return (
+            <div
+              key={v.id}
+              className="flex items-center"
+              style={{ flex: showConnector ? 1 : "0 0 auto", minWidth: 0 }}
+            >
+              <div
+                className="flex flex-col items-center"
+                style={{ minWidth: 68 }}
+              >
+                <Link
+                  href={`/dashboard/strategies/${v.id}`}
+                  aria-label={`v${v.version}`}
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    background: v.is_current ? "var(--ink)" : "transparent",
+                    border: `2px solid ${v.is_current ? "var(--ink)" : "var(--dim)"}`,
+                    display: "block",
+                    textDecoration: "none",
+                  }}
+                />
+                <span
+                  style={{
+                    marginTop: 6,
+                    color: v.is_current ? "var(--ink)" : "var(--dim)",
+                    fontWeight: v.is_current ? 700 : 500,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  v{v.version}
+                </span>
+                <span
+                  style={{
+                    marginTop: 2,
+                    color: pnlColor,
+                    fontSize: 10,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {pnl == null
+                    ? "no bt"
+                    : `${pnl >= 0 ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
+                </span>
+              </div>
+              {showConnector && (
+                <div
+                  aria-hidden
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: "var(--line2)",
+                    minWidth: 12,
+                    // Align the connector with the vertical center of the dot
+                    // (dot is 14px; label + pnl sit below → nudge up).
+                    marginTop: -22,
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function WhyPanel({
+  insight,
+  currentVersion,
+  tunables,
+}: {
+  insight: PromotionInsight;
+  currentVersion: number;
+  tunables: TunableParameter[];
+}) {
+  const parentV = currentVersion - 1;
+  const parentPnl = insight.parent_pnl_points;
+  const selfPnl = insight.current_pnl_points;
+  const deltaAvailable = parentPnl != null && selfPnl != null;
+  const deltaAbs = deltaAvailable ? selfPnl - parentPnl : null;
+  const deltaColor =
+    deltaAbs == null
+      ? "var(--ghost)"
+      : deltaAbs > 0
+        ? "var(--bull)"
+        : deltaAbs < 0
+          ? "var(--bear)"
+          : "var(--dim)";
+  const pathByName = new Map(tunables.map((t) => [t.name, t.path] as const));
+
+  return (
+    <section className="mb-10">
+      <SectionRule
+        label={`WHY v${currentVersion}`}
+        note={`from v${parentV} · ${timeAgo(insight.created_at)}`}
+      />
+      <div
+        className="flex items-center gap-3 flex-wrap"
+        style={{ marginBottom: 12 }}
+      >
+        <ModelChip model={insight.model} />
+        {deltaAvailable && (
+          <span
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              color: "var(--dim)",
+              fontVariantNumeric: "tabular-nums",
+              letterSpacing: "0.02em",
+            }}
+          >
+            v{parentV} {fmtPts(parentPnl)}
+            <span style={{ margin: "0 6px", color: "var(--ghost)" }}>→</span>
+            v{currentVersion} {fmtPts(selfPnl)}
+            <span style={{ color: deltaColor, marginLeft: 8, fontWeight: 600 }}>
+              (Δ {deltaAbs != null && deltaAbs >= 0 ? "+" : "−"}
+              {deltaAbs != null ? Math.abs(deltaAbs).toFixed(1) : "—"} pts)
+            </span>
+          </span>
+        )}
+      </div>
+      {insight.rationale && (
+        <p
+          style={{
+            fontFamily: "var(--font-nunito)",
+            fontSize: 14,
+            lineHeight: 1.55,
+            color: "var(--ink)",
+            marginBottom: 14,
+            maxWidth: 720,
+          }}
+        >
+          {insight.rationale}
+        </p>
+      )}
+      {insight.changes.length > 0 ? (
+        <div className="flex flex-col" style={{ gap: 6 }}>
+          {insight.changes.map((c) => {
+            const stage = tunablePathToStageNumber(pathByName.get(c.name));
+            return (
+              <div
+                key={c.name}
+                className="grid items-baseline"
+                style={{
+                  gridTemplateColumns: "36px minmax(0, 200px) minmax(0, 1fr)",
+                  columnGap: 14,
+                  padding: "8px 0",
+                  borderBottom: "1px solid rgba(141, 164, 178, 0.14)",
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                <span style={{ color: "var(--ghost)" }}>{stage ?? "—"}</span>
+                <span style={{ color: "var(--ink)" }}>{c.name}</span>
+                <span style={{ color: "var(--dim)" }}>
+                  {c.current_value}
+                  <span style={{ color: "var(--ghost)", margin: "0 6px" }}>
+                    →
+                  </span>
+                  <span style={{ color: "var(--brand)", fontWeight: 600 }}>
+                    {c.applied_value}
+                  </span>
+                  {c.was_clamped && (
+                    <span
+                      style={{ color: "var(--ghost)", marginLeft: 10, fontSize: 11 }}
+                    >
+                      (proposed {c.original_proposed_value}; clamped)
+                    </span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            color: "var(--ghost)",
+            fontStyle: "italic",
+          }}
+        >
+          No parameter changes — this promotion was cosmetic (metadata only).
+        </p>
+      )}
+    </section>
+  );
+}
+
+function fmtPts(v: number | null): string {
+  if (v == null) return "—";
+  return `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}`;
 }
 
 function timeAgo(iso: string): string {
@@ -1008,10 +1319,12 @@ function PlaybookSection({
   rendered,
   timeframe,
   direction,
+  changedStageNumbers,
 }: {
   rendered: RenderedSections;
   timeframe: string;
   direction: string;
+  changedStageNumbers: Set<string>;
 }) {
   const exit = [
     ...(rendered.timeStop ? [rendered.timeStop] : []),
@@ -1028,27 +1341,41 @@ function PlaybookSection({
           name="SESSION"
           value={rendered.whenItFires ?? "Always active — no session filter"}
           muted={!rendered.whenItFires}
+          changed={changedStageNumbers.has("01")}
         />
         <PlaybookStage
           number="02"
           name="SIGNAL BAR"
           value={rendered.signalBar[0] ?? "—"}
           continuation={rendered.signalBar.slice(1)}
+          changed={changedStageNumbers.has("02")}
         />
         <PlaybookStage
           number="03"
           name="ENTRY"
           value={rendered.entry[0] ?? "—"}
           continuation={rendered.entry.slice(1)}
+          changed={changedStageNumbers.has("03")}
         />
-        <PlaybookStage number="04" name="STOP" value={rendered.stopLoss} />
-        <PlaybookStage number="05" name="TARGET" value={rendered.takeProfit} />
+        <PlaybookStage
+          number="04"
+          name="STOP"
+          value={rendered.stopLoss}
+          changed={changedStageNumbers.has("04")}
+        />
+        <PlaybookStage
+          number="05"
+          name="TARGET"
+          value={rendered.takeProfit}
+          changed={changedStageNumbers.has("05")}
+        />
         <PlaybookStage
           number="06"
           name="EXIT"
           value={exit[0] ?? "No time-based exit"}
           continuation={exit.slice(1)}
           muted={exit.length === 0}
+          changed={changedStageNumbers.has("06")}
         />
       </div>
 
@@ -1095,12 +1422,15 @@ function PlaybookStage({
   value,
   continuation,
   muted,
+  changed,
 }: {
   number: string;
   name: string;
   value: string;
   continuation?: string[];
   muted?: boolean;
+  /** Sprint 120: this stage carries a proposed_change from the promotion insight. */
+  changed?: boolean;
 }) {
   return (
     <div
@@ -1108,7 +1438,16 @@ function PlaybookStage({
       style={{
         gridTemplateColumns: "32px 110px minmax(0, 1fr)",
         columnGap: 16,
+        // Sprint 120: subtle left-edge tint on changed stages so the eye picks
+        // them out immediately. Uses --brand at ~15% alpha via inline rgba
+        // fallback — we don't have a --brand-15 token.
+        paddingLeft: changed ? 8 : 0,
+        marginLeft: changed ? -8 : 0,
+        borderLeft: changed
+          ? "2px solid rgba(200, 16, 46, 0.55)"
+          : "2px solid transparent",
       }}
+      title={changed ? "This stage was modified from the previous version" : undefined}
     >
       <span
         style={{
