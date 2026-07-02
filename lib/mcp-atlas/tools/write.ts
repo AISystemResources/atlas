@@ -794,7 +794,9 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
 
         const { data: parentData } = await sb
           .from("ticket_logics")
-          .select("id, name, version, body, created_by_user_id, ticker, tags")
+          .select(
+            "id, name, version, body, created_by_user_id, ticker, tags, parent_paper_id",
+          )
           .eq("id", parentId)
           .maybeSingle();
         const parent = parentData as
@@ -806,6 +808,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
               created_by_user_id: string | null;
               ticker: string | null;
               tags: string[] | null;
+              parent_paper_id: string | null;
             }
           | null;
         if (!parent) return toolError("parent ticket_logic not found", "not_found");
@@ -867,15 +870,34 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             // Sprint 099 fix: preserve ticker + tags from the parent. Strategies
             // are ticker-locked (Sprint 068); the MCP promote handler used to
             // drop these, producing v(N+1) rows with ticker=null + tags=[].
-            // The REST /api/v1/ticket-logics/promote/route already did this
-            // correctly; this brings the MCP path into alignment.
             ticker: parent.ticker,
             tags: parent.tags ?? [],
+            // Sprint 132 fix: inherit parent_paper_id from the parent so
+            // paper-derived strategies keep their arXiv attribution through
+            // the tune chain. Previously every promotion silently orphaned
+            // the paper reference, making the Origin column read "Tune"
+            // instead of "arXiv" for tuned versions of paper-extracted
+            // strategies.
+            parent_paper_id: parent.parent_paper_id,
           })
           .select("id, name, version")
           .single();
         if (insErr || !newRow) {
           return toolError(`insert failed: ${insErr?.message ?? "no row"}`);
+        }
+
+        // Sprint 132: also mirror the paper link into strategy_paper_links so
+        // the N:N surface stays consistent with the parent's origin.
+        if (parent.parent_paper_id) {
+          await sb.from("strategy_paper_links").upsert(
+            {
+              strategy_id: (newRow as { id: string }).id,
+              paper_id: parent.parent_paper_id,
+              inspiration_note: "origin (inherited from parent version)",
+              added_by_model: null,
+            },
+            { onConflict: "strategy_id,paper_id" },
+          );
         }
 
         await sb
