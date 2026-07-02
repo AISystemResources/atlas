@@ -131,14 +131,18 @@ export default async function StrategiesPage() {
     ),
   ];
   const paperTitleMap = new Map<string, string>();
+  // Sprint 126: also grab source_url so the row-hover source card can link
+  // out to the arXiv paper directly.
+  const paperUrlMap = new Map<string, string>();
   if (paperIdsForLookup.length > 0) {
     try {
       const { data: paperRows } = await sb
         .from("signal_papers")
-        .select("id, title")
+        .select("id, title, source_url")
         .in("id", paperIdsForLookup);
-      for (const p of (paperRows ?? []) as { id: string; title: string }[]) {
+      for (const p of (paperRows ?? []) as { id: string; title: string; source_url: string | null }[]) {
         paperTitleMap.set(p.id, p.title);
+        if (p.source_url) paperUrlMap.set(p.id, p.source_url);
       }
     } catch {
       // signal_papers may not exist in older envs — degrade gracefully
@@ -194,6 +198,7 @@ export default async function StrategiesPage() {
       fork_source_name: s.forked_from_id ? forkSourceMap.get(s.forked_from_id) ?? null : null,
       parent_paper_id: s.parent_paper_id,
       parent_paper_title: s.parent_paper_id ? paperTitleMap.get(s.parent_paper_id) ?? null : null,
+      parent_paper_source_url: s.parent_paper_id ? paperUrlMap.get(s.parent_paper_id) ?? null : null,
       created_by: s.created_by,
       is_mine: s.created_by_user_id === userId,
       owner_label: s.created_by_user_id === userId ? "you" : truncateUser(s.created_by_user_id),

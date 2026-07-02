@@ -32,6 +32,8 @@ export interface StrategyCard {
   fork_source_name: string | null;
   parent_paper_id: string | null;
   parent_paper_title: string | null;
+  /** Sprint 126: URL of the source paper for the row-hover source card. */
+  parent_paper_source_url: string | null;
   created_by: string;
   is_mine: boolean;
   owner_label: string;
@@ -43,7 +45,7 @@ export interface StrategyCard {
   ticker: string | null;
   tags: string[];
   paper_extracted: boolean;
-  /** Sprint 125: all sibling versions for in-card < v(n) > toggling. */
+  /** Sprint 125: all sibling versions for in-row chevron toggling. */
   versions: StrategyVersionSnapshot[];
   latest_backtest?: {
     win_rate: number | null;
@@ -65,8 +67,11 @@ export interface PaperRow {
 
 type Tab = "mine" | "public";
 
-// Sprint 125: sort dimensions the user can pick from the top-right chip.
-type SortKey = "points" | "winrate" | "recency";
+// Sprint 126: sortable columns — name, points, winrate, trades, tuned.
+// Direction toggles on repeat click. Default: points desc (biggest winners first).
+type SortColumn = "name" | "points" | "winrate" | "trades" | "tuned";
+type SortDir = "asc" | "desc";
+interface SortState { column: SortColumn; dir: SortDir }
 
 // ─── Sprint 121: recency chip ────────────────────────────────────────────────
 // The value we care about is "when was this strategy last tuned" — which for
@@ -178,9 +183,17 @@ export function StrategiesClient({
     [cards],
   );
 
-  // Sprint 125: sort state, defaults to points-descending (biggest winners
-  // first when the tab is Mine, or biggest published winners on Public).
-  const [sortKey, setSortKey] = useState<SortKey>("points");
+  // Sprint 126: sort state — column + direction. Default: points desc
+  // (biggest winning strategy first).
+  const [sort, setSort] = useState<SortState>({ column: "points", dir: "desc" });
+
+  function onHeaderClick(col: SortColumn) {
+    setSort((cur) =>
+      cur.column === col
+        ? { column: col, dir: cur.dir === "desc" ? "asc" : "desc" }
+        : { column: col, dir: defaultDirFor(col) },
+    );
+  }
 
   const visible = tab === "mine" ? mine : publik;
 
@@ -205,10 +218,10 @@ export function StrategiesClient({
     return { totalPnl, winners, losers, untested, total: visible.length };
   }, [visible]);
 
-  // Sprint 125: sort the visible cards (family-level, one card each).
+  // Sprint 126: sort the table rows.
   const sortedCards = useMemo(
-    () => sortCards(visible, sortKey),
-    [visible, sortKey],
+    () => sortCards(visible, sort),
+    [visible, sort],
   );
 
   return (
@@ -240,103 +253,11 @@ export function StrategiesClient({
       {/* Sprint 121: scoreboard answers "is my stable making money?". */}
       <Scoreboard sb={scoreboard} tab={tab} />
 
-      {/* Sprint 125: sort chip. Family grouping is gone — one card per
-          family, cards sort against each other. */}
-      <SortChip sortKey={sortKey} onChange={setSortKey} count={sortedCards.length} />
-
       {visible.length === 0 ? (
         <EmptyState tab={tab} />
       ) : (
-        <StrategyCardsGrid cards={sortedCards} />
+        <SortableTable cards={sortedCards} sort={sort} onHeaderClick={onHeaderClick} />
       )}
-    </div>
-  );
-}
-
-// ─── Sprint 125: sort helpers ────────────────────────────────────────────────
-// Sorts operate on the LATEST version's numbers per card (which is what the
-// card shows when it first paints — chevrons can then reveal earlier versions
-// but don't re-sort the deck).
-
-function sortCards(cards: StrategyCard[], key: SortKey): StrategyCard[] {
-  const copy = [...cards];
-  copy.sort((a, b) => {
-    if (key === "points") {
-      const pa = a.latest_backtest?.total_pnl_points ?? -Infinity;
-      const pb = b.latest_backtest?.total_pnl_points ?? -Infinity;
-      return pb - pa;
-    }
-    if (key === "winrate") {
-      const wa = a.latest_backtest?.win_rate ?? -Infinity;
-      const wb = b.latest_backtest?.win_rate ?? -Infinity;
-      return wb - wa;
-    }
-    // recency — freshest first
-    return (
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  });
-  return copy;
-}
-
-function SortChip({
-  sortKey,
-  onChange,
-  count,
-}: {
-  sortKey: SortKey;
-  onChange: (k: SortKey) => void;
-  count: number;
-}) {
-  const options: { key: SortKey; label: string }[] = [
-    { key: "points", label: "PTS ↓" },
-    { key: "winrate", label: "WR ↓" },
-    { key: "recency", label: "TUNED ↓" },
-  ];
-  return (
-    <div
-      className="flex items-center justify-between"
-      style={{
-        marginBottom: 16,
-        fontFamily: "var(--font-jb)",
-        fontSize: 11,
-        letterSpacing: "0.06em",
-      }}
-    >
-      <span style={{ color: "var(--ghost)" }}>
-        {count} {count === 1 ? "strategy" : "strategies"}
-      </span>
-      <div
-        className="flex gap-1 p-1"
-        style={{
-          background: "var(--elevated)",
-          borderRadius: 6,
-        }}
-      >
-        {options.map((o) => {
-          const active = o.key === sortKey;
-          return (
-            <button
-              key={o.key}
-              onClick={() => onChange(o.key)}
-              style={{
-                fontFamily: "var(--font-jb)",
-                fontSize: 11,
-                padding: "4px 10px",
-                background: active ? "var(--surface)" : "transparent",
-                color: active ? "var(--ink)" : "var(--dim)",
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
-                letterSpacing: "0.06em",
-                boxShadow: active ? "var(--card-shadow)" : "none",
-              }}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -459,51 +380,147 @@ function ScoreboardCell({
   );
 }
 
-// ─── Sprint 125: card grid ───────────────────────────────────────────────────
+// ─── Sprint 126: sort helpers ────────────────────────────────────────────────
 
-function StrategyCardsGrid({ cards }: { cards: StrategyCard[] }) {
+function defaultDirFor(col: SortColumn): SortDir {
+  return col === "name" ? "asc" : "desc";
+}
+
+function sortCards(cards: StrategyCard[], sort: SortState): StrategyCard[] {
+  const copy = [...cards];
+  const mult = sort.dir === "desc" ? -1 : 1;
+  copy.sort((a, b) => {
+    switch (sort.column) {
+      case "name":
+        return mult * a.name.localeCompare(b.name);
+      case "points": {
+        const pa = a.latest_backtest?.total_pnl_points ?? -Infinity;
+        const pb = b.latest_backtest?.total_pnl_points ?? -Infinity;
+        return mult * (pa - pb);
+      }
+      case "winrate": {
+        const wa = a.latest_backtest?.win_rate ?? -Infinity;
+        const wb = b.latest_backtest?.win_rate ?? -Infinity;
+        return mult * (wa - wb);
+      }
+      case "trades": {
+        const ta = a.latest_backtest?.total_trades ?? -Infinity;
+        const tb = b.latest_backtest?.total_trades ?? -Infinity;
+        return mult * (ta - tb);
+      }
+      case "tuned":
+        return (
+          mult *
+          (new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        );
+    }
+  });
+  return copy;
+}
+
+// ─── Sprint 126: sortable table ──────────────────────────────────────────────
+
+function SortableTable({
+  cards,
+  sort,
+  onHeaderClick,
+}: {
+  cards: StrategyCard[];
+  sort: SortState;
+  onHeaderClick: (col: SortColumn) => void;
+}) {
+  const gridCols = "32px minmax(0, 1.7fr) 60px 90px 96px 60px 60px 78px";
   return (
     <div
-      className="grid gap-3"
       style={{
-        gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 8,
+        boxShadow: "var(--card-shadow)",
+        overflow: "hidden",
       }}
     >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: gridCols,
+          columnGap: 12,
+          padding: "10px 14px",
+          borderBottom: "1px solid var(--line)",
+          background: "var(--elevated)",
+        }}
+      >
+        <span />
+        <HeaderCell label="NAME" col="name" sort={sort} onClick={onHeaderClick} align="left" />
+        <HeaderCell label="ORIGIN" col="name" sort={sort} onClick={onHeaderClick} align="left" disabled />
+        <HeaderCell label="VERSION" col="name" sort={sort} onClick={onHeaderClick} align="center" disabled />
+        <HeaderCell label="PTS" col="points" sort={sort} onClick={onHeaderClick} align="right" />
+        <HeaderCell label="WR" col="winrate" sort={sort} onClick={onHeaderClick} align="right" />
+        <HeaderCell label="TRADES" col="trades" sort={sort} onClick={onHeaderClick} align="right" />
+        <HeaderCell label="TUNED" col="tuned" sort={sort} onClick={onHeaderClick} align="right" />
+      </div>
       {cards.map((c) => (
-        <StrategyCardTile key={c.id} card={c} />
+        <TableRow key={c.id} card={c} gridCols={gridCols} />
       ))}
     </div>
   );
 }
 
-function StrategyCardTile({ card }: { card: StrategyCard }) {
-  // Sprint 125: per-card version chevrons. selectedIdx points into
-  // card.versions; the tile's PnL / wr / trades / recency swap to match.
+function HeaderCell({
+  label,
+  col,
+  sort,
+  onClick,
+  align,
+  disabled,
+}: {
+  label: string;
+  col: SortColumn;
+  sort: SortState;
+  onClick: (col: SortColumn) => void;
+  align: "left" | "right" | "center";
+  disabled?: boolean;
+}) {
+  const active = !disabled && sort.column === col;
+  const arrow = active ? (sort.dir === "desc" ? " ↓" : " ↑") : "";
+  return (
+    <button
+      onClick={() => !disabled && onClick(col)}
+      disabled={disabled}
+      style={{
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        color: active ? "var(--ink)" : "var(--ghost)",
+        fontFamily: "var(--font-jb)",
+        fontSize: 10,
+        letterSpacing: "0.08em",
+        cursor: disabled ? "default" : "pointer",
+        textAlign: align,
+        fontWeight: active ? 700 : 500,
+      }}
+    >
+      {label}
+      {arrow}
+    </button>
+  );
+}
+
+function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) {
   const currentIdx = Math.max(
     0,
     card.versions.findIndex((v) => v.id === card.id),
   );
   const [selectedIdx, setSelectedIdx] = useState(currentIdx);
-  const selected = card.versions[selectedIdx] ?? {
-    id: card.id,
-    version: card.version,
-    status: card.status,
-    created_at: card.created_at,
-    latest_backtest: card.latest_backtest
-      ? {
-          win_rate: card.latest_backtest.win_rate,
-          total_pnl_points: card.latest_backtest.total_pnl_points,
-          total_trades: card.latest_backtest.total_trades,
-        }
-      : null,
-  };
+  const [hover, setHover] = useState(false);
+  const selected = card.versions[selectedIdx];
   const origin = originTag(card);
-  const bt = selected.latest_backtest;
+  const bt = selected?.latest_backtest ?? null;
   const pnl = bt?.total_pnl_points ?? null;
   const wr = bt?.win_rate ?? null;
   const trades = bt?.total_trades ?? 0;
   const pnlPos = (pnl ?? 0) >= 0;
-  const recency = recencyLabel(selected.created_at);
+  const recency = recencyLabel(selected?.created_at ?? card.created_at);
   const recencyColor =
     recency.tone === "fresh"
       ? "var(--dim)"
@@ -512,178 +529,282 @@ function StrategyCardTile({ card }: { card: StrategyCard }) {
         : "var(--bear)";
   const canPrev = selectedIdx > 0;
   const canNext = selectedIdx < card.versions.length - 1;
+  const maxV = card.versions[card.versions.length - 1]?.version ?? card.version;
 
   return (
     <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        background: "var(--surface)",
-        border: "1px solid var(--line)",
-        borderLeft: `3px solid ${origin.color}`,
-        borderRadius: 8,
-        padding: "14px 16px 12px 16px",
-        boxShadow: "var(--card-shadow)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
+        position: "relative",
+        display: "grid",
+        gridTemplateColumns: gridCols,
+        columnGap: 12,
+        alignItems: "center",
+        padding: "10px 14px",
+        borderBottom: "1px solid var(--line)",
+        fontFamily: "var(--font-jb)",
+        fontSize: 12,
+        fontVariantNumeric: "tabular-nums",
+        background: hover ? "var(--elevated)" : "transparent",
+        transition: "background 100ms ease",
       }}
     >
-      {/* header: name + marks + version chevrons */}
-      <div className="flex items-baseline gap-2 flex-wrap">
-        {card.is_my_scalper && (
-          <span
-            aria-label="active scalper"
-            style={{ color: "var(--bull)", fontFamily: "var(--font-jb)", fontSize: 12 }}
-          >
-            ▶
-          </span>
-        )}
-        {card.watched_by_me && (
-          <span
-            aria-label="watched"
-            style={{ color: "var(--brand)", fontFamily: "var(--font-jb)", fontSize: 12 }}
-          >
-            ★
-          </span>
-        )}
-        <Link
-          href={`/dashboard/strategies/${selected.id}`}
-          className="font-display font-bold"
+      {/* marks */}
+      <div className="flex gap-1 items-center" style={{ fontSize: 12 }}>
+        <span
           style={{
-            fontSize: 15,
-            color: "var(--ink)",
-            textDecoration: "none",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            minWidth: 0,
-            flex: 1,
+            color: "var(--bull)",
+            visibility: card.is_my_scalper ? "visible" : "hidden",
           }}
-          title={card.name}
+          aria-hidden
         >
-          {card.name}
-        </Link>
-      </div>
-
-      {/* meta row: ticker + origin word */}
-      <div
-        className="flex items-baseline gap-2 flex-wrap"
-        style={{ fontFamily: "var(--font-jb)", fontSize: 11 }}
-      >
-        {card.ticker && (
-          <span style={{ color: "var(--dim)" }}>{card.ticker}</span>
-        )}
-        <span style={{ color: "var(--ghost)" }}>·</span>
-        <span title={origin.detail} style={{ color: origin.color, fontWeight: 500 }}>
-          {origin.word}
+          ▶
+        </span>
+        <span
+          style={{
+            color: "var(--brand)",
+            visibility: card.watched_by_me ? "visible" : "hidden",
+          }}
+          aria-hidden
+        >
+          ★
         </span>
       </div>
 
-      {/* version chevrons */}
-      {card.versions.length > 1 && (
-        <div
-          className="flex items-center gap-2"
-          style={{ fontFamily: "var(--font-jb)", fontSize: 11 }}
-        >
-          <button
-            onClick={() => canPrev && setSelectedIdx(selectedIdx - 1)}
-            disabled={!canPrev}
-            aria-label="previous version"
-            style={{
-              background: "transparent",
-              border: "1px solid var(--line)",
-              borderRadius: 3,
-              color: canPrev ? "var(--ink)" : "var(--ghost)",
-              cursor: canPrev ? "pointer" : "default",
-              padding: "2px 8px",
-              fontFamily: "var(--font-jb)",
-              fontSize: 12,
-            }}
-          >
-            ‹
-          </button>
+      {/* name + ticker */}
+      <Link
+        href={`/dashboard/strategies/${selected?.id ?? card.id}`}
+        style={{
+          color: "var(--ink)",
+          textDecoration: "none",
+          fontWeight: 700,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          minWidth: 0,
+        }}
+      >
+        {card.name}
+        {card.ticker && (
           <span
             style={{
               color: "var(--ghost)",
-              letterSpacing: "0.04em",
-              fontVariantNumeric: "tabular-nums",
-              minWidth: 40,
-              textAlign: "center",
+              fontWeight: 400,
+              marginLeft: 8,
+              fontSize: 11,
             }}
           >
-            v{selected.version} of v{card.versions[card.versions.length - 1].version}
+            {card.ticker}
           </span>
-          <button
-            onClick={() => canNext && setSelectedIdx(selectedIdx + 1)}
-            disabled={!canNext}
-            aria-label="next version"
+        )}
+      </Link>
+
+      {/* origin */}
+      <span
+        title={origin.detail}
+        style={{ color: origin.color, fontWeight: 500, fontSize: 11 }}
+      >
+        {origin.word}
+      </span>
+
+      {/* version chevrons — always visible; disabled when only one version */}
+      <div
+        className="flex items-center justify-center gap-1"
+        style={{ fontFamily: "var(--font-jb)", fontSize: 11 }}
+      >
+        <button
+          onClick={() => canPrev && setSelectedIdx(selectedIdx - 1)}
+          disabled={!canPrev}
+          aria-label="previous version"
+          style={{
+            background: "transparent",
+            border: "1px solid var(--line)",
+            borderRadius: 3,
+            color: canPrev ? "var(--ink)" : "var(--line2)",
+            cursor: canPrev ? "pointer" : "default",
+            padding: "0 5px",
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            lineHeight: 1.4,
+          }}
+        >
+          ‹
+        </button>
+        <span
+          style={{
+            color: "var(--ghost)",
+            fontVariantNumeric: "tabular-nums",
+            minWidth: 44,
+            textAlign: "center",
+            fontSize: 10,
+          }}
+        >
+          v{selected?.version ?? card.version}/v{maxV}
+        </span>
+        <button
+          onClick={() => canNext && setSelectedIdx(selectedIdx + 1)}
+          disabled={!canNext}
+          aria-label="next version"
+          style={{
+            background: "transparent",
+            border: "1px solid var(--line)",
+            borderRadius: 3,
+            color: canNext ? "var(--ink)" : "var(--line2)",
+            cursor: canNext ? "pointer" : "default",
+            padding: "0 5px",
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            lineHeight: 1.4,
+          }}
+        >
+          ›
+        </button>
+      </div>
+
+      {/* PnL — the visual anchor */}
+      <span
+        style={{
+          color:
+            pnl == null
+              ? "var(--ghost)"
+              : pnlPos
+                ? "var(--bull)"
+                : "var(--bear)",
+          fontWeight: 700,
+          fontSize: 14,
+          textAlign: "right",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {pnl == null
+          ? "—"
+          : `${pnlPos ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
+      </span>
+
+      {/* WR */}
+      <span
+        style={{
+          color: wr == null ? "var(--ghost)" : "var(--dim)",
+          textAlign: "right",
+        }}
+      >
+        {wr == null ? "—" : `${(wr * 100).toFixed(0)}%`}
+      </span>
+
+      {/* trades */}
+      <span style={{ color: "var(--dim)", textAlign: "right" }}>
+        {trades > 0 ? `${trades}t` : "—"}
+      </span>
+
+      {/* tuned */}
+      <span
+        title={new Date(selected?.created_at ?? card.created_at).toLocaleDateString()}
+        style={{
+          color: recencyColor,
+          textAlign: "right",
+          fontSize: 11,
+        }}
+      >
+        {recency.label}
+      </span>
+
+      {hover && <HoverSourceCard card={card} />}
+    </div>
+  );
+}
+
+/**
+ * Sprint 126: floating popover shown on row hover. Displays description +
+ * source (arXiv paper title with link OR fork parent). Positioned at the
+ * right edge of the row so it doesn't jitter the table layout.
+ */
+function HoverSourceCard({ card }: { card: StrategyCard }) {
+  const hasPaper = card.parent_paper_id && card.parent_paper_title;
+  const hasFork = card.forked_from_id && card.fork_source_name;
+  const label = hasPaper
+    ? "FROM ARXIV"
+    : hasFork
+      ? "FORKED FROM"
+      : card.created_by === "claude_chat"
+        ? "CHAT-AUTHORED"
+        : card.created_by === "distillation"
+          ? "A/B DISTILLED"
+          : "ORIGIN";
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "100%",
+        right: 14,
+        marginTop: 4,
+        width: 380,
+        maxWidth: "90vw",
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 8,
+        padding: "12px 14px",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)",
+        zIndex: 50,
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 10,
+          letterSpacing: "0.08em",
+          color: "var(--ghost)",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      {hasPaper && (
+        <div style={{ marginBottom: 10 }}>
+          <span
             style={{
-              background: "transparent",
-              border: "1px solid var(--line)",
-              borderRadius: 3,
-              color: canNext ? "var(--ink)" : "var(--ghost)",
-              cursor: canNext ? "pointer" : "default",
-              padding: "2px 8px",
               fontFamily: "var(--font-jb)",
               fontSize: 12,
+              color: "var(--brand)",
+              textDecoration: "underline",
+              textUnderlineOffset: 2,
+              lineHeight: 1.4,
+              display: "inline-block",
             }}
           >
-            ›
-          </button>
+            {card.parent_paper_title}
+            {card.parent_paper_source_url ? " ↗" : ""}
+          </span>
         </div>
       )}
-
-      {/* headline: PnL is the anchor */}
-      <div>
+      {hasFork && !hasPaper && (
         <div
           style={{
             fontFamily: "var(--font-jb)",
-            fontSize: 24,
-            fontWeight: 700,
-            fontVariantNumeric: "tabular-nums",
-            letterSpacing: "-0.02em",
-            color:
-              pnl == null ? "var(--ghost)" : pnlPos ? "var(--bull)" : "var(--bear)",
+            fontSize: 12,
+            color: "var(--dim)",
+            marginBottom: 10,
           }}
         >
-          {pnl == null
-            ? "—"
-            : `${pnlPos ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--ghost)",
-              fontWeight: 500,
-              marginLeft: 4,
-            }}
-          >
-            pts
-          </span>
+          {card.fork_source_name}
         </div>
-      </div>
-
-      {/* stats strip */}
+      )}
       <div
-        className="flex items-baseline gap-3 flex-wrap"
         style={{
-          fontFamily: "var(--font-jb)",
-          fontSize: 11,
-          fontVariantNumeric: "tabular-nums",
-          color: "var(--dim)",
+          fontFamily: "var(--font-nunito)",
+          fontSize: 13,
+          color: "var(--ink)",
+          lineHeight: 1.5,
+          maxHeight: 220,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          display: "-webkit-box",
+          WebkitLineClamp: 8,
+          WebkitBoxOrient: "vertical",
         }}
       >
-        <span>
-          <span style={{ color: "var(--ghost)" }}>WR </span>
-          {wr == null ? "—" : `${(wr * 100).toFixed(0)}%`}
-        </span>
-        <span style={{ color: "var(--ghost)" }}>·</span>
-        <span>{trades > 0 ? `${trades}t` : "—"}</span>
-        <span style={{ color: "var(--ghost)" }}>·</span>
-        <span
-          title={new Date(selected.created_at).toLocaleDateString()}
-          style={{ color: recencyColor }}
-        >
-          {recency.label}
-        </span>
+        {card.description}
       </div>
     </div>
   );
