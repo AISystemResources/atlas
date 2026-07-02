@@ -103,7 +103,9 @@ function originTag(card: StrategyCard): OriginTag {
     return {
       kind: "fork",
       word: "Fork",
-      color: "var(--ghost)",
+      // Sprint 114: was --ghost (invisible against --surface). Bumped to
+      // --dim so the origin rail actually reads in the listing.
+      color: "var(--dim)",
       detail: card.fork_source_name
         ? `from ${card.fork_source_name}`
         : "from another strategy",
@@ -128,8 +130,10 @@ function originTag(card: StrategyCard): OriginTag {
   }
   return {
     kind: "hand",
+    // Sprint 114: swapped with Fork — Hand is rare, so it wears the quieter
+    // colour without losing information.
     word: "Hand",
-    color: "var(--dim)",
+    color: "var(--ghost)",
     detail: "Handwritten",
   };
 }
@@ -287,11 +291,12 @@ function FamilyListing({ families }: { families: Family[] }) {
           {showDividers && <FamilyDivider family={f} />}
           <div className="flex flex-col">
             {f.members.map((m, i) => {
-              // A member that's a fork of another member of the same family
-              // gets rendered as a nested child of its parent visually.
-              const isNested = f.members.some(
-                (other) => other.id === m.forked_from_id,
-              );
+              // Sprint 114: detect forks by name pattern rather than the DB
+              // forked_from_id. The prior version-was-archived case broke the
+              // id lookup silently — `sandy-s1-long-fork-4p35` was forked from
+              // sandy-s1-long v3, but only v4 is active/visible, so the id
+              // check failed and the row rendered flush-left as a peer.
+              const isNested = m.name.includes("-fork-");
               return (
                 <StrategyRow
                   key={m.id}

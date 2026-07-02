@@ -102,12 +102,12 @@ export function DjiHero() {
   return (
     <section
       aria-label="Dow Jones Industrial Average"
-      style={{ padding: "12px 0 20px 0" }}
+      style={{ padding: "4px 0 12px 0" }}
     >
       {/* eyebrow — the "what am I looking at" strip */}
       <div
         className="flex items-center justify-between"
-        style={{ marginBottom: 18 }}
+        style={{ marginBottom: 10 }}
       >
         <div
           style={{
@@ -156,8 +156,12 @@ export function DjiHero() {
             style={{
               fontFamily: "var(--font-jb)",
               fontWeight: 700,
-              fontSize: "clamp(72px, 12vw, 152px)",
-              lineHeight: 0.9,
+              // Sprint 114: shrunk from clamp(72,12vw,152px). The original
+              // was calibrated for promo feel; at Edmund's viewport it ate
+              // 40% of the fold and pushed strategies off-screen. This
+              // still reads dominant without dominating.
+              fontSize: "clamp(52px, 6.5vw, 88px)",
+              lineHeight: 0.95,
               letterSpacing: "-0.03em",
               color: "var(--ink)",
               fontVariantNumeric: "tabular-nums",
@@ -168,14 +172,14 @@ export function DjiHero() {
 
           {/* change row */}
           <div
-            className="flex items-baseline gap-3"
-            style={{ marginTop: 14 }}
+            className="flex items-baseline gap-3 flex-wrap"
+            style={{ marginTop: 8 }}
           >
             <span
               className="num"
               style={{
                 fontFamily: "var(--font-jb)",
-                fontSize: 22,
+                fontSize: 16,
                 fontWeight: 600,
                 color: changeColor,
                 fontVariantNumeric: "tabular-nums",
@@ -188,7 +192,7 @@ export function DjiHero() {
               className="num"
               style={{
                 fontFamily: "var(--font-jb)",
-                fontSize: 15,
+                fontSize: 13,
                 color: changeColor,
                 fontVariantNumeric: "tabular-nums",
               }}
