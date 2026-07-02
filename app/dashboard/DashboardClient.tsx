@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { AtlasMcpConnectorCard } from "./AtlasMcpConnectorCard";
 import { DjiHero } from "./portfolio/DjiHero";
-import type { StrategyHealth, BacktestTradeLite } from "./portfolio/page";
+import type { StrategyHealth } from "./portfolio/page";
 
 const API_URL = "/api";
 
@@ -15,35 +15,158 @@ const API_URL = "/api";
 export function PortfolioTab({
   strategies,
   pendingCount,
-  recentTrades,
 }: {
   tier: "free" | "pro";
   strategies: StrategyHealth[];
   pendingCount: number;
-  recentTrades: BacktestTradeLite[];
 }) {
   return (
     <div className="flex flex-col pb-6" style={{ gap: 0 }}>
       {/* Sprint 110: monomaniac hero — one instrument, sized like a scoreboard. */}
       <DjiHero />
 
-      {/* hairline divider between hero and the split */}
-      <div
-        style={{
-          height: 1,
-          background: "var(--line)",
-          margin: "6px 0 20px 0",
-        }}
-      />
+      <div style={{ height: 1, background: "var(--line)", margin: "6px 0 20px 0" }} />
 
-      {/* two-column split: Strategy bench (left) · Tape (right) */}
-      <div
-        className="grid gap-6 md:gap-8"
-        style={{ gridTemplateColumns: "minmax(0, 5fr) minmax(0, 7fr)" }}
+      <BenchAggregate strategies={strategies} />
+
+      <div style={{ height: 20 }} />
+
+      <StrategyBench strategies={strategies} pendingCount={pendingCount} />
+    </div>
+  );
+}
+
+// ─── BenchAggregate ──────────────────────────────────────────────────────────
+// Roll-up metrics across the active bench. Reads latest backtest per strategy.
+
+function BenchAggregate({ strategies }: { strategies: StrategyHealth[] }) {
+  const withBt = strategies.filter((s) => s.latestBacktest != null);
+  const totalPts = withBt.reduce(
+    (a, s) => a + (s.latestBacktest?.total_pnl_points ?? 0),
+    0,
+  );
+  const totalTrades = withBt.reduce(
+    (a, s) => a + (s.latestBacktest?.total_trades ?? 0),
+    0,
+  );
+  const wrSum = withBt.reduce(
+    (a, s) => a + (s.latestBacktest?.win_rate ?? 0),
+    0,
+  );
+  const avgWr = withBt.length > 0 ? wrSum / withBt.length : null;
+  const winners = withBt.filter(
+    (s) => (s.latestBacktest?.total_pnl_points ?? 0) > 0,
+  ).length;
+  const losers = withBt.length - winners;
+  const best = withBt.reduce<StrategyHealth | null>((best, s) => {
+    const p = s.latestBacktest?.total_pnl_points ?? -Infinity;
+    const bp = best?.latestBacktest?.total_pnl_points ?? -Infinity;
+    return p > bp ? s : best;
+  }, null);
+
+  const ptsColor =
+    totalPts > 0 ? "var(--bull)" : totalPts < 0 ? "var(--bear)" : "var(--ink)";
+
+  return (
+    <div
+      className="grid"
+      style={{
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        gap: 24,
+        padding: "14px 0",
+        borderTop: "1px solid var(--line)",
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
+      <AggregateCell
+        label="NET PTS"
+        value={
+          totalPts !== 0
+            ? `${totalPts > 0 ? "+" : ""}${totalPts.toFixed(1)}`
+            : "—"
+        }
+        valueColor={ptsColor}
+        sub={`${withBt.length} strategies tested`}
+      />
+      <AggregateCell
+        label="AVG WR"
+        value={avgWr != null ? `${(avgWr * 100).toFixed(0)}%` : "—"}
+        sub={`${totalTrades} trades total`}
+      />
+      <AggregateCell
+        label="WIN / LOSE"
+        value={`${winners} / ${losers}`}
+        valueColor={
+          winners > losers
+            ? "var(--bull)"
+            : winners < losers
+              ? "var(--bear)"
+              : "var(--ink)"
+        }
+        sub="by strategy PnL"
+      />
+      <AggregateCell
+        label="TOP STRATEGY"
+        value={best?.name ?? "—"}
+        valueSmall
+        sub={
+          best?.latestBacktest?.total_pnl_points != null
+            ? `+${best.latestBacktest.total_pnl_points.toFixed(1)} pts · v${best.version}`
+            : "—"
+        }
+      />
+    </div>
+  );
+}
+
+function AggregateCell({
+  label,
+  value,
+  valueColor,
+  valueSmall,
+  sub,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+  valueSmall?: boolean;
+  sub: string;
+}) {
+  return (
+    <div className="flex flex-col" style={{ gap: 4, minWidth: 0 }}>
+      <span
+        style={{
+          fontSize: 10,
+          fontFamily: "var(--font-jb)",
+          letterSpacing: "0.08em",
+          color: "var(--ghost)",
+        }}
       >
-        <StrategyBench strategies={strategies} pendingCount={pendingCount} />
-        <TradeTape trades={recentTrades} />
-      </div>
+        {label}
+      </span>
+      <span
+        className="font-display num"
+        style={{
+          fontSize: valueSmall ? 15 : 22,
+          fontWeight: 700,
+          color: valueColor ?? "var(--ink)",
+          fontVariantNumeric: "tabular-nums",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </span>
+      <span
+        style={{
+          fontSize: 10,
+          fontFamily: "var(--font-jb)",
+          color: "var(--ghost)",
+        }}
+      >
+        {sub}
+      </span>
     </div>
   );
 }
@@ -232,130 +355,6 @@ function StrategyRow({
         )}
       </div>
     </button>
-  );
-}
-
-// ─── TradeTape ───────────────────────────────────────────────────────────────
-// Borderless monospace rows with a hairline at 8% opacity between them.
-// Meant to feel like a continuous ticker ribbon, not a table.
-
-function TradeTape({ trades }: { trades: BacktestTradeLite[] }) {
-  return (
-    <div>
-      <SectionHeader label={`TAPE · LAST ${trades.length}`} />
-
-      {trades.length === 0 ? (
-        <div
-          style={{
-            fontFamily: "var(--font-nunito)", fontSize: 13,
-            color: "var(--ghost)", padding: "24px 0",
-          }}
-        >
-          No backtest trades yet. Run a backtest from a strategy detail page.
-        </div>
-      ) : (
-        <div className="flex flex-col">
-          {trades.map((t) => (
-            <TapeRow key={t.id} trade={t} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function tapeExitLabel(reason: string | null, isOpen: boolean): string {
-  if (isOpen) return "OPN";
-  switch (reason) {
-    case "tp_hit": return "TP ";
-    case "sl_hit": return "SL ";
-    case "time_stop": return "TIM";
-    case "eod": return "EOD";
-    case "open_at_end": return "OPN";
-    default: return " — ";
-  }
-}
-
-function TapeRow({ trade }: { trade: BacktestTradeLite }) {
-  const isOpen = trade.exit_ts == null;
-  const positive = (trade.pnl_points ?? 0) >= 0;
-  const dt = trade.entry_ts ? new Date(trade.entry_ts) : null;
-  const timeLabel = dt
-    ? dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
-    : "--:--";
-  const dateLabel = dt
-    ? dt.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : "";
-  const pnlColor = trade.pnl_points == null
-    ? "var(--ghost)"
-    : positive ? "var(--bull)" : "var(--bear)";
-  const exitColor = isOpen
-    ? "var(--ghost)"
-    : trade.exit_reason === "tp_hit"
-      ? "var(--bull)"
-      : trade.exit_reason === "sl_hit"
-        ? "var(--bear)"
-        : "var(--dim)";
-
-  return (
-    <div
-      className="grid items-center"
-      style={{
-        gridTemplateColumns: "auto minmax(0, 1fr) auto auto",
-        gap: 14,
-        padding: "9px 0",
-        borderBottom: "1px solid rgba(141, 164, 178, 0.14)", // --ghost @ ~14%
-        fontFamily: "var(--font-jb)",
-        fontSize: 12,
-        fontVariantNumeric: "tabular-nums",
-      }}
-    >
-      {/* timestamp — date + HH:MM */}
-      <div className="flex flex-col" style={{ minWidth: 52 }}>
-        <span style={{ color: "var(--ink)", fontWeight: 500 }}>{timeLabel}</span>
-        <span style={{ color: "var(--ghost)", fontSize: 10 }}>{dateLabel}</span>
-      </div>
-
-      {/* strategy name */}
-      <span
-        style={{
-          color: "var(--dim)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {trade.strategy_name}
-      </span>
-
-      {/* exit-reason mono-glyph — no pill, no background */}
-      <span
-        aria-label={tapeExitLabel(trade.exit_reason, isOpen).trim()}
-        style={{
-          color: exitColor,
-          letterSpacing: "0.08em",
-          fontSize: 11,
-          fontWeight: 600,
-        }}
-      >
-        {tapeExitLabel(trade.exit_reason, isOpen)}
-      </span>
-
-      {/* pnl */}
-      <span
-        className="num"
-        style={{
-          color: pnlColor,
-          fontWeight: 600,
-          minWidth: 68,
-          textAlign: "right",
-        }}
-      >
-        {trade.pnl_points != null
-          ? `${positive ? "+" : ""}${trade.pnl_points.toFixed(1)}`
-          : "—"}
-      </span>
-    </div>
   );
 }
 
