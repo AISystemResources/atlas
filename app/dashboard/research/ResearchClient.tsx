@@ -5,10 +5,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTier } from "../DashboardShell";
 
-// Sprint 105: a paper carries a list of strategies that have been
-// extracted from it. The list is filtered server-side to what the
-// caller can see (their own + public). Verdict and ticker badges
-// make each row immediately useful — same vocab as the Library.
+// Sprint 105: a paper carries a list of strategies that have been extracted
+// from it. The list is filtered server-side to what the caller can see
+// (their own + public). Sprint 111 refactor: same data shape, radically
+// different presentation — see below.
 export interface ExtractedStrategy {
   id: string;
   name: string;
@@ -32,9 +32,9 @@ export interface PaperRow {
   extracted_strategies: ExtractedStrategy[];
 }
 
-// Same verdict rule as Sprint 102 (StrategiesClient) and Sprint 103
-// (FreeDashboard). Duplicated by intent — three small inline copies
-// are clearer than a cross-cutting shared lib for one helper.
+// Verdict rule shared with StrategiesClient / FreeDashboard. Duplicated by
+// intent — three small inline copies read cleaner than a shared lib for
+// one helper.
 type Verdict = "trustworthy" | "healthy" | "needs-work" | "untested";
 
 function computeVerdict(s: ExtractedStrategy): Verdict {
@@ -48,101 +48,214 @@ function computeVerdict(s: ExtractedStrategy): Verdict {
 function verdictMeta(v: Verdict) {
   switch (v) {
     case "trustworthy":
-      return { label: "Trustworthy", icon: "✓", bg: "var(--bull-bg)", color: "var(--bull)" };
+      return { label: "TRUSTWORTHY", glyph: "●", color: "var(--bull)" };
     case "healthy":
-      return { label: "Healthy", icon: "●", bg: "rgba(59,130,246,0.10)", color: "#3b82f6" };
+      return { label: "HEALTHY", glyph: "●", color: "#3b82f6" };
     case "needs-work":
-      return { label: "Needs work", icon: "!", bg: "rgba(239,68,68,0.10)", color: "var(--bear)" };
+      return { label: "NEEDS WORK", glyph: "!", color: "var(--bear)" };
     case "untested":
-      return { label: "Untested", icon: "○", bg: "var(--elevated)", color: "var(--ghost)" };
+      return { label: "UNTESTED", glyph: "○", color: "var(--ghost)" };
   }
 }
 
-function ExtractedRow({ s }: { s: ExtractedStrategy }) {
-  const verdict = computeVerdict(s);
-  const m = verdictMeta(verdict);
+// arXiv URL → paper id parser. arXiv URLs look like
+// https://arxiv.org/abs/2402.01234 (or with a version suffix like v2).
+// Falls back to a slug of the source name if the URL doesn't match.
+function arxivIdFromUrl(url: string | null, fallback: string): string {
+  if (!url) return fallback;
+  const m = url.match(/arxiv\.org\/(?:abs|pdf)\/(\d{4}\.\d{4,5})/i);
+  return m?.[1] ?? fallback;
+}
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function fmtPts(n: number | null): string {
+  if (n == null) return "—";
+  return `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1)} pts`;
+}
+
+// ─── The In-Use card — genealogy view ────────────────────────────────────────
+// The paper is the trunk; each strategy is a branch. The `╰─▶` glyph in
+// --brand carries the "paper begat strategy" thesis. 2px left rail in --bull
+// says "this paper is proven" without a badge.
+
+function InUseCard({ paper, animate }: { paper: PaperRow; animate: boolean }) {
+  const arxivId = arxivIdFromUrl(paper.source_url, paper.source);
+  const visible = paper.extracted_strategies.slice(0, 3);
+  const extra = paper.extracted_strategies.length - visible.length;
+
   return (
-    <Link
-      href={`/dashboard/strategies/${s.id}`}
-      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border transition-colors hover:bg-[var(--elevated)]"
+    <article
       style={{
-        borderColor: "var(--line)",
-        background: "transparent",
-        textDecoration: "none",
-        minWidth: 0,
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderLeft: "3px solid var(--bull)",
+        borderRadius: 6,
+        padding: "18px 22px",
       }}
-      title={`${s.name} v${s.version}${s.ticker ? ` · ${s.ticker}` : ""} — ${m.label}`}
     >
-      <span
-        className="inline-flex items-center gap-1 px-1.5 py-0 rounded-full shrink-0"
-        style={{
-          background: m.bg,
-          color: m.color,
-          fontSize: 9,
-          fontWeight: 500,
-          letterSpacing: "0.02em",
-        }}
-      >
-        <span className="font-mono">{m.icon}</span>
-        <span>{m.label}</span>
-      </span>
-      <span
-        className="font-mono truncate"
-        style={{ color: "var(--ink)", fontSize: 11 }}
-      >
-        {s.name}
-      </span>
-      <span className="font-mono shrink-0" style={{ color: "var(--ghost)", fontSize: 10 }}>
-        v{s.version}
-      </span>
-      {s.ticker && (
-        <span className="font-mono shrink-0" style={{ color: "var(--dim)", fontSize: 10 }}>
-          · {s.ticker}
-        </span>
-      )}
-      {s.is_mine && (
-        <span
-          className="inline-flex items-center px-1 py-0 rounded uppercase shrink-0"
+      <header>
+        <h3
+          className="font-display font-semibold"
           style={{
-            background: "var(--brand)22",
-            color: "var(--brand)",
-            fontSize: 8,
-            fontWeight: 600,
-            letterSpacing: "0.05em",
+            fontSize: 15,
+            color: "var(--ink)",
+            lineHeight: 1.35,
+            marginBottom: 6,
           }}
         >
-          mine
-        </span>
-      )}
+          {paper.title}
+        </h3>
+        <div
+          className="flex items-center gap-2 flex-wrap"
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--dim)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          <span style={{ color: "var(--ink)" }}>arXiv:{arxivId}</span>
+          <span style={{ color: "var(--ghost)" }}>·</span>
+          <span>q-fin.TR</span>
+          <span style={{ color: "var(--ghost)" }}>·</span>
+          <span>ingested {fmtDate(paper.ingested_at)}</span>
+          {paper.source_url && (
+            <>
+              <span style={{ color: "var(--ghost)" }}>·</span>
+              <a
+                href={paper.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "var(--brand)",
+                  textDecoration: "underline",
+                  textUnderlineOffset: 2,
+                }}
+              >
+                arXiv ↗
+              </a>
+            </>
+          )}
+        </div>
+      </header>
+
+      <div style={{ marginTop: 16 }}>
+        {visible.map((s, i) => (
+          <BranchRow key={s.id} strategy={s} animate={animate} delayMs={i * 60} />
+        ))}
+        {extra > 0 && (
+          <Link
+            href={`/dashboard/strategies?paper=${paper.id}`}
+            className="inline-block"
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--ghost)",
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
+              marginTop: 6,
+              marginLeft: 22,
+            }}
+          >
+            and {extra} more →
+          </Link>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function BranchRow({
+  strategy,
+  animate,
+  delayMs,
+}: {
+  strategy: ExtractedStrategy;
+  animate: boolean;
+  delayMs: number;
+}) {
+  const verdict = computeVerdict(strategy);
+  const meta = verdictMeta(verdict);
+  const pnlPos = (strategy.total_pnl_points ?? 0) >= 0;
+
+  return (
+    <Link
+      href={`/dashboard/strategies/${strategy.id}`}
+      className="grid items-baseline"
+      style={{
+        gridTemplateColumns: "22px minmax(0, 1.4fr) minmax(0, 0.7fr) minmax(0, 0.9fr) minmax(0, 1fr)",
+        gap: 10,
+        padding: "6px 0",
+        textDecoration: "none",
+        fontFamily: "var(--font-jb)",
+        fontSize: 12,
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          color: "var(--brand)",
+          fontFamily: "var(--font-jb)",
+          fontSize: 13,
+          opacity: animate ? 0 : 1,
+          animation: animate ? `atlas-branch-reveal 260ms ease-out ${delayMs}ms forwards` : "none",
+        }}
+      >
+        ╰─▶
+      </span>
+      <span
+        style={{
+          color: "var(--ink)",
+          fontWeight: 500,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {strategy.name}{" "}
+        <span style={{ color: "var(--ghost)", fontWeight: 400 }}>v{strategy.version}</span>
+      </span>
+      <span style={{ color: "var(--dim)" }}>
+        {strategy.win_rate != null ? `${(strategy.win_rate * 100).toFixed(0)}% wr` : "— wr"}
+      </span>
+      <span style={{ color: pnlPos ? "var(--bull)" : "var(--bear)", fontWeight: 600 }}>
+        {fmtPts(strategy.total_pnl_points)}
+      </span>
+      <span
+        style={{
+          color: meta.color,
+          letterSpacing: "0.06em",
+          fontSize: 10,
+          fontWeight: 600,
+          textAlign: "right",
+        }}
+      >
+        {meta.glyph} {meta.label}
+      </span>
     </Link>
   );
 }
 
-function ExtractedStrategiesRow({ strategies }: { strategies: ExtractedStrategy[] }) {
-  if (strategies.length === 0) return null;
-  return (
-    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
-      <div
-        className="text-[10px] uppercase tracking-wide mb-2"
-        style={{ color: "var(--ghost)" }}
-      >
-        Extracted into {strategies.length} strateg{strategies.length === 1 ? "y" : "ies"}
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {strategies.map((s) => (
-          <ExtractedRow key={s.id} s={s} />
-        ))}
-      </div>
-    </div>
-  );
-}
+// ─── The Unread row — arXiv-listing dense ────────────────────────────────────
+// Borrows the arXiv listing vernacular: mono id column, category tag, title
+// on one line, tiny action pill on the right. 20 rows fit in the space of
+// the old card.
 
-function PaperCard({ paper }: { paper: PaperRow }) {
-  const tier = useTier();
-  const isPro = tier === "pro";
+function UnreadRow({ paper, isPro }: { paper: PaperRow; isPro: boolean }) {
+  const arxivId = arxivIdFromUrl(paper.source_url, paper.source);
   const [copied, setCopied] = useState(false);
 
-  async function copyPrompt() {
+  async function copyExtractPrompt(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isPro) return;
     const prompt = `I want to extract a quantitative trading strategy from this paper and create it in Atlas.
 
 Title: ${paper.title}
@@ -157,84 +270,92 @@ Please:
 3. Then call \`run_ticket_backtest\` on the new strategy and analyse the trades.
 
 Paper UUID for reference: ${paper.id}`;
-
     await navigator.clipboard.writeText(prompt);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2200);
   }
 
   return (
     <div
-      className="rounded-lg p-4 border"
-      style={{ borderColor: "var(--line)", background: "var(--surface)" }}
+      className="grid items-center"
+      style={{
+        gridTemplateColumns: "110px minmax(0, 1fr) auto",
+        gap: 16,
+        padding: "10px 4px",
+        borderBottom: "1px solid rgba(141, 164, 178, 0.14)",
+      }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium leading-snug" style={{ color: "var(--ink)" }}>
-            {paper.title}
-          </p>
-          <p className="text-xs mt-1" style={{ color: "var(--ghost)" }}>
-            {paper.source}
-            {paper.source_url && (
-              <>
-                {" · "}
-                <a
-                  href={paper.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                  style={{ color: "var(--brand)" }}
-                >
-                  arXiv ↗
-                </a>
-              </>
-            )}
-          </p>
-          {paper.abstract && (
-            <p className="text-xs mt-2 line-clamp-2" style={{ color: "var(--dim)" }}>
-              {paper.abstract}
-            </p>
-          )}
-        </div>
-
-        <div className="shrink-0">
-          {isPro ? (
-            <button
-              onClick={copyPrompt}
-              className="text-xs px-3 py-1.5 rounded-md border transition-colors"
-              style={{
-                borderColor: "var(--brand)",
-                color: "var(--brand)",
-                background: "transparent",
-              }}
-              title="Copy a ready-to-paste prompt for Claude/ChatGPT (via the Atlas MCP)"
-            >
-              {copied ? "Copied ✓" : "Copy MCP prompt"}
-            </button>
-          ) : (
-            <a
-              href={paper.source_url ?? "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs px-3 py-1.5 rounded-md border transition-colors inline-block"
-              style={{
-                borderColor: "var(--line)",
-                color: "var(--ghost)",
-                background: "transparent",
-                textDecoration: "none",
-              }}
-              title="Pro tier can extract strategies from papers via MCP. View the source paper instead."
-            >
-              View paper ↗
-            </a>
-          )}
-        </div>
+      {/* arXiv ID + date stacked, mono */}
+      <div className="flex flex-col" style={{ fontFamily: "var(--font-jb)", fontSize: 11 }}>
+        <span style={{ color: "var(--ink)", fontWeight: 500, letterSpacing: "0.01em" }}>
+          {arxivId}
+        </span>
+        <span style={{ color: "var(--ghost)", fontSize: 10, marginTop: 2 }}>
+          q-fin.TR · {fmtDate(paper.ingested_at)}
+        </span>
       </div>
 
-      <ExtractedStrategiesRow strategies={paper.extracted_strategies} />
+      {/* Title only — no abstract clamp. Reads like a scholarly listing. */}
+      <div style={{ minWidth: 0 }}>
+        {paper.source_url ? (
+          <a
+            href={paper.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-display"
+            style={{
+              fontSize: 14,
+              fontWeight: 500,
+              color: "var(--ink)",
+              textDecoration: "none",
+              lineHeight: 1.4,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical" as const,
+              overflow: "hidden",
+            }}
+          >
+            {paper.title}
+          </a>
+        ) : (
+          <span
+            className="font-display"
+            style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}
+          >
+            {paper.title}
+          </span>
+        )}
+      </div>
+
+      {/* action */}
+      <button
+        onClick={copyExtractPrompt}
+        disabled={!isPro}
+        title={
+          isPro
+            ? "Copy an extraction prompt for your MCP-connected LLM"
+            : "Extraction requires Atlas Pro"
+        }
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          padding: "5px 12px",
+          borderRadius: 4,
+          border: `1px solid ${isPro ? "var(--brand)" : "var(--line)"}`,
+          background: "transparent",
+          color: isPro ? "var(--brand)" : "var(--ghost)",
+          cursor: isPro ? "pointer" : "not-allowed",
+          letterSpacing: "0.04em",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {copied ? "Copied ✓" : "Extract"}
+      </button>
     </div>
   );
 }
+
+// ─── The page shell ──────────────────────────────────────────────────────────
 
 export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] }) {
   const tier = useTier();
@@ -242,6 +363,9 @@ export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] })
   const router = useRouter();
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
+
+  const inUse = initialPapers.filter((p) => p.extracted_strategies.length > 0);
+  const unread = initialPapers.filter((p) => p.extracted_strategies.length === 0);
 
   async function fetchMore() {
     setFetching(true);
@@ -252,9 +376,7 @@ export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] })
       if (!res.ok) {
         setFetchMsg(json.error ?? "Fetch failed");
       } else {
-        setFetchMsg(`Fetched ${json.fetched ?? 0}, added ${json.inserted ?? 0} new papers`);
-        // Trigger Next router refresh so the server fetch re-runs and the
-        // extracted_strategies enrichment is preserved.
+        setFetchMsg(`Fetched ${json.fetched ?? 0}, added ${json.inserted ?? 0} new`);
         router.refresh();
       }
     } catch {
@@ -265,92 +387,192 @@ export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] })
   }
 
   return (
-    <div className="mx-auto" style={{ maxWidth: 800 }}>
-      <div className="flex items-center justify-between mb-6">
+    <div className="mx-auto pb-12" style={{ maxWidth: 900 }}>
+      {/* ── page header ─────────────────────────────────────────────── */}
+      <header className="flex items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: "var(--ink)" }}>
+          <h1
+            className="font-display font-bold"
+            style={{ fontSize: 28, color: "var(--ink)", letterSpacing: "-0.02em" }}
+          >
             Research
           </h1>
-          <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>
-            {isPro
-              ? "Browse trading-research papers and extract strategies via your connected MCP client"
-              : "Browse the trading research underlying public strategies in the library"}
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              color: "var(--dim)",
+              marginTop: 6,
+              letterSpacing: "0.02em",
+            }}
+          >
+            arXiv q-fin.TR · daily fetch · {initialPapers.length} indexed · {inUse.length} in use
           </p>
         </div>
         <button
           onClick={fetchMore}
           disabled={fetching}
-          className="text-sm px-4 py-2 rounded-lg border transition-colors"
           style={{
-            borderColor: "var(--line)",
-            color: fetching ? "var(--ghost)" : "var(--ink)",
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            padding: "8px 16px",
+            borderRadius: 6,
+            border: "1px solid var(--line)",
             background: "var(--surface)",
+            color: fetching ? "var(--ghost)" : "var(--ink)",
+            letterSpacing: "0.02em",
+            cursor: fetching ? "default" : "pointer",
+            whiteSpace: "nowrap",
           }}
         >
           {fetching ? "Fetching…" : "Fetch from arXiv"}
         </button>
-      </div>
+      </header>
 
       {fetchMsg && (
-        <p className="text-xs mb-4" style={{ color: "var(--dim)" }}>
-          {fetchMsg} — reload the page to see new papers.
+        <p
+          className="mb-5"
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--dim)",
+          }}
+        >
+          {fetchMsg}
         </p>
       )}
 
-      <div
-        className="rounded-md p-3 mb-4 text-xs"
-        style={{ background: "var(--elevated)", color: "var(--dim)" }}
-      >
-        {isPro ? (
-          <>
-            Atlas runs no server-side LLM. Click <em>Copy MCP prompt</em> on a paper to grab a
-            ready-to-paste extraction prompt, then run it from Claude / ChatGPT connected via the{" "}
-            <a
-              href="/dashboard/settings"
-              className="underline"
-              style={{ color: "var(--brand)" }}
-            >
-              Atlas MCP
-            </a>
-            .
-          </>
-        ) : (
-          <>
-            This is the provenance trail for strategies in your library. Atlas Pro users author
-            strategies from these papers via their connected LLM (Claude / ChatGPT) — the resulting
-            strategies appear under each paper below (and on the{" "}
-            <Link href="/dashboard/strategies" className="underline" style={{ color: "var(--brand)" }}>
-              Strategy library
-            </Link>
-            ). {" "}
-            <a
-              href="/pricing"
-              className="underline"
-              style={{ color: "var(--brand)" }}
-            >
-              Upgrade to Pro
-            </a>{" "}
-            to extract strategies yourself.
-          </>
-        )}
-      </div>
-
-      {initialPapers.length === 0 ? (
+      {/* ── Empty state ─────────────────────────────────────────────── */}
+      {initialPapers.length === 0 && (
         <div
-          className="rounded-lg p-8 text-center border"
-          style={{ borderColor: "var(--line)", borderStyle: "dashed" }}
+          style={{
+            border: "1px dashed var(--line2)",
+            borderRadius: 8,
+            padding: "40px 24px",
+            textAlign: "center",
+          }}
         >
-          <p className="text-sm" style={{ color: "var(--ghost)" }}>
-            No papers yet. Click &ldquo;Fetch from arXiv&rdquo; to load the latest algorithmic trading research.
+          <p
+            className="font-display"
+            style={{ fontSize: 15, color: "var(--ink)", fontWeight: 500 }}
+          >
+            No papers indexed.
+          </p>
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              color: "var(--dim)",
+              marginTop: 8,
+            }}
+          >
+            Click <em>Fetch from arXiv</em> to pull the latest q-fin.TR listings.
           </p>
         </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {initialPapers.map((p) => (
-            <PaperCard key={p.id} paper={p} />
-          ))}
-        </div>
       )}
+
+      {/* ── In Use section ──────────────────────────────────────────── */}
+      {inUse.length > 0 && (
+        <section className="mb-12">
+          <SectionRule
+            eyebrow="IN USE"
+            note={`${inUse.length} paper${inUse.length === 1 ? "" : "s"} produced tradeable strategies`}
+          />
+          <div className="flex flex-col gap-4 mt-5">
+            {inUse.map((p) => (
+              <InUseCard key={p.id} paper={p} animate />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Unread section ──────────────────────────────────────────── */}
+      {unread.length > 0 && (
+        <section>
+          <SectionRule
+            eyebrow="UNREAD"
+            note={`${unread.length} paper${unread.length === 1 ? "" : "s"} awaiting extraction`}
+          />
+          <div className="flex flex-col mt-4">
+            {unread.map((p) => (
+              <UnreadRow key={p.id} paper={p} isPro={isPro} />
+            ))}
+          </div>
+          <p
+            className="mt-6"
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--ghost)",
+              letterSpacing: "0.02em",
+            }}
+          >
+            — Extraction copies a prompt to your clipboard; run it inside your MCP-connected
+            LLM (Claude or ChatGPT).{" "}
+            {isPro ? (
+              <Link
+                href="/dashboard/settings"
+                style={{ color: "var(--brand)", textDecoration: "underline", textUnderlineOffset: 2 }}
+              >
+                Connect the Atlas MCP →
+              </Link>
+            ) : (
+              <Link
+                href="/pricing"
+                style={{ color: "var(--brand)", textDecoration: "underline", textUnderlineOffset: 2 }}
+              >
+                Requires Atlas Pro →
+              </Link>
+            )}
+          </p>
+        </section>
+      )}
+
+      <style jsx>{`
+        @keyframes atlas-branch-reveal {
+          from { opacity: 0; transform: translateX(-4px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          * { animation: none !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function SectionRule({ eyebrow, note }: { eyebrow: string; note: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.12em",
+          color: "var(--ink)",
+        }}
+      >
+        {eyebrow}
+      </span>
+      <span
+        aria-hidden
+        style={{
+          flex: 1,
+          height: 1,
+          background: "var(--line)",
+        }}
+      />
+      <span
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          color: "var(--ghost)",
+          letterSpacing: "0.02em",
+        }}
+      >
+        {note}
+      </span>
     </div>
   );
 }
