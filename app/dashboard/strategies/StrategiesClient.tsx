@@ -24,6 +24,8 @@ export interface StrategyCard {
   owner_label: string;
   backtest_count: number;
   is_my_scalper: boolean;
+  /** Sprint 121: is this strategy in the caller's watched_strategies set? */
+  watched_by_me: boolean;
   created_at: string;
   ticker: string | null;
   tags: string[];
@@ -47,31 +49,22 @@ export interface PaperRow {
 }
 
 type Tab = "mine" | "public";
-type Verdict = "trustworthy" | "healthy" | "needs-work" | "untested";
 
-// ─── Verdict (unchanged rule) ────────────────────────────────────────────────
+// ─── Sprint 121: recency chip ────────────────────────────────────────────────
+// The value we care about is "when was this strategy last tuned" — which for
+// the current active version = the row's `created_at`. A v4 written yesterday
+// is fresh; a v4 from 2 months ago has probably drifted. Report the raw age;
+// let the eye judge.
 
-function computeVerdict(card: StrategyCard): Verdict {
-  const bt = card.latest_backtest;
-  if (!bt || card.backtest_count === 0) return "untested";
-  const pnl = bt.total_pnl_points ?? 0;
-  const trades = bt.total_trades;
-  if (pnl > 0 && trades >= 30 && card.backtest_count >= 3) return "trustworthy";
-  if (pnl > 0 && trades >= 10) return "healthy";
-  return "needs-work";
-}
-
-function verdictMeta(v: Verdict): { label: string; glyph: string; color: string } {
-  switch (v) {
-    case "trustworthy":
-      return { label: "TRUSTWORTHY", glyph: "✓", color: "var(--bull)" };
-    case "healthy":
-      return { label: "HEALTHY", glyph: "●", color: "#3b82f6" };
-    case "needs-work":
-      return { label: "NEEDS WORK", glyph: "!", color: "var(--bear)" };
-    case "untested":
-      return { label: "UNTESTED", glyph: "○", color: "var(--ghost)" };
-  }
+export function recencyLabel(iso: string): { label: string; tone: "fresh" | "aged" | "stale" } {
+  const daysAgo = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (daysAgo <= 0) return { label: "today", tone: "fresh" };
+  if (daysAgo === 1) return { label: "1d ago", tone: "fresh" };
+  if (daysAgo < 7) return { label: `${daysAgo}d ago`, tone: "fresh" };
+  if (daysAgo < 30) return { label: `${daysAgo}d ago`, tone: "aged" };
+  if (daysAgo < 90) return { label: `${daysAgo}d ago`, tone: "stale" };
+  const monthsAgo = Math.floor(daysAgo / 30);
+  return { label: `${monthsAgo}mo ago`, tone: "stale" };
 }
 
 // ─── Origin tagging — five verbs, five semantic fields, zero overlap ────────
@@ -224,34 +217,40 @@ export function StrategiesClient({
   );
 
   const visible = tab === "mine" ? mine : publik;
-  const winners = visible.filter(
-    (c) => (c.latest_backtest?.total_pnl_points ?? 0) > 0,
-  ).length;
+
+  // Sprint 121: scoreboard aggregates. The old caption ("8 on ^DJI · 3
+  // winning") answered *what* is in the stable; the scoreboard also answers
+  // *is my stable making money*. Sum PnL is the honest single-number lens.
+  const scoreboard = useMemo(() => {
+    let totalPnl = 0;
+    let winners = 0;
+    let losers = 0;
+    let untested = 0;
+    for (const c of visible) {
+      const pnl = c.latest_backtest?.total_pnl_points;
+      if (pnl == null) {
+        untested++;
+        continue;
+      }
+      totalPnl += pnl;
+      if (pnl > 0) winners++;
+      else if (pnl < 0) losers++;
+    }
+    return { totalPnl, winners, losers, untested, total: visible.length };
+  }, [visible]);
+
   const families = useMemo(() => groupByFamily(visible), [visible]);
 
   return (
     <div className="mx-auto pb-12" style={{ maxWidth: 1100, color: "var(--ink)" }}>
       {/* ── page header ─────────────────────────────────────────────── */}
-      <header className="flex items-start justify-between gap-4 mb-8">
-        <div>
-          <h1
-            className="font-display font-bold"
-            style={{ fontSize: 28, color: "var(--ink)", letterSpacing: "-0.02em" }}
-          >
-            Strategies
-          </h1>
-          <p
-            style={{
-              fontFamily: "var(--font-jb)",
-              fontSize: 12,
-              color: "var(--dim)",
-              marginTop: 6,
-              letterSpacing: "0.02em",
-            }}
-          >
-            Your stable · {visible.length} on ^DJI · {winners} winning
-          </p>
-        </div>
+      <header className="flex items-start justify-between gap-4 mb-6">
+        <h1
+          className="font-display font-bold"
+          style={{ fontSize: 28, color: "var(--ink)", letterSpacing: "-0.02em" }}
+        >
+          Strategies
+        </h1>
 
         {isPro && (
           <div
@@ -268,11 +267,133 @@ export function StrategiesClient({
         )}
       </header>
 
+      {/* Sprint 121: scoreboard replaces the thin caption. Answers "is my
+          stable making money?" at a glance. */}
+      <Scoreboard sb={scoreboard} tab={tab} />
+
       {visible.length === 0 ? (
         <EmptyState tab={tab} />
       ) : (
         <FamilyListing families={families} />
       )}
+    </div>
+  );
+}
+
+function Scoreboard({
+  sb,
+  tab,
+}: {
+  sb: {
+    totalPnl: number;
+    winners: number;
+    losers: number;
+    untested: number;
+    total: number;
+  };
+  tab: Tab;
+}) {
+  const positive = sb.totalPnl >= 0;
+  const pnlColor = sb.total === 0
+    ? "var(--ghost)"
+    : positive
+      ? "var(--bull)"
+      : "var(--bear)";
+  const sign = positive ? "+" : "−";
+  return (
+    <section aria-label="Portfolio scoreboard" style={{ marginBottom: 28 }}>
+      <div
+        aria-hidden
+        style={{ height: 1, background: "var(--line)", marginBottom: 14 }}
+      />
+      <div
+        className="grid gap-6 items-baseline"
+        style={{
+          gridTemplateColumns: "auto auto auto minmax(0, 1fr) auto",
+          fontFamily: "var(--font-jb)",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {/* dominant PnL sum */}
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.12em",
+              color: "var(--ghost)",
+              marginBottom: 4,
+            }}
+          >
+            {tab === "mine" ? "MY STABLE" : "PUBLIC"}
+          </div>
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              color: pnlColor,
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {sb.total === 0 ? "—" : `${sign}${Math.abs(sb.totalPnl).toFixed(1)}`}
+            {sb.total > 0 && (
+              <span
+                style={{
+                  fontSize: 12,
+                  color: "var(--ghost)",
+                  fontWeight: 500,
+                  marginLeft: 4,
+                }}
+              >
+                pts
+              </span>
+            )}
+          </div>
+        </div>
+
+        <ScoreboardCell label="WINNING" value={sb.winners} color="var(--bull)" />
+        <ScoreboardCell label="LOSING" value={sb.losers} color="var(--bear)" />
+
+        <div />
+
+        <ScoreboardCell
+          label="UNTESTED"
+          value={sb.untested}
+          color="var(--ghost)"
+          align="right"
+        />
+      </div>
+      <div
+        aria-hidden
+        style={{ height: 1, background: "var(--line)", marginTop: 14 }}
+      />
+    </section>
+  );
+}
+
+function ScoreboardCell({
+  label,
+  value,
+  color,
+  align,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <div style={{ textAlign: align ?? "left" }}>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.12em",
+          color: "var(--ghost)",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 600, color }}>{value}</div>
     </div>
   );
 }
@@ -372,28 +493,37 @@ function StrategyRow({
   nested: boolean;
   showTopRule: boolean;
 }) {
-  const verdict = computeVerdict(card);
-  const vm = verdictMeta(verdict);
+  // Sprint 121: verdict pill removed. The PnL number already tells the user
+  // what the pill was duplicating; the chip was competing with the anchor.
   const origin = originTag(card);
   const bt = card.latest_backtest;
   const pnl = bt?.total_pnl_points ?? null;
   const wr = bt?.win_rate ?? null;
   const trades = bt?.total_trades ?? 0;
   const pnlPos = (pnl ?? 0) >= 0;
+  const recency = recencyLabel(card.created_at);
+  const recencyColor =
+    recency.tone === "fresh"
+      ? "var(--ghost)"
+      : recency.tone === "aged"
+        ? "var(--dim)"
+        : "var(--bear)";
 
   return (
     <Link
       href={`/dashboard/strategies/${card.id}`}
       className="grid items-center"
       style={{
-        gridTemplateColumns: "3px auto minmax(0, 1fr) auto auto auto auto",
-        gap: 14,
+        // Layout: [rail | prefix marks | nesting | name-block | wr | pnl | tuned | trades | origin]
+        gridTemplateColumns:
+          "3px auto auto minmax(0, 1fr) auto auto auto auto auto",
+        gap: 12,
         padding: "12px 8px 12px 0",
         borderTop: showTopRule ? "1px solid var(--line)" : "none",
         textDecoration: "none",
       }}
     >
-      {/* left-edge origin rail — the signature */}
+      {/* left-edge origin rail */}
       <span
         aria-hidden
         style={{
@@ -404,6 +534,49 @@ function StrategyRow({
         }}
       />
 
+      {/* Sprint 121: prefix marks — active scalper (▶) + watched (⭐). Two
+          fixed cells so alignment stays honest across rows that carry zero,
+          one, or both marks. */}
+      <span
+        aria-hidden
+        title={
+          card.is_my_scalper
+            ? "This is your active scalper"
+            : card.watched_by_me
+              ? "You are watching this strategy"
+              : undefined
+        }
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 12,
+          lineHeight: 1,
+          width: 32,
+          display: "inline-flex",
+          gap: 4,
+          justifyContent: "flex-start",
+          alignItems: "center",
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            color: "var(--bull)",
+            visibility: card.is_my_scalper ? "visible" : "hidden",
+          }}
+        >
+          ▶
+        </span>
+        <span
+          aria-hidden
+          style={{
+            color: "var(--brand)",
+            visibility: card.watched_by_me ? "visible" : "hidden",
+          }}
+        >
+          ★
+        </span>
+      </span>
+
       {/* nesting glyph for forks whose parent is also in this family */}
       <span
         aria-hidden
@@ -411,7 +584,7 @@ function StrategyRow({
           fontFamily: "var(--font-jb)",
           color: "var(--ghost)",
           fontSize: 13,
-          width: 20,
+          width: 16,
           textAlign: "center",
           visibility: nested ? "visible" : "hidden",
         }}
@@ -419,8 +592,11 @@ function StrategyRow({
         └
       </span>
 
-      {/* name + version + verdict pill inline */}
-      <div className="flex items-baseline gap-2 flex-wrap" style={{ minWidth: 0 }}>
+      {/* name + version */}
+      <div
+        className="flex items-baseline gap-2 flex-wrap"
+        style={{ minWidth: 0 }}
+      >
         <span
           className="font-display font-bold"
           style={{
@@ -442,34 +618,6 @@ function StrategyRow({
         >
           v{card.version}
         </span>
-        <span
-          style={{
-            fontFamily: "var(--font-jb)",
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: "0.06em",
-            color: vm.color,
-            marginLeft: 4,
-          }}
-        >
-          {vm.glyph} {vm.label}
-        </span>
-        {card.is_my_scalper && (
-          <span
-            style={{
-              fontFamily: "var(--font-jb)",
-              fontSize: 9,
-              fontWeight: 600,
-              letterSpacing: "0.06em",
-              color: "var(--bull)",
-              background: "var(--bull-bg)",
-              padding: "1px 6px",
-              borderRadius: 3,
-            }}
-          >
-            SCALPER
-          </span>
-        )}
       </div>
 
       {/* WR */}
@@ -478,7 +626,7 @@ function StrategyRow({
         style={{
           fontFamily: "var(--font-jb)",
           fontSize: 12,
-          color: wr == null ? "var(--ghost)" : "var(--ink)",
+          color: wr == null ? "var(--ghost)" : "var(--dim)",
           fontVariantNumeric: "tabular-nums",
           textAlign: "right",
           minWidth: 44,
@@ -487,22 +635,39 @@ function StrategyRow({
         {wr == null ? "—" : `${(wr * 100).toFixed(0)}%`}
       </span>
 
-      {/* NET PTS */}
+      {/* PnL — the visual anchor. Sprint 121: bumped to fontSize 16 so it
+          wins the row instead of tying with everything else. */}
       <span
         className="num"
         style={{
           fontFamily: "var(--font-jb)",
-          fontSize: 13,
-          fontWeight: 600,
+          fontSize: 16,
+          fontWeight: 700,
           color: pnl == null ? "var(--ghost)" : pnlPos ? "var(--bull)" : "var(--bear)",
           fontVariantNumeric: "tabular-nums",
           textAlign: "right",
-          minWidth: 64,
+          minWidth: 84,
+          letterSpacing: "-0.01em",
         }}
       >
         {pnl == null
           ? "—"
           : `${pnlPos ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
+      </span>
+
+      {/* Sprint 121: recency chip. Older = quieter until it crosses stale. */}
+      <span
+        title={new Date(card.created_at).toLocaleDateString()}
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 10,
+          color: recencyColor,
+          letterSpacing: "0.02em",
+          minWidth: 56,
+          textAlign: "right",
+        }}
+      >
+        {recency.label}
       </span>
 
       {/* TRADES */}
