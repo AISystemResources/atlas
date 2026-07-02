@@ -95,7 +95,7 @@ export function recencyLabel(iso: string): { label: string; tone: "fresh" | "age
 // "Drafted via Claude") were both AI-flavoured and indistinguishable. These
 // name the actual event.
 
-type OriginKind = "arxiv" | "fork" | "tune" | "chat" | "hand";
+type OriginKind = "arxiv" | "fork" | "chat" | "hand";
 
 interface OriginTag {
   kind: OriginKind;
@@ -125,15 +125,6 @@ function originTag(card: StrategyCard): OriginTag {
       detail: card.fork_source_name
         ? `from ${card.fork_source_name}`
         : "from another strategy",
-    };
-  }
-  if (card.created_by === "distillation") {
-    // A/B harness tuned params on a prior version → new active version.
-    return {
-      kind: "tune",
-      word: "Tune",
-      color: "#3b82f6",
-      detail: `A/B tuned from v${Math.max(1, card.version - 1)}`,
     };
   }
   if (card.created_by === "claude_chat") {

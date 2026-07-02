@@ -1438,8 +1438,7 @@ function IdentityStrip({
 function deriveOriginWord(detail: StrategyDetail): string {
   if (detail.paper_extracted || detail.paper_source_url) return "arXiv";
   if (detail.forked_from_label) return `Fork from ${detail.forked_from_label}`;
-  if (detail.parent_version_id) return `Tune from v${Math.max(1, detail.version - 1)}`;
-  return "Draft";
+  return "Chat";
 }
 
 // ── PROOF — recent backtests + mini bar chart ───────────────────────────────

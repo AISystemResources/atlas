@@ -795,7 +795,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         const { data: parentData } = await sb
           .from("ticket_logics")
           .select(
-            "id, name, version, body, created_by_user_id, ticker, tags, parent_paper_id",
+            "id, name, version, body, created_by, created_by_user_id, ticker, tags, parent_paper_id",
           )
           .eq("id", parentId)
           .maybeSingle();
@@ -805,6 +805,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
               name: string;
               version: number;
               body: unknown;
+              created_by: string;
               created_by_user_id: string | null;
               ticker: string | null;
               tags: string[] | null;
@@ -864,7 +865,10 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             description,
             body: newBody,
             status: "draft",
-            created_by: "distillation",
+            // Sprint 136: inherit parent's origin so distillation chains keep
+            // the lineage-root attribution (arXiv paper / chat / hand) instead
+            // of erasing it into a generic "distillation" label.
+            created_by: parent.created_by ?? "distillation",
             created_by_user_id: userId,
             visibility: "private",
             // Sprint 099 fix: preserve ticker + tags from the parent. Strategies
@@ -954,7 +958,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         const { data: parentData } = await sb
           .from("ticket_logics")
           .select(
-            "id, name, version, body, created_by_user_id, ticker, tags, parent_paper_id",
+            "id, name, version, body, created_by, created_by_user_id, ticker, tags, parent_paper_id",
           )
           .eq("id", parentId)
           .maybeSingle();
@@ -964,6 +968,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
               name: string;
               version: number;
               body: unknown;
+              created_by: string;
               created_by_user_id: string | null;
               ticker: string | null;
               tags: string[] | null;
@@ -1010,7 +1015,10 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
             description,
             body: parsedBody,
             status: "draft",
-            created_by: "distillation",
+            // Sprint 136: inherit parent's origin so distillation chains keep
+            // the lineage-root attribution (arXiv paper / chat / hand) instead
+            // of erasing it into a generic "distillation" label.
+            created_by: parent.created_by ?? "distillation",
             created_by_user_id: userId,
             visibility: "private",
             ticker: parent.ticker,
