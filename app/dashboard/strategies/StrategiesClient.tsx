@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useMemo, useState } from "react";
 import { useTier } from "../DashboardShell";
+
+// ─── Data shapes ─────────────────────────────────────────────────────────────
+// Kept identical to the server contract from page.tsx — the redesign is
+// purely presentation.
 
 export interface StrategyCard {
   id: string;
@@ -32,6 +35,8 @@ export interface StrategyCard {
   };
 }
 
+// Kept for the /page.tsx server contract even though the Papers tab is gone —
+// the surface moved to /dashboard/research (Sprint 111).
 export interface PaperRow {
   id: string;
   title: string;
@@ -41,10 +46,10 @@ export interface PaperRow {
   ingested_at: string;
 }
 
-type Tab = "mine" | "public" | "papers";
-type ViewMode = "card" | "table";
-
+type Tab = "mine" | "public";
 type Verdict = "trustworthy" | "healthy" | "needs-work" | "untested";
+
+// ─── Verdict (unchanged rule) ────────────────────────────────────────────────
 
 function computeVerdict(card: StrategyCard): Verdict {
   const bt = card.latest_backtest;
@@ -56,93 +61,157 @@ function computeVerdict(card: StrategyCard): Verdict {
   return "needs-work";
 }
 
-function verdictMeta(v: Verdict): { label: string; icon: string; bg: string; color: string } {
+function verdictMeta(v: Verdict): { label: string; glyph: string; color: string } {
   switch (v) {
     case "trustworthy":
-      return { label: "Trustworthy", icon: "✓", bg: "var(--bull-bg)", color: "var(--bull)" };
+      return { label: "TRUSTWORTHY", glyph: "✓", color: "var(--bull)" };
     case "healthy":
-      return { label: "Healthy", icon: "●", bg: "rgba(59,130,246,0.10)", color: "#3b82f6" };
+      return { label: "HEALTHY", glyph: "●", color: "#3b82f6" };
     case "needs-work":
-      return { label: "Needs work", icon: "!", bg: "rgba(239,68,68,0.10)", color: "var(--bear)" };
+      return { label: "NEEDS WORK", glyph: "!", color: "var(--bear)" };
     case "untested":
-      return { label: "Untested", icon: "○", bg: "var(--elevated)", color: "var(--ghost)" };
+      return { label: "UNTESTED", glyph: "○", color: "var(--ghost)" };
   }
 }
 
-interface ProvenanceInfo {
-  label: string;
+// ─── Origin tagging — five verbs, five semantic fields, zero overlap ────────
+// Sprint 112: replaces provenanceInfo(). The prior labels ("Distilled by AI" /
+// "Drafted via Claude") were both AI-flavoured and indistinguishable. These
+// name the actual event.
+
+type OriginKind = "arxiv" | "fork" | "tune" | "chat" | "hand";
+
+interface OriginTag {
+  kind: OriginKind;
+  word: string;
+  color: string;
   detail: string;
 }
 
-function provenanceInfo(card: StrategyCard): ProvenanceInfo {
+function originTag(card: StrategyCard): OriginTag {
   if (card.parent_paper_id) {
     return {
-      label: "From research paper",
+      kind: "arxiv",
+      word: "arXiv",
+      color: "var(--brand)",
       detail: card.parent_paper_title
-        ? `arXiv · "${card.parent_paper_title}"`
-        : "arXiv paper",
+        ? `from "${card.parent_paper_title}"`
+        : "from an arXiv paper",
     };
   }
   if (card.forked_from_id) {
     return {
-      label: "Forked",
+      kind: "fork",
+      word: "Fork",
+      color: "var(--ghost)",
       detail: card.fork_source_name
         ? `from ${card.fork_source_name}`
         : "from another strategy",
     };
   }
   if (card.created_by === "distillation") {
+    // A/B harness tuned params on a prior version → new active version.
     return {
-      label: "Distilled by AI",
-      detail: `via the Atlas A/B harness · by ${card.owner_label}`,
+      kind: "tune",
+      word: "Tune",
+      color: "#3b82f6",
+      detail: `A/B tuned from v${Math.max(1, card.version - 1)}`,
     };
   }
   if (card.created_by === "claude_chat") {
     return {
-      label: "Drafted via Claude",
-      detail: `MCP conversation · by ${card.owner_label}`,
+      kind: "chat",
+      word: "Chat",
+      color: "var(--ink)",
+      detail: "Chat-authored with Claude via MCP",
     };
   }
   return {
-    label: "Authored directly",
-    detail: `by ${card.owner_label}`,
+    kind: "hand",
+    word: "Hand",
+    color: "var(--dim)",
+    detail: "Handwritten",
   };
 }
 
+// ─── Family grouping ─────────────────────────────────────────────────────────
+// A strategy's "family" is the first two hyphenated tokens of its name.
+// sandy-s1-short + sandy-s1-long-fork-4p35 → family "sandy-s1".
+// bounce-fade-close + bounce-fade-long → family "bounce-fade".
+// mcp-test-rsi-cross → family "mcp-test".
+
+function familyOf(name: string): string {
+  const parts = name.split("-");
+  if (parts.length <= 1) return name;
+  return parts.slice(0, 2).join("-");
+}
+
+interface Family {
+  name: string;
+  members: StrategyCard[];
+  // If every member of the family shares the same paper origin, we surface
+  // it on the family divider so provenance reads at the group scale.
+  sharedPaper: { id: string; title: string | null } | null;
+}
+
+function groupByFamily(cards: StrategyCard[]): Family[] {
+  const bucket = new Map<string, StrategyCard[]>();
+  for (const c of cards) {
+    const f = familyOf(c.name);
+    const arr = bucket.get(f) ?? [];
+    arr.push(c);
+    bucket.set(f, arr);
+  }
+
+  const families: Family[] = [];
+  for (const [name, members] of bucket) {
+    // Sort within family: net-pnl descending, untested last.
+    members.sort((a, b) => {
+      const pa = a.latest_backtest?.total_pnl_points ?? -Infinity;
+      const pb = b.latest_backtest?.total_pnl_points ?? -Infinity;
+      return pb - pa;
+    });
+
+    // Detect a shared paper across all family members.
+    let shared: Family["sharedPaper"] = null;
+    const firstPaper = members[0]?.parent_paper_id;
+    if (firstPaper && members.every((m) => m.parent_paper_id === firstPaper)) {
+      shared = {
+        id: firstPaper,
+        title: members[0]?.parent_paper_title ?? null,
+      };
+    }
+
+    families.push({ name, members, sharedPaper: shared });
+  }
+
+  // Sort families: winning ones first (max positive pnl), then by name.
+  families.sort((a, b) => {
+    const bestA = Math.max(
+      ...a.members.map((m) => m.latest_backtest?.total_pnl_points ?? -Infinity),
+    );
+    const bestB = Math.max(
+      ...b.members.map((m) => m.latest_backtest?.total_pnl_points ?? -Infinity),
+    );
+    if (bestA !== bestB) return bestB - bestA;
+    return a.name.localeCompare(b.name);
+  });
+
+  return families;
+}
+
+// ─── Public entry point ──────────────────────────────────────────────────────
+
 export function StrategiesClient({
   cards,
-  papers,
-  extractedPaperIds,
 }: {
   cards: StrategyCard[];
-  papers: PaperRow[];
-  extractedPaperIds: string[];
+  papers: PaperRow[]; // kept for server contract; ignored (Research page owns papers now)
+  extractedPaperIds: string[]; // ditto
 }) {
   const tier = useTier();
   const isPro = tier === "pro";
-  // Sprint 101: Pro authors land on their own library by default; free
-  // consumers land on the Public tab where they can browse trustworthy
-  // strategies to execute. Papers tab is Pro-only and hidden for free.
   const [tab, setTab] = useState<Tab>(isPro ? "mine" : "public");
-  const extractedSet = useMemo(() => new Set(extractedPaperIds), [extractedPaperIds]);
-
-  // Sprint 102: view mode (card vs leaderboard table) persisted in URL.
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const viewParam = searchParams.get("view");
-  const view: ViewMode = viewParam === "table" ? "table" : "card";
-
-  const setView = useCallback(
-    (next: ViewMode) => {
-      const p = new URLSearchParams(searchParams.toString());
-      if (next === "card") p.delete("view");
-      else p.set("view", next);
-      const qs = p.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    },
-    [router, pathname, searchParams],
-  );
 
   const mine = useMemo(() => cards.filter((c) => c.is_mine), [cards]);
   const publik = useMemo(
@@ -150,148 +219,325 @@ export function StrategiesClient({
     [cards],
   );
 
-  return (
-    <div className="mx-auto p-6" style={{ maxWidth: 1100, color: "var(--ink)" }}>
-      <h1 className="text-2xl font-bold mb-1">Strategies</h1>
-      <p className="text-sm mb-6" style={{ color: "var(--dim)" }}>
-        {isPro
-          ? "A strategy is a rule set for entering and exiting trades. Yours evolves through AI distillation via your MCP client. Public strategies are read-only until you fork them. The Papers tab surfaces arXiv research you can turn into a strategy."
-          : "Browse public strategies authored by Atlas Pro users from research papers and discussion. Each carries a backtest record and a verdict; fork or execute on Base when you find one you trust."}
-      </p>
+  const visible = tab === "mine" ? mine : publik;
+  const winners = visible.filter(
+    (c) => (c.latest_backtest?.total_pnl_points ?? 0) > 0,
+  ).length;
+  const families = useMemo(() => groupByFamily(visible), [visible]);
 
-      {/* Tabs + view toggle */}
-      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <div
-          className="flex gap-1 p-1 inline-flex rounded-lg"
-          style={{ background: "var(--elevated)" }}
-        >
-          <TabButton active={tab === "public"} onClick={() => setTab("public")}>
-            Public ({publik.length})
-          </TabButton>
-          {isPro && (
-            <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
-              Mine ({mine.length})
-            </TabButton>
-          )}
-          {isPro && (
-            <TabButton active={tab === "papers"} onClick={() => setTab("papers")}>
-              Papers {papers.length > 0 && `(${papers.length})`}
-            </TabButton>
-          )}
+  return (
+    <div className="mx-auto pb-12" style={{ maxWidth: 1100, color: "var(--ink)" }}>
+      {/* ── page header ─────────────────────────────────────────────── */}
+      <header className="flex items-start justify-between gap-4 mb-8">
+        <div>
+          <h1
+            className="font-display font-bold"
+            style={{ fontSize: 28, color: "var(--ink)", letterSpacing: "-0.02em" }}
+          >
+            Strategies
+          </h1>
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              color: "var(--dim)",
+              marginTop: 6,
+              letterSpacing: "0.02em",
+            }}
+          >
+            Your stable · {visible.length} on ^DJI · {winners} winning
+          </p>
         </div>
 
-        {tab !== "papers" && (
-          <ViewToggle view={view} onChange={setView} />
+        {isPro && (
+          <div
+            className="flex gap-1 p-1 rounded-lg"
+            style={{ background: "var(--elevated)" }}
+          >
+            <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
+              Mine
+            </TabButton>
+            <TabButton active={tab === "public"} onClick={() => setTab("public")}>
+              Public
+            </TabButton>
+          </div>
         )}
-      </div>
+      </header>
 
-      {tab === "papers" ? (
-        <PapersTab papers={papers} extractedSet={extractedSet} />
+      {visible.length === 0 ? (
+        <EmptyState tab={tab} />
       ) : (
-        (() => {
-          const visible = tab === "mine" ? mine : publik;
-          if (visible.length === 0) return <EmptyState tab={tab} />;
-          return view === "table" ? (
-            <StrategyTable cards={visible} />
-          ) : (
-            <TickerGroupedGrid cards={visible} />
-          );
-        })()
+        <FamilyListing families={families} />
       )}
     </div>
   );
 }
 
-function ViewToggle({
-  view,
-  onChange,
-}: {
-  view: ViewMode;
-  onChange: (next: ViewMode) => void;
-}) {
-  return (
-    <div
-      className="inline-flex p-1 rounded-lg"
-      style={{ background: "var(--elevated)" }}
-      role="tablist"
-      aria-label="View mode"
-    >
-      <ViewToggleButton active={view === "card"} onClick={() => onChange("card")}>
-        Cards
-      </ViewToggleButton>
-      <ViewToggleButton active={view === "table"} onClick={() => onChange("table")}>
-        Leaderboard
-      </ViewToggleButton>
-    </div>
-  );
-}
+// ─── Family-grouped listing ──────────────────────────────────────────────────
 
-function ViewToggleButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="px-3 py-1.5 text-xs rounded-md font-medium transition-all"
-      style={{
-        background: active ? "var(--surface)" : "transparent",
-        color: active ? "var(--ink)" : "var(--dim)",
-        boxShadow: active ? "var(--card-shadow)" : "none",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TickerGroupedGrid({ cards }: { cards: StrategyCard[] }) {
-  // Sprint 068: strategies are now ticker-locked. Group by ticker so the
-  // library reads as "what's available for ^DJI" rather than a flat list.
-  const groups = useMemo(() => {
-    const m = new Map<string, StrategyCard[]>();
-    for (const c of cards) {
-      const key = c.ticker ?? "—";
-      const arr = m.get(key) ?? [];
-      arr.push(c);
-      m.set(key, arr);
-    }
-    return [...m.entries()].sort(([a], [b]) => {
-      if (a === "—") return 1;
-      if (b === "—") return -1;
-      return a.localeCompare(b);
-    });
-  }, [cards]);
+function FamilyListing({ families }: { families: Family[] }) {
+  // Guard: if there's only one family, dividers become decoration —
+  // fall through to a flat listing without the ═══ rules.
+  const showDividers = families.length > 1;
 
   return (
-    <div className="space-y-8">
-      {groups.map(([ticker, group]) => (
-        <section key={ticker}>
-          <div className="flex items-baseline gap-2 mb-3">
-            <h2
-              className="text-lg font-semibold font-mono"
-              style={{ color: "var(--ink)" }}
-            >
-              {ticker === "—" ? "Unassigned" : ticker}
-            </h2>
-            <span className="text-xs" style={{ color: "var(--ghost)" }}>
-              {group.length} strateg{group.length === 1 ? "y" : "ies"}
-            </span>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {group.map((c) => (
-              <ProvenanceCardView key={c.id} card={c} />
-            ))}
+    <div className="flex flex-col" style={{ gap: showDividers ? 24 : 0 }}>
+      {families.map((f) => (
+        <section key={f.name}>
+          {showDividers && <FamilyDivider family={f} />}
+          <div className="flex flex-col">
+            {f.members.map((m, i) => {
+              // A member that's a fork of another member of the same family
+              // gets rendered as a nested child of its parent visually.
+              const isNested = f.members.some(
+                (other) => other.id === m.forked_from_id,
+              );
+              return (
+                <StrategyRow
+                  key={m.id}
+                  card={m}
+                  nested={isNested}
+                  showTopRule={showDividers ? i === 0 : i > 0}
+                />
+              );
+            })}
           </div>
         </section>
       ))}
     </div>
   );
+}
+
+function FamilyDivider({ family }: { family: Family }) {
+  return (
+    <div
+      className="flex items-center gap-3"
+      style={{
+        fontFamily: "var(--font-jb)",
+        fontSize: 11,
+        letterSpacing: "0.14em",
+        color: "var(--ink)",
+        fontWeight: 600,
+        marginBottom: 6,
+        marginTop: 2,
+      }}
+    >
+      <span aria-hidden style={{ color: "var(--line2)" }}>
+        ═══
+      </span>
+      <span style={{ textTransform: "uppercase" }}>{family.name}</span>
+      {family.sharedPaper && (
+        <>
+          <span aria-hidden style={{ color: "var(--line2)" }}>
+            ═══
+          </span>
+          <span
+            style={{
+              color: "var(--brand)",
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+            }}
+            title={family.sharedPaper.title ?? undefined}
+          >
+            arXiv
+            {family.sharedPaper.title
+              ? ` · ${truncate(family.sharedPaper.title, 48)}`
+              : ""}
+          </span>
+        </>
+      )}
+      <span
+        aria-hidden
+        style={{ flex: 1, color: "var(--line2)", overflow: "hidden", whiteSpace: "nowrap" }}
+      >
+        ══════════════════════════════════════════════════════════════════
+      </span>
+    </div>
+  );
+}
+
+// ─── Strategy row ────────────────────────────────────────────────────────────
+
+function StrategyRow({
+  card,
+  nested,
+  showTopRule,
+}: {
+  card: StrategyCard;
+  nested: boolean;
+  showTopRule: boolean;
+}) {
+  const verdict = computeVerdict(card);
+  const vm = verdictMeta(verdict);
+  const origin = originTag(card);
+  const bt = card.latest_backtest;
+  const pnl = bt?.total_pnl_points ?? null;
+  const wr = bt?.win_rate ?? null;
+  const trades = bt?.total_trades ?? 0;
+  const pnlPos = (pnl ?? 0) >= 0;
+
+  return (
+    <Link
+      href={`/dashboard/strategies/${card.id}`}
+      className="grid items-center"
+      style={{
+        gridTemplateColumns: "3px auto minmax(0, 1fr) auto auto auto auto",
+        gap: 14,
+        padding: "12px 8px 12px 0",
+        borderTop: showTopRule ? "1px solid var(--line)" : "none",
+        textDecoration: "none",
+      }}
+    >
+      {/* left-edge origin rail — the signature */}
+      <span
+        aria-hidden
+        style={{
+          alignSelf: "stretch",
+          width: 3,
+          background: origin.color,
+          borderRadius: 1,
+        }}
+      />
+
+      {/* nesting glyph for forks whose parent is also in this family */}
+      <span
+        aria-hidden
+        style={{
+          fontFamily: "var(--font-jb)",
+          color: "var(--ghost)",
+          fontSize: 13,
+          width: 20,
+          textAlign: "center",
+          visibility: nested ? "visible" : "hidden",
+        }}
+      >
+        └
+      </span>
+
+      {/* name + version + verdict pill inline */}
+      <div className="flex items-baseline gap-2 flex-wrap" style={{ minWidth: 0 }}>
+        <span
+          className="font-display font-bold"
+          style={{
+            fontSize: 14,
+            color: "var(--ink)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {card.name}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--ghost)",
+          }}
+        >
+          v{card.version}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            color: vm.color,
+            marginLeft: 4,
+          }}
+        >
+          {vm.glyph} {vm.label}
+        </span>
+        {card.is_my_scalper && (
+          <span
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: "0.06em",
+              color: "var(--bull)",
+              background: "var(--bull-bg)",
+              padding: "1px 6px",
+              borderRadius: 3,
+            }}
+          >
+            SCALPER
+          </span>
+        )}
+      </div>
+
+      {/* WR */}
+      <span
+        className="num"
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 12,
+          color: wr == null ? "var(--ghost)" : "var(--ink)",
+          fontVariantNumeric: "tabular-nums",
+          textAlign: "right",
+          minWidth: 44,
+        }}
+      >
+        {wr == null ? "—" : `${(wr * 100).toFixed(0)}%`}
+      </span>
+
+      {/* NET PTS */}
+      <span
+        className="num"
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 13,
+          fontWeight: 600,
+          color: pnl == null ? "var(--ghost)" : pnlPos ? "var(--bull)" : "var(--bear)",
+          fontVariantNumeric: "tabular-nums",
+          textAlign: "right",
+          minWidth: 64,
+        }}
+      >
+        {pnl == null
+          ? "—"
+          : `${pnlPos ? "+" : "−"}${Math.abs(pnl).toFixed(1)}`}
+      </span>
+
+      {/* TRADES */}
+      <span
+        className="num"
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          color: "var(--dim)",
+          fontVariantNumeric: "tabular-nums",
+          textAlign: "right",
+          minWidth: 32,
+        }}
+      >
+        {trades > 0 ? `${trades}t` : "—"}
+      </span>
+
+      {/* Origin word (right-aligned) with detail on hover */}
+      <span
+        title={origin.detail}
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontWeight: 500,
+          color: origin.color,
+          letterSpacing: "0.02em",
+          minWidth: 44,
+          textAlign: "right",
+        }}
+      >
+        {origin.word}
+      </span>
+    </Link>
+  );
+}
+
+// ─── Utility bits ────────────────────────────────────────────────────────────
+
+function truncate(s: string, n: number): string {
+  return s.length <= n ? s : `${s.slice(0, n - 1)}…`;
 }
 
 function TabButton({
@@ -318,966 +564,47 @@ function TabButton({
   );
 }
 
-function ProvenanceCardView({ card }: { card: StrategyCard }) {
-  const verdict = computeVerdict(card);
-  const prov = provenanceInfo(card);
-  return (
-    <Link
-      href={`/dashboard/strategies/${card.id}`}
-      className="block p-4 rounded-lg border transition-colors"
-      style={{
-        background: "var(--surface)",
-        borderColor: "var(--line)",
-        boxShadow: "var(--card-shadow)",
-      }}
-    >
-      {/* Header: name + version + verdict */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2
-              className="font-semibold text-base font-mono"
-              style={{ color: "var(--ink)" }}
-            >
-              {card.name}
-            </h2>
-            <span className="text-xs font-mono" style={{ color: "var(--dim)" }}>
-              v{card.version}
-            </span>
-            {card.is_my_scalper && (
-              <span
-                className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded ring-1 ring-inset uppercase"
-                style={{
-                  background: "var(--bull-bg)",
-                  color: "var(--bull)",
-                  borderColor: "var(--bull)",
-                }}
-              >
-                My scalper
-              </span>
-            )}
-          </div>
-          {card.ticker && (
-            <div
-              className="text-xs font-mono mt-0.5"
-              style={{ color: "var(--ghost)" }}
-            >
-              {card.ticker}
-            </div>
-          )}
-        </div>
-        <VerdictPill verdict={verdict} />
-      </div>
-
-      {/* Source */}
-      <div className="mb-3">
-        <div
-          className="text-[10px] uppercase tracking-wide mb-1"
-          style={{ color: "var(--ghost)" }}
-        >
-          Source
-        </div>
-        <div className="text-xs" style={{ color: "var(--dim)" }}>
-          <span style={{ color: "var(--ink)" }}>{prov.label}</span>
-          {" — "}
-          <span style={{ color: "var(--dim)" }}>{prov.detail}</span>
-        </div>
-      </div>
-
-      {/* Description (optional) */}
-      {card.description && (
-        <p
-          className="text-xs mb-3 leading-relaxed line-clamp-2"
-          style={{ color: "var(--dim)" }}
-        >
-          {card.description}
-        </p>
-      )}
-
-      {/* Performance */}
-      <div className="pt-3" style={{ borderTop: "1px solid var(--line)" }}>
-        <div
-          className="text-[10px] uppercase tracking-wide mb-2"
-          style={{ color: "var(--ghost)" }}
-        >
-          Performance ({card.backtest_count} backtest{card.backtest_count === 1 ? "" : "s"})
-        </div>
-        {card.latest_backtest ? (
-          <PerformanceBlock bt={card.latest_backtest} />
-        ) : (
-          <div className="text-xs italic" style={{ color: "var(--ghost)" }}>
-            No backtests yet — run one to assess.
-          </div>
-        )}
-      </div>
-
-      {/* Visibility chip */}
-      <div className="flex items-center gap-2 mt-3">
-        <VisibilityChip vis={card.visibility} />
-        {card.paper_extracted && (
-          <span
-            className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
-            style={{ background: "var(--elevated)", color: "var(--dim)" }}
-          >
-            arXiv
-          </span>
-        )}
-      </div>
-    </Link>
-  );
-}
-
-function PerformanceBlock({
-  bt,
-}: {
-  bt: NonNullable<StrategyCard["latest_backtest"]>;
-}) {
-  const winPct = bt.win_rate != null ? bt.win_rate : null;
-  const pnl = bt.total_pnl_points;
-  return (
-    <div className="flex flex-col gap-1.5">
-      {/* Win rate with bar */}
-      <PerfRow
-        label="Win rate"
-        value={winPct != null ? `${(winPct * 100).toFixed(0)}%` : "—"}
-        positive={winPct != null ? winPct >= 0.5 : null}
-      >
-        <PerfBar
-          fraction={winPct != null ? winPct : 0}
-          positive={winPct != null ? winPct >= 0.5 : null}
-        />
-      </PerfRow>
-
-      {/* Net pts */}
-      <PerfRow
-        label="Net pts"
-        value={
-          pnl != null
-            ? `${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}`
-            : "—"
-        }
-        positive={pnl != null ? pnl >= 0 : null}
-      />
-
-      {/* Trades count */}
-      <PerfRow
-        label="Trades"
-        value={String(bt.total_trades)}
-        positive={null}
-      />
-    </div>
-  );
-}
-
-function PerfRow({
-  label,
-  value,
-  positive,
-  children,
-}: {
-  label: string;
-  value: string;
-  positive: boolean | null;
-  children?: React.ReactNode;
-}) {
-  const color =
-    positive === true
-      ? "var(--bull)"
-      : positive === false
-        ? "var(--bear)"
-        : "var(--ink)";
-  return (
-    <div className="grid grid-cols-[80px_56px_1fr] items-center gap-2">
-      <span className="text-[11px]" style={{ color: "var(--ghost)" }}>
-        {label}
-      </span>
-      <span
-        className="text-xs font-mono font-medium tabular-nums"
-        style={{ color }}
-      >
-        {value}
-      </span>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-function PerfBar({
-  fraction,
-  positive,
-}: {
-  fraction: number;
-  positive: boolean | null;
-}) {
-  const f = Math.max(0, Math.min(1, fraction));
-  const color =
-    positive === true
-      ? "var(--bull)"
-      : positive === false
-        ? "var(--bear)"
-        : "var(--dim)";
-  return (
-    <div
-      className="h-1.5 rounded-full overflow-hidden"
-      style={{ background: "var(--elevated)" }}
-      aria-hidden
-    >
-      <div
-        className="h-full rounded-full transition-all"
-        style={{ width: `${f * 100}%`, background: color }}
-      />
-    </div>
-  );
-}
-
-function VerdictPill({ verdict }: { verdict: Verdict }) {
-  const m = verdictMeta(verdict);
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full shrink-0"
-      style={{ background: m.bg, color: m.color }}
-      title={`Atlas verdict: ${m.label}`}
-    >
-      <span className="font-mono">{m.icon}</span>
-      <span>{m.label}</span>
-    </span>
-  );
-}
-
-function VisibilityChip({ vis }: { vis: "private" | "unlisted" | "public" }) {
-  const styles: Record<typeof vis, { bg: string; color: string; label: string }> = {
-    private: {
-      bg: "var(--elevated)",
-      color: "var(--dim)",
-      label: "Private",
-    },
-    unlisted: {
-      bg: "var(--hold-bg)",
-      color: "var(--hold)",
-      label: "Unlisted",
-    },
-    public: {
-      bg: "var(--bull-bg)",
-      color: "var(--bull)",
-      label: "Public",
-    },
-  };
-  const s = styles[vis];
-  return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded uppercase"
-      style={{ background: s.bg, color: s.color }}
-    >
-      {s.label}
-    </span>
-  );
-}
-
-// =============================================================================
-// Leaderboard / table view
-// =============================================================================
-
-type SortKey = "verdict" | "win_rate" | "net_pts" | "trades" | "backtests" | "name";
-
-function StrategyTable({ cards }: { cards: StrategyCard[] }) {
-  const [sortKey, setSortKey] = useState<SortKey>("net_pts");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [popoverTop, setPopoverTop] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const sorted = useMemo(() => {
-    const verdictRank: Record<Verdict, number> = {
-      trustworthy: 3,
-      healthy: 2,
-      "needs-work": 1,
-      untested: 0,
-    };
-    const rows = [...cards];
-    rows.sort((a, b) => {
-      const dir = sortDir === "asc" ? 1 : -1;
-      switch (sortKey) {
-        case "name":
-          return dir * a.name.localeCompare(b.name);
-        case "verdict":
-          return dir * (verdictRank[computeVerdict(a)] - verdictRank[computeVerdict(b)]);
-        case "win_rate":
-          return (
-            dir *
-            ((a.latest_backtest?.win_rate ?? -1) - (b.latest_backtest?.win_rate ?? -1))
-          );
-        case "net_pts":
-          return (
-            dir *
-            ((a.latest_backtest?.total_pnl_points ?? -Infinity) -
-              (b.latest_backtest?.total_pnl_points ?? -Infinity))
-          );
-        case "trades":
-          return (
-            dir *
-            ((a.latest_backtest?.total_trades ?? 0) - (b.latest_backtest?.total_trades ?? 0))
-          );
-        case "backtests":
-          return dir * (a.backtest_count - b.backtest_count);
-      }
-    });
-    return rows;
-  }, [cards, sortKey, sortDir]);
-
-  const onHeaderClick = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      setSortDir(key === "name" ? "asc" : "desc");
-    }
-  };
-
-  const openPopover = useCallback((id: string, rowEl: HTMLTableRowElement) => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-    const container = containerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const rowRect = rowEl.getBoundingClientRect();
-    setPopoverTop(rowRect.bottom - containerRect.top + 4);
-    setHoveredId(id);
-  }, []);
-
-  const scheduleClose = useCallback(() => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setHoveredId(null), 140);
-  }, []);
-
-  const cancelClose = useCallback(() => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
-
-  // Close on Escape + outside click for the tap-to-open path.
-  useEffect(() => {
-    if (!hoveredId) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setHoveredId(null);
-    };
-    const onDocClick = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setHoveredId(null);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDocClick);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDocClick);
-    };
-  }, [hoveredId]);
-
-  const hoveredCard = useMemo(
-    () => sorted.find((c) => c.id === hoveredId) ?? null,
-    [sorted, hoveredId],
-  );
-
-  return (
-    <div
-      ref={containerRef}
-      className="rounded-lg border relative"
-      style={{
-        borderColor: "var(--line)",
-        background: "var(--surface)",
-        boxShadow: "var(--card-shadow)",
-      }}
-    >
-      <div className="overflow-x-auto rounded-lg">
-        <table className="w-full text-xs">
-          <thead>
-            <tr
-              className="text-left"
-              style={{
-                background: "var(--elevated)",
-                color: "var(--ghost)",
-              }}
-            >
-              <Th onClick={() => onHeaderClick("name")} active={sortKey === "name"} dir={sortDir}>
-                Strategy
-              </Th>
-              <Th>Ticker</Th>
-              <Th
-                onClick={() => onHeaderClick("verdict")}
-                active={sortKey === "verdict"}
-                dir={sortDir}
-              >
-                Verdict
-              </Th>
-              <Th
-                onClick={() => onHeaderClick("win_rate")}
-                active={sortKey === "win_rate"}
-                dir={sortDir}
-                align="right"
-              >
-                Win
-              </Th>
-              <Th
-                onClick={() => onHeaderClick("net_pts")}
-                active={sortKey === "net_pts"}
-                dir={sortDir}
-                align="right"
-              >
-                Net pts
-              </Th>
-              <Th
-                onClick={() => onHeaderClick("trades")}
-                active={sortKey === "trades"}
-                dir={sortDir}
-                align="right"
-              >
-                Trades
-              </Th>
-              <Th
-                onClick={() => onHeaderClick("backtests")}
-                active={sortKey === "backtests"}
-                dir={sortDir}
-                align="right"
-              >
-                BT
-              </Th>
-              <Th>Source</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((c, i) => (
-              <StrategyRow
-                key={c.id}
-                card={c}
-                zebra={i % 2 === 1}
-                isActive={c.id === hoveredId}
-                onHoverOpen={openPopover}
-                onHoverClose={scheduleClose}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {hoveredCard && (
-        <div
-          className="absolute z-30"
-          style={{
-            top: popoverTop,
-            left: 12,
-            right: 12,
-            maxWidth: 420,
-            pointerEvents: "auto",
-          }}
-          onMouseEnter={cancelClose}
-          onMouseLeave={scheduleClose}
-        >
-          <StrategyPopover
-            card={hoveredCard}
-            verdict={computeVerdict(hoveredCard)}
-            prov={provenanceInfo(hoveredCard)}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Th({
-  children,
-  onClick,
-  active,
-  dir,
-  align,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  active?: boolean;
-  dir?: "asc" | "desc";
-  align?: "left" | "right";
-}) {
-  const sortable = !!onClick;
-  return (
-    <th
-      onClick={onClick}
-      className="px-3 py-2 text-[10px] uppercase tracking-wide font-medium select-none"
-      style={{
-        cursor: sortable ? "pointer" : "default",
-        textAlign: align ?? "left",
-        color: active ? "var(--ink)" : "var(--ghost)",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-      {active && (
-        <span className="ml-1" style={{ color: "var(--brand)" }}>
-          {dir === "asc" ? "↑" : "↓"}
-        </span>
-      )}
-    </th>
-  );
-}
-
-function StrategyRow({
-  card,
-  zebra,
-  isActive,
-  onHoverOpen,
-  onHoverClose,
-}: {
-  card: StrategyCard;
-  zebra: boolean;
-  isActive: boolean;
-  onHoverOpen: (id: string, el: HTMLTableRowElement) => void;
-  onHoverClose: () => void;
-}) {
-  const router = useRouter();
-  const rowRef = useRef<HTMLTableRowElement>(null);
-  const verdict = computeVerdict(card);
-  const prov = provenanceInfo(card);
-  const bt = card.latest_backtest;
-
-  const handleEnter = () => {
-    if (rowRef.current) onHoverOpen(card.id, rowRef.current);
-  };
-  const handleLeave = () => onHoverClose();
-
-  const handleClick = (e: React.MouseEvent) => {
-    // Mobile / tap: first tap opens preview; second tap navigates.
-    // Desktop: navigates immediately.
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia &&
-      window.matchMedia("(pointer: coarse)").matches
-    ) {
-      if (!isActive) {
-        e.preventDefault();
-        if (rowRef.current) onHoverOpen(card.id, rowRef.current);
-        return;
-      }
-    }
-    router.push(`/dashboard/strategies/${card.id}`);
-  };
-
-  const winPct =
-    bt && bt.win_rate != null ? `${(bt.win_rate * 100).toFixed(0)}%` : "—";
-  const winPositive = bt && bt.win_rate != null ? bt.win_rate >= 0.5 : null;
-  const pnl = bt?.total_pnl_points ?? null;
-  const pnlStr = pnl != null ? `${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}` : "—";
-  const pnlPositive = pnl != null ? pnl >= 0 : null;
-
-  return (
-    <tr
-      ref={rowRef}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      onClick={handleClick}
-      className="transition-colors"
-      style={{
-        cursor: "pointer",
-        background: isActive
-          ? "var(--elevated)"
-          : zebra
-            ? "var(--elevated)"
-            : "var(--surface)",
-        borderTop: "1px solid var(--line)",
-        outline: isActive ? "2px solid var(--brand)" : "none",
-        outlineOffset: -2,
-      }}
-    >
-      <td className="px-3 py-2.5" style={{ whiteSpace: "nowrap" }}>
-        <span className="font-mono font-medium" style={{ color: "var(--ink)" }}>
-          {card.name}
-        </span>
-        <span className="font-mono ml-1.5" style={{ color: "var(--ghost)" }}>
-          v{card.version}
-        </span>
-        {card.is_my_scalper && (
-          <span
-            className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[9px] font-medium rounded uppercase"
-            style={{ background: "var(--bull-bg)", color: "var(--bull)" }}
-          >
-            scalper
-          </span>
-        )}
-      </td>
-      <td className="px-3 py-2.5 font-mono" style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>
-        {card.ticker ?? "—"}
-      </td>
-      <td className="px-3 py-2.5">
-        <VerdictPill verdict={verdict} />
-      </td>
-      <td
-        className="px-3 py-2.5 font-mono tabular-nums text-right"
-        style={{
-          color:
-            winPositive === true
-              ? "var(--bull)"
-              : winPositive === false
-                ? "var(--bear)"
-                : "var(--ink)",
-        }}
-      >
-        {winPct}
-      </td>
-      <td
-        className="px-3 py-2.5 font-mono tabular-nums text-right"
-        style={{
-          color:
-            pnlPositive === true
-              ? "var(--bull)"
-              : pnlPositive === false
-                ? "var(--bear)"
-                : "var(--ink)",
-        }}
-      >
-        {pnlStr}
-      </td>
-      <td className="px-3 py-2.5 font-mono tabular-nums text-right" style={{ color: "var(--ink)" }}>
-        {bt?.total_trades ?? 0}
-      </td>
-      <td className="px-3 py-2.5 font-mono tabular-nums text-right" style={{ color: "var(--ink)" }}>
-        {card.backtest_count}
-      </td>
-      <td className="px-3 py-2.5" style={{ color: "var(--dim)", maxWidth: 220 }}>
-        <div className="truncate" title={`${prov.label} — ${prov.detail}`}>
-          <span style={{ color: "var(--ink)" }}>{prov.label}</span>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function StrategyPopover({
-  card,
-  verdict,
-  prov,
-}: {
-  card: StrategyCard;
-  verdict: Verdict;
-  prov: ProvenanceInfo;
-}) {
-  return (
-    <div
-      role="dialog"
-      aria-label={`Preview of ${card.name}`}
-      className="rounded-lg border p-4"
-      style={{
-        background: "var(--surface)",
-        borderColor: "var(--line)",
-        boxShadow: "0 12px 32px rgba(0,0,0,0.22)",
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm font-mono" style={{ color: "var(--ink)" }}>
-              {card.name}
-            </span>
-            <span className="text-xs font-mono" style={{ color: "var(--dim)" }}>
-              v{card.version}
-            </span>
-          </div>
-          {card.ticker && (
-            <div className="text-[11px] font-mono mt-0.5" style={{ color: "var(--ghost)" }}>
-              {card.ticker}
-            </div>
-          )}
-        </div>
-        <VerdictPill verdict={verdict} />
-      </div>
-
-      <div className="mb-3">
-        <div
-          className="text-[10px] uppercase tracking-wide mb-1"
-          style={{ color: "var(--ghost)" }}
-        >
-          Source
-        </div>
-        <div className="text-xs leading-relaxed" style={{ color: "var(--dim)" }}>
-          <span style={{ color: "var(--ink)" }}>{prov.label}</span>
-          {" — "}
-          {prov.detail}
-        </div>
-      </div>
-
-      {card.description && (
-        <p
-          className="text-xs mb-3 leading-relaxed line-clamp-3"
-          style={{ color: "var(--dim)" }}
-        >
-          {card.description}
-        </p>
-      )}
-
-      <div className="pt-3" style={{ borderTop: "1px solid var(--line)" }}>
-        <div
-          className="text-[10px] uppercase tracking-wide mb-2"
-          style={{ color: "var(--ghost)" }}
-        >
-          Performance ({card.backtest_count} backtest{card.backtest_count === 1 ? "" : "s"})
-        </div>
-        {card.latest_backtest ? (
-          <PerformanceBlock bt={card.latest_backtest} />
-        ) : (
-          <div className="text-xs italic" style={{ color: "var(--ghost)" }}>
-            No backtests yet.
-          </div>
-        )}
-      </div>
-
-      <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: "1px solid var(--line)" }}>
-        <span className="text-[10px]" style={{ color: "var(--ghost)" }}>
-          Click row to open ↗
-        </span>
-        <VisibilityChip vis={card.visibility} />
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// Papers tab + empty state (unchanged shape; kept for Pro authors)
-// =============================================================================
-
-function PapersTab({ papers, extractedSet }: { papers: PaperRow[]; extractedSet: Set<string> }) {
-  const router = useRouter();
-  const [fetching, setFetching] = useState(false);
-  const [fetchMsg, setFetchMsg] = useState<string | null>(null);
-  const [extracting, setExtracting] = useState<string | null>(null);
-
-  async function onFetchPapers() {
-    setFetching(true);
-    setFetchMsg(null);
-    try {
-      const res = await fetch("/api/v1/papers/fetch", { method: "POST" });
-      const data = await res.json() as { inserted?: number; fetched?: number; error?: string };
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setFetchMsg(`Fetched ${data.fetched ?? 0} papers, ${data.inserted ?? 0} new.`);
-      router.refresh();
-    } catch (err) {
-      setFetchMsg(err instanceof Error ? err.message : "Fetch failed");
-    } finally {
-      setFetching(false);
-    }
-  }
-
-  async function onExtract(paperId: string, ticker: string) {
-    setExtracting(paperId);
-    try {
-      const res = await fetch("/api/v1/papers/extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paper_id: paperId, ticker }),
-      });
-      const data = await res.json() as { strategy_id?: string; error?: string; validation_errors?: string };
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      router.push(`/dashboard/strategies/${data.strategy_id}`);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Extraction failed");
-    } finally {
-      setExtracting(null);
-    }
-  }
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <p className="text-sm" style={{ color: "var(--dim)" }}>
-          arXiv q-fin.TR papers · click Extract to generate a draft strategy
-        </p>
-        <div className="flex items-center gap-3">
-          {fetchMsg && (
-            <span style={{ fontSize: 12, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>
-              {fetchMsg}
-            </span>
-          )}
-          <button
-            onClick={onFetchPapers}
-            disabled={fetching}
-            style={{
-              fontSize: 12,
-              fontFamily: "var(--font-jb)",
-              padding: "6px 14px",
-              borderRadius: 6,
-              border: "1px solid var(--line)",
-              background: "var(--surface)",
-              color: fetching ? "var(--ghost)" : "var(--ink)",
-              cursor: fetching ? "default" : "pointer",
-            }}
-          >
-            {fetching ? "Fetching…" : "Fetch papers"}
-          </button>
-        </div>
-      </div>
-
-      {papers.length === 0 ? (
-        <div
-          className="p-10 rounded-lg border text-center"
-          style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-        >
-          <p className="text-sm mb-2" style={{ color: "var(--dim)" }}>
-            No papers yet. Click &ldquo;Fetch papers&rdquo; to pull the latest arXiv q-fin.TR feed.
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {papers.map((p) => (
-            <PaperCard
-              key={p.id}
-              paper={p}
-              alreadyExtracted={extractedSet.has(p.id)}
-              extracting={extracting === p.id}
-              onExtract={onExtract}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PaperCard({
-  paper,
-  alreadyExtracted,
-  extracting,
-  onExtract,
-}: {
-  paper: PaperRow;
-  alreadyExtracted: boolean;
-  extracting: boolean;
-  onExtract: (id: string, ticker: string) => void;
-}) {
-  const [ticker, setTicker] = useState("SPY");
-  const date = new Date(paper.ingested_at).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-
-  return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--line)",
-        borderRadius: 10,
-        padding: "16px 18px",
-        boxShadow: "var(--card-shadow)",
-      }}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <a
-              href={paper.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-sm font-mono hover:underline"
-              style={{ color: "var(--ink)" }}
-            >
-              {paper.title}
-            </a>
-            <span
-              className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded uppercase"
-              style={{ background: "var(--elevated)", color: "var(--ghost)", flexShrink: 0 }}
-            >
-              {paper.source}
-            </span>
-            {alreadyExtracted && (
-              <span
-                className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded uppercase"
-                style={{ background: "rgba(0,200,150,0.10)", color: "var(--bull)", flexShrink: 0 }}
-              >
-                ✓ Extracted
-              </span>
-            )}
-          </div>
-          {paper.abstract && (
-            <p
-              className="text-xs line-clamp-2 mt-1"
-              style={{ color: "var(--ghost)", lineHeight: 1.55 }}
-            >
-              {paper.abstract}
-            </p>
-          )}
-          <span
-            className="text-[10px] font-mono mt-1 block"
-            style={{ color: "var(--ghost)" }}
-          >
-            {date}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <input
-            type="text"
-            value={ticker}
-            onChange={(e) => setTicker(e.target.value.toUpperCase())}
-            placeholder="SPY"
-            maxLength={6}
-            style={{
-              width: 60,
-              padding: "5px 8px",
-              borderRadius: 6,
-              border: "1px solid var(--line)",
-              background: "var(--elevated)",
-              color: "var(--ink)",
-              fontSize: 12,
-              fontFamily: "var(--font-jb)",
-              textAlign: "center",
-            }}
-          />
-          <button
-            onClick={() => onExtract(paper.id, ticker || "SPY")}
-            disabled={extracting || alreadyExtracted}
-            style={{
-              fontSize: 12,
-              fontFamily: "var(--font-jb)",
-              padding: "6px 14px",
-              borderRadius: 6,
-              border: "none",
-              background: alreadyExtracted ? "var(--line)" : extracting ? "var(--line)" : "var(--brand)",
-              color: alreadyExtracted ? "var(--ghost)" : "#fff",
-              cursor: extracting || alreadyExtracted ? "default" : "pointer",
-              fontWeight: 600,
-              whiteSpace: "nowrap" as const,
-            }}
-          >
-            {extracting ? "Extracting…" : alreadyExtracted ? "Extracted" : "Extract →"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function EmptyState({ tab }: { tab: Tab }) {
   return (
     <div
-      className="p-10 rounded-lg border text-center"
       style={{
-        borderColor: "var(--line)",
-        background: "var(--surface)",
+        border: "1px dashed var(--line2)",
+        borderRadius: 8,
+        padding: "40px 24px",
+        textAlign: "center",
       }}
     >
-      <p className="text-sm mb-2" style={{ color: "var(--dim)" }}>
-        {tab === "mine"
-          ? "You haven't authored or forked any strategies yet."
-          : tab === "public"
-          ? "No public strategies available."
-          : "No papers yet."}
-      </p>
-      {tab === "mine" && (
-        <p className="text-xs" style={{ color: "var(--ghost)" }}>
-          Browse the Public tab and fork a strategy to start.
+      {tab === "mine" ? (
+        <>
+          <p
+            className="font-display"
+            style={{ fontSize: 15, fontWeight: 500, color: "var(--ink)" }}
+          >
+            No strategies yet.
+          </p>
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              color: "var(--dim)",
+              marginTop: 8,
+            }}
+          >
+            Chat one into being via Claude, or{" "}
+            <Link
+              href="/dashboard/research"
+              style={{ color: "var(--brand)", textDecoration: "underline" }}
+            >
+              extract one from a paper →
+            </Link>
+          </p>
+        </>
+      ) : (
+        <p
+          className="font-display"
+          style={{ fontSize: 15, fontWeight: 500, color: "var(--ink)" }}
+        >
+          No public strategies available yet.
         </p>
       )}
     </div>
