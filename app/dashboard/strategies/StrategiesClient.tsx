@@ -498,20 +498,14 @@ function HeaderCell({
 }
 
 function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) {
-  // Sprint 127: match by version number instead of id. Id-matching was
-  // silently returning -1 for some rows (subtle UUID / JSON serialization
-  // quirk we couldn't isolate), landing selectedIdx on 0 = oldest visible
-  // version instead of the latest one. Version numbers are small integers
-  // and compare cleanly.
-  const currentIdx = Math.max(
-    0,
-    card.versions.findIndex((v) => v.version === card.version),
-  );
-  const [selectedIdx, setSelectedIdx] = useState(currentIdx);
+  // Sprint 139: always show the latest version — the version-chevron
+  // navigator felt bloated for finance users who just want to see the
+  // current shipping version at a glance. History still available on the
+  // strategy detail page's VERSIONS timeline.
   const [hover, setHover] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const [hoverAbove, setHoverAbove] = useState(false);
-  const selected = card.versions[selectedIdx];
+  const selected = card.versions[card.versions.length - 1];
   const origin = originTag(card);
   const bt = selected?.latest_backtest ?? null;
   const pnl = bt?.total_pnl_points ?? null;
@@ -525,9 +519,7 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
       : recency.tone === "aged"
         ? "var(--ghost)"
         : "var(--bear)";
-  const canPrev = selectedIdx > 0;
-  const canNext = selectedIdx < card.versions.length - 1;
-  const maxV = card.versions[card.versions.length - 1]?.version ?? card.version;
+  const maxV = selected?.version ?? card.version;
 
   function onEnter() {
     // Sprint 128: viewport-aware — open the hover card ABOVE the row when
@@ -619,58 +611,22 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
         {origin.word}
       </span>
 
-      {/* version chevrons — always visible; disabled when only one version */}
+      {/* Sprint 139: latest version, single label. History available on the
+          strategy detail page's VERSIONS timeline. */}
       <div
-        className="flex items-center justify-center gap-1"
-        style={{ fontFamily: "var(--font-jb)", fontSize: 11 }}
+        className="flex items-center justify-center"
+        style={{ fontFamily: "var(--font-jb)" }}
       >
-        <button
-          onClick={() => canPrev && setSelectedIdx(selectedIdx - 1)}
-          disabled={!canPrev}
-          aria-label="previous version"
-          style={{
-            background: "transparent",
-            border: "1px solid var(--line)",
-            borderRadius: 3,
-            color: canPrev ? "var(--ink)" : "var(--line2)",
-            cursor: canPrev ? "pointer" : "default",
-            padding: "0 5px",
-            fontFamily: "var(--font-jb)",
-            fontSize: 12,
-            lineHeight: 1.4,
-          }}
-        >
-          ‹
-        </button>
         <span
           style={{
             color: "var(--ghost)",
             fontVariantNumeric: "tabular-nums",
-            minWidth: 44,
-            textAlign: "center",
-            fontSize: 10,
+            fontSize: 11,
+            letterSpacing: "0.04em",
           }}
         >
-          v{selected?.version ?? card.version}/v{maxV}
+          v{maxV}
         </span>
-        <button
-          onClick={() => canNext && setSelectedIdx(selectedIdx + 1)}
-          disabled={!canNext}
-          aria-label="next version"
-          style={{
-            background: "transparent",
-            border: "1px solid var(--line)",
-            borderRadius: 3,
-            color: canNext ? "var(--ink)" : "var(--line2)",
-            cursor: canNext ? "pointer" : "default",
-            padding: "0 5px",
-            fontFamily: "var(--font-jb)",
-            fontSize: 12,
-            lineHeight: 1.4,
-          }}
-        >
-          ›
-        </button>
       </div>
 
       {/* PnL — the visual anchor */}
