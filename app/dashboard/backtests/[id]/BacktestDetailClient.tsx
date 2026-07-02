@@ -97,6 +97,27 @@ export interface Trade {
 
 const PAGE_SIZE = 50;
 
+/**
+ * Sprint 131: LONG / SHORT chip for the trades table.
+ * Direction is inferred from take_profit_price vs entry_price — TP always
+ * sits on the profitable side of entry, so TP > entry ⇒ LONG. Robust
+ * against any strategy metadata mismatch.
+ */
+function DirChip({ isLong }: { isLong: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset rounded ${
+        isLong
+          ? "bg-[var(--bull-bg)] text-[var(--bull)] ring-[var(--bull)]/30"
+          : "bg-[var(--bear-bg)] text-[var(--bear)] ring-[var(--bear)]/30"
+      }`}
+      aria-label={isLong ? "Long trade" : "Short trade"}
+    >
+      {isLong ? "LONG" : "SHORT"}
+    </span>
+  );
+}
+
 function ExitChip({ reason }: { reason: Trade["exit_reason"] }) {
   if (!reason) return <span className="text-[var(--ghost)] text-xs">—</span>;
   const styles: Record<Exclude<Trade["exit_reason"], null>, string> = {
@@ -413,6 +434,9 @@ export function BacktestDetailClient({
             <thead>
               <tr className="text-left text-xs uppercase text-[var(--ghost)] border-b border-[var(--line)]">
                 <th className="py-2 pr-2">#</th>
+                {/* Sprint 131: direction column — Long/Short chip. Direction is
+                    inferred from TP vs entry geometry (TP > entry = LONG). */}
+                <th className="py-2 pr-2">Dir</th>
                 <th className="py-2 pr-2">Entry</th>
                 <th className="py-2 pr-2 text-right">Entry $</th>
                 <th className="py-2 pr-2 text-right">TP $</th>
@@ -423,7 +447,7 @@ export function BacktestDetailClient({
                 <th className="py-2 pr-2 text-right" title="Raw price move in points (Exit − Entry). Multiplied by qty to give PnL $.">
                   PnL pts
                 </th>
-                <th className="py-2 pr-2 text-right">PnL pts</th>
+                {/* Sprint 131: was a duplicate "PnL pts" header for the % cell. */}
                 <th className="py-2 pr-2 text-right">PnL %</th>
               </tr>
             </thead>
@@ -431,6 +455,12 @@ export function BacktestDetailClient({
               {pageTrades.map((t, i) => {
                 const tradePnl = t.pnl_points ?? 0;
                 const idx = page * PAGE_SIZE + i + 1;
+                // Sprint 131: direction inferred from TP vs entry geometry.
+                // TP always sits on the profitable side — TP > entry means LONG,
+                // TP < entry means SHORT. Deterministic and independent of the
+                // strategy's declared direction, which insulates the display
+                // from any label/data mismatch.
+                const isLong = t.take_profit_price > t.entry_price;
                 return (
                   <tr
                     key={t.id}
@@ -440,6 +470,9 @@ export function BacktestDetailClient({
                     }
                   >
                     <td className="py-2 pr-2 text-[var(--ghost)]">{idx}</td>
+                    <td className="py-2 pr-2">
+                      <DirChip isLong={isLong} />
+                    </td>
                     <td className="py-2 pr-2 text-xs text-[var(--dim)]">
                       {fmtTs(t.entry_ts)}
                     </td>

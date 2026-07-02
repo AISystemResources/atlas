@@ -355,6 +355,18 @@ export function TradeInspectorClient({
           {/* Prices */}
           <div className="bg-[var(--surface)] border border-[var(--line)] rounded-lg p-4">
             <h3 className="text-xs uppercase text-[var(--ghost)] mb-3">Trade</h3>
+            {/* Sprint 131: direction badge — TP vs entry geometry is the source of truth. */}
+            <div className="mb-2">
+              <span
+                className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset rounded ${
+                  trade.take_profit_price > trade.entry_price
+                    ? "bg-[var(--bull-bg)] text-[var(--bull)] ring-[var(--bull)]/30"
+                    : "bg-[var(--bear-bg)] text-[var(--bear)] ring-[var(--bear)]/30"
+                }`}
+              >
+                {trade.take_profit_price > trade.entry_price ? "LONG" : "SHORT"}
+              </span>
+            </div>
             <KV label="Entry" value={`$${trade.entry_price.toFixed(2)}`} />
             <KV
               label="Take profit"
