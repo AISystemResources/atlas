@@ -128,6 +128,10 @@ const WRITE_TOOL_NAMES = new Set([
   "submit_distillation_insight",
   // Sprint 081A: arXiv ingestion
   "fetch_papers",
+  // Sprint 122: N:N paper→strategy convergent-inspiration link
+  "link_paper_to_strategy",
+  // Sprint 130: structural body-change promotion path
+  "promote_with_body_change",
 ]);
 
 async function handleToolCall(
