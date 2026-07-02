@@ -79,6 +79,42 @@ function scaleSignalToGtrade(signalTicker: string, signalPrice: number): number 
   return signalPrice;
 }
 
+// Sprint 115: shared monospace section rule — same idiom as Dashboard,
+// Research, Strategy listing, Strategy detail. Keeps the app visually
+// coherent across pages.
+function SectionRule({
+  label,
+  right,
+}: {
+  label: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3"
+      style={{
+        marginBottom: 12,
+        paddingBottom: 8,
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.14em",
+          color: "var(--ink)",
+        }}
+      >
+        {label}
+      </span>
+      <span aria-hidden style={{ flex: 1 }} />
+      {right}
+    </div>
+  );
+}
+
 export function ExecutionClient() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [provider, setProvider] = useState<EthereumProvider | null>(null);
@@ -328,15 +364,31 @@ export function ExecutionClient() {
       className="flex flex-col w-full h-full"
       style={{ maxWidth: 1100, margin: "0 auto", minHeight: 0 }}
     >
-      {/* Compact header — Sprint 104: single-viewport layout */}
-      <div className="mb-3 shrink-0">
-        <h1 className="text-xl md:text-2xl font-bold" style={{ color: "var(--ink)" }}>
+      {/* Sprint 115: identity strip matches the rest of the app —
+          display-font title with a mono sub-line tracking the flow. */}
+      <header className="mb-5 shrink-0">
+        <h1
+          className="font-display font-bold"
+          style={{
+            fontSize: 26,
+            letterSpacing: "-0.02em",
+            color: "var(--ink)",
+          }}
+        >
           Execution
         </h1>
-        <p className="text-xs md:text-sm" style={{ color: "var(--dim)" }}>
-          Live signal → on-chain trade on Base mainnet via gTrade
+        <p
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--dim)",
+            marginTop: 6,
+            letterSpacing: "0.04em",
+          }}
+        >
+          LIVE&nbsp;SIGNAL&nbsp;→&nbsp;WALLET&nbsp;→&nbsp;TRADE · Base&nbsp;mainnet · gTrade&nbsp;DIA
         </p>
-      </div>
+      </header>
 
       {/* Two-column body — desktop: Wallet rail + Signal/Trade stack.
           Each column scrolls internally so the page itself doesn't. */}
@@ -346,94 +398,154 @@ export function ExecutionClient() {
           className="md:w-[320px] md:shrink-0 flex flex-col gap-3 md:overflow-y-auto pb-2 md:pb-0"
         >
 
-      {/* Wallet connection card */}
-      <div
-        className="rounded-lg p-4 border"
-        style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
-            Wallet
-          </h2>
-          {wallet && (
-            <button onClick={disconnect} className="text-xs" style={{ color: "var(--ghost)" }}>
-              Disconnect
-            </button>
-          )}
-        </div>
+      {/* Wallet — Sprint 115 mono-terminal restyle */}
+      <div>
+        <SectionRule
+          label="01 · WALLET"
+          right={
+            wallet ? (
+              <button
+                onClick={disconnect}
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  color: "var(--ghost)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  letterSpacing: "0.04em",
+                  textDecoration: "underline",
+                }}
+              >
+                Disconnect
+              </button>
+            ) : undefined
+          }
+        />
 
         {!wallet ? (
-          <div className="flex flex-col gap-2">
+          <>
             <button
               onClick={connectWallet}
               disabled={connecting}
-              className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors"
               style={{
-                background: connecting ? "var(--elevated)" : "var(--brand)",
+                width: "100%",
+                fontFamily: "var(--font-jb)",
+                fontSize: 12,
+                padding: "8px 14px",
+                borderRadius: 4,
+                border: "1px solid var(--brand)",
+                background: connecting ? "transparent" : "var(--brand)",
                 color: connecting ? "var(--ghost)" : "#fff",
+                cursor: connecting ? "default" : "pointer",
+                letterSpacing: "0.02em",
               }}
               title="Use MetaMask, Coinbase Wallet, or any browser EVM wallet"
             >
               {connecting ? "Connecting…" : "Connect wallet"}
             </button>
-            <p className="text-xs mt-1" style={{ color: "var(--ghost)" }}>
-              Connects to MetaMask, Coinbase Wallet, or any browser EVM wallet you have installed.
-              Switch to Base mainnet after connecting.
+            <p
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                color: "var(--ghost)",
+                marginTop: 8,
+                lineHeight: 1.5,
+              }}
+            >
+              MetaMask, Coinbase Wallet, or any browser EVM wallet. Switch to
+              Base mainnet after connecting.
             </p>
             {walletError && (
-              <p className="text-xs mt-2" style={{ color: "var(--bear)" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  color: "var(--bear)",
+                  marginTop: 8,
+                }}
+              >
                 {walletError}
               </p>
             )}
-          </div>
+          </>
         ) : (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
-                Address
-              </span>
-              <span className="text-xs font-mono" style={{ color: "var(--ink)" }}>
-                {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
-                Network
-              </span>
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: "80px minmax(0, 1fr)",
+              rowGap: 8,
+              columnGap: 12,
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+            }}
+          >
+            <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+              ADDRESS
+            </span>
+            <span style={{ color: "var(--ink)", textAlign: "right" }}>
+              {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)}
+            </span>
+
+            <span style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}>
+              NETWORK
+            </span>
+            <span style={{ textAlign: "right" }}>
               {wallet.isOnBase ? (
-                <span
-                  className="text-xs font-mono px-2 py-0.5 rounded-full"
-                  style={{ background: "var(--bull)22", color: "var(--bull)" }}
-                >
+                <span style={{ color: "var(--bull)", fontWeight: 600 }}>
                   Base ✓
                 </span>
               ) : (
                 <button
                   onClick={switchToBase}
                   disabled={switching}
-                  className="text-xs px-2 py-0.5 rounded-full border"
-                  style={{ borderColor: "var(--bear)", color: "var(--bear)" }}
+                  style={{
+                    fontFamily: "var(--font-jb)",
+                    fontSize: 11,
+                    padding: "2px 8px",
+                    borderRadius: 3,
+                    border: "1px solid var(--bear)",
+                    background: "transparent",
+                    color: "var(--bear)",
+                    cursor: switching ? "default" : "pointer",
+                  }}
                 >
                   {switching ? "Switching…" : "Switch to Base"}
                 </button>
               )}
-            </div>
+            </span>
+
             {wallet.isOnBase && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: "var(--ghost)" }}>
-                  USDC balance
+              <>
+                <span
+                  style={{ color: "var(--ghost)", letterSpacing: "0.06em" }}
+                >
+                  USDC
                 </span>
-                <span className="text-xs font-mono" style={{ color: "var(--ink)" }}>
+                <span
+                  style={{
+                    color: "var(--ink)",
+                    textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
                   {usdcBalanceDollars != null
                     ? `$${usdcBalanceDollars.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
                     : "—"}
                 </span>
-              </div>
+              </>
             )}
+
             {walletError && (
-              <p className="text-xs mt-1" style={{ color: "var(--bear)" }}>
+              <span
+                style={{
+                  gridColumn: "1 / -1",
+                  color: "var(--bear)",
+                  marginTop: 4,
+                }}
+              >
                 {walletError}
-              </p>
+              </span>
             )}
           </div>
         )}
@@ -448,15 +560,9 @@ export function ExecutionClient() {
         {/* Right column: Signal + Trade — scrolls internally */}
         <section className="flex-1 flex flex-col gap-3 md:overflow-y-auto min-h-0 pb-2 md:pb-0">
 
-      {/* Live signal evaluator */}
-      <div
-        className="rounded-lg p-4 border"
-        style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-      >
-        <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--ink)" }}>
-          Live Signal
-        </h2>
-
+      {/* Live signal evaluator — Sprint 115 mono-terminal restyle */}
+      <div>
+        <SectionRule label="02 · SIGNAL" />
         <div className="flex items-center gap-3 mb-4">
           <select
             value={selectedId}
@@ -467,10 +573,14 @@ export function ExecutionClient() {
               setTradeStage({ kind: "idle" });
             }}
             disabled={loadingStrategies}
-            className="flex-1 text-xs px-3 py-2 rounded-md border"
+            className="flex-1"
             style={{
-              borderColor: "var(--line)",
-              background: "var(--elevated)",
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              padding: "6px 10px",
+              borderRadius: 3,
+              border: "1px solid var(--line)",
+              background: "var(--surface)",
               color: "var(--ink)",
             }}
           >
@@ -487,10 +597,16 @@ export function ExecutionClient() {
           <button
             onClick={checkSignal}
             disabled={evaluating || !selectedId}
-            className="text-xs px-4 py-2 rounded-md font-medium transition-colors"
             style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+              padding: "6px 14px",
+              borderRadius: 3,
+              border: `1px solid ${evaluating || !selectedId ? "var(--line)" : "var(--brand)"}`,
               background: evaluating || !selectedId ? "var(--elevated)" : "var(--brand)",
               color: evaluating || !selectedId ? "var(--ghost)" : "#fff",
+              cursor: evaluating || !selectedId ? "not-allowed" : "pointer",
+              letterSpacing: "0.04em",
             }}
           >
             {evaluating ? "Evaluating…" : "Check Signal"}
@@ -523,118 +639,188 @@ export function ExecutionClient() {
             )}
 
             {signal.signal !== null ? (
-              <>
-                {/* Signal badge */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs" style={{ color: "var(--ghost)" }}>
-                    Signal
-                  </span>
-                  <span
-                    className="text-sm font-bold font-mono px-3 py-1 rounded-full"
-                    style={{ background: `${signalColor}22`, color: signalColor }}
-                  >
-                    {signal.signal}
-                  </span>
-                </div>
-
-                {/* Numeric levels — precise reference for order entry. Chart
-                    shows them visually; this shows them exactly. */}
-                <div
-                  className="rounded-md p-3 grid grid-cols-3 gap-2"
-                  style={{ background: "var(--elevated)" }}
-                >
-                  {[
-                    ["Entry level", signal.entry_price],
-                    ["Take profit", signal.take_profit],
-                    ["Stop loss", signal.stop_loss],
-                  ].map(([label, val]) => (
-                    <div key={label as string}>
-                      <p className="text-xs mb-0.5" style={{ color: "var(--ghost)" }}>
-                        {label}
-                      </p>
-                      <p className="text-xs font-mono" style={{ color: "var(--ink)" }}>
-                        {val != null
-                          ? Number(val).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          : "—"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              // No-signal state: chart above already carries the price
-              // context, so this is just the waiting message.
-              <p
-                className="text-xs leading-relaxed px-1"
-                style={{ color: "var(--dim)" }}
+              <div
+                className="grid"
+                style={{
+                  gridTemplateColumns: "80px minmax(0, 1fr) auto",
+                  rowGap: 8,
+                  columnGap: 12,
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  fontVariantNumeric: "tabular-nums",
+                }}
               >
-                No setup fired on the last bar. Strategy is sitting flat —
-                check back next bar or pick a different strategy.
+                <span
+                  style={{
+                    color: "var(--ghost)",
+                    letterSpacing: "0.08em",
+                    fontSize: 10,
+                  }}
+                >
+                  SIGNAL
+                </span>
+                <span aria-hidden />
+                <span
+                  style={{
+                    color: signalColor,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                  }}
+                >
+                  {signal.signal}
+                </span>
+
+                <span
+                  style={{
+                    color: "var(--ghost)",
+                    letterSpacing: "0.08em",
+                    fontSize: 10,
+                  }}
+                >
+                  ENTRY
+                </span>
+                <span aria-hidden />
+                <span style={{ color: "var(--ink)", textAlign: "right" }}>
+                  {signal.entry_price != null
+                    ? signal.entry_price.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : "—"}
+                </span>
+
+                <span
+                  style={{
+                    color: "var(--ghost)",
+                    letterSpacing: "0.08em",
+                    fontSize: 10,
+                  }}
+                >
+                  TP
+                </span>
+                <span aria-hidden />
+                <span style={{ color: "var(--bull)", textAlign: "right" }}>
+                  {signal.take_profit != null
+                    ? signal.take_profit.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : "—"}
+                </span>
+
+                <span
+                  style={{
+                    color: "var(--ghost)",
+                    letterSpacing: "0.08em",
+                    fontSize: 10,
+                  }}
+                >
+                  SL
+                </span>
+                <span aria-hidden />
+                <span style={{ color: "var(--bear)", textAlign: "right" }}>
+                  {signal.stop_loss != null
+                    ? signal.stop_loss.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : "—"}
+                </span>
+              </div>
+            ) : (
+              <p
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  color: "var(--dim)",
+                  lineHeight: 1.6,
+                }}
+              >
+                Flat on the last bar. Wait for the next bar or pick a
+                different strategy.
               </p>
             )}
 
-            {/* Meta */}
-            <p className="text-xs" style={{ color: "var(--ghost)" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                color: "var(--ghost)",
+                letterSpacing: "0.02em",
+              }}
+            >
               {signal.bars_evaluated.toLocaleString()} bars evaluated
               {signal.last_bar_ts && (
-                <> · last bar {new Date(signal.last_bar_ts).toLocaleString()}</>
+                <>
+                  {" · last bar "}
+                  {new Date(signal.last_bar_ts).toLocaleString()}
+                </>
               )}
             </p>
           </div>
         )}
 
         {!signal && !signalError && !evaluating && (
-          <p className="text-xs" style={{ color: "var(--ghost)" }}>
-            Select a strategy and click Check Signal to evaluate the latest market bar.
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--ghost)",
+              lineHeight: 1.6,
+            }}
+          >
+            Pick a strategy and click Check Signal to evaluate the latest bar.
           </p>
         )}
       </div>
 
-      {/* Trade panel — visible when a LONG or SHORT signal is active */}
+      {/* Trade panel — Sprint 115 mono-terminal restyle. Wordy EBC and
+          ^DJI-scaling explainers moved to hover-titles; the important
+          state is the header note. */}
       {signal && signal.signal !== null && (
-        <div
-          className="rounded-lg p-4 border"
-          style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
-              Place trade on gTrade · Base
-            </h2>
-            <span
-              className="text-xs font-mono px-2 py-0.5 rounded-full"
-              style={{ background: "var(--elevated)", color: "var(--dim)" }}
-              title="EBC matrix: Manual = you approve every trade. Future modes (AI-open / AI-close / Full-auto) require Smart Wallet Spend Permissions — post-capstone."
-            >
-              EBC: Manual
-            </span>
-          </div>
-
-          <p
-            className="text-xs mb-3 px-3 py-2 rounded"
-            style={{ background: "var(--elevated)", color: "var(--dim)" }}
-          >
-            <strong>EBC mode — Manual.</strong> You approve every transaction. The full EBC
-            matrix (AI-open / AI-close × Human-open / Human-close) applies only at execution
-            time on a connected wallet; backtesting is deterministic and not modeled by the
-            matrix. Auto modes need Smart Wallet Spend Permissions and are post-capstone work.
-          </p>
+        <div>
+          <SectionRule
+            label="04 · TRADE"
+            right={
+              <span
+                title="EBC matrix: Manual = you approve every trade. AI-open / AI-close / Full-auto require Smart Wallet Spend Permissions — post-capstone."
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  color: "var(--dim)",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                EBC · MANUAL
+              </span>
+            }
+          />
 
           {signal.strategy.ticker === "^DJI" && (
             <p
-              className="text-xs mb-3 px-3 py-2 rounded"
-              style={{ background: "var(--elevated)", color: "var(--dim)" }}
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                color: "var(--ghost)",
+                marginBottom: 12,
+                letterSpacing: "0.02em",
+              }}
+              title="^DJI index value (~38,000) is auto-divided by 100 for gTrade's DIA pair (~$380)."
             >
-              The strategy prices in ^DJI index value (~38,000). gTrade&apos;s DIA pair tracks the
-              DIA ETF (~$380, ÷100). Prices below are auto-scaled.
+              ^DJI → DIA · prices auto-scaled ÷100
             </p>
           )}
 
           <div className="grid grid-cols-2 gap-3 mb-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  color: "var(--ghost)",
+                  letterSpacing: "0.06em",
+                }}
+              >
                 Collateral (USDC)
               </span>
               <input
@@ -644,16 +830,27 @@ export function ExecutionClient() {
                 step={0.5}
                 min={1}
                 max={100}
-                className="text-xs px-3 py-2 rounded-md border font-mono"
                 style={{
-                  borderColor: "var(--line)",
-                  background: "var(--elevated)",
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  padding: "6px 10px",
+                  borderRadius: 3,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface)",
                   color: "var(--ink)",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  color: "var(--ghost)",
+                  letterSpacing: "0.06em",
+                }}
+              >
                 Leverage (2×–100×)
               </span>
               <input
@@ -663,16 +860,27 @@ export function ExecutionClient() {
                 step={1}
                 min={2}
                 max={100}
-                className="text-xs px-3 py-2 rounded-md border font-mono"
                 style={{
-                  borderColor: "var(--line)",
-                  background: "var(--elevated)",
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  padding: "6px 10px",
+                  borderRadius: 3,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface)",
                   color: "var(--ink)",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  color: "var(--ghost)",
+                  letterSpacing: "0.06em",
+                }}
+              >
                 Slippage tolerance (%)
               </span>
               <input
@@ -682,16 +890,27 @@ export function ExecutionClient() {
                 step={0.1}
                 min={0.1}
                 max={5}
-                className="text-xs px-3 py-2 rounded-md border font-mono"
                 style={{
-                  borderColor: "var(--line)",
-                  background: "var(--elevated)",
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  padding: "6px 10px",
+                  borderRadius: 3,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface)",
                   color: "var(--ink)",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs" style={{ color: "var(--ghost)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 10,
+                  color: "var(--ghost)",
+                  letterSpacing: "0.06em",
+                }}
+              >
                 Entry price (gTrade scale)
               </span>
               <input
@@ -699,39 +918,77 @@ export function ExecutionClient() {
                 value={gtradeOpenPrice}
                 onChange={(e) => setOpenPriceOverride(Number(e.target.value) || 0)}
                 step={0.01}
-                className="text-xs px-3 py-2 rounded-md border font-mono"
                 style={{
-                  borderColor: "var(--line)",
-                  background: "var(--elevated)",
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 12,
+                  padding: "6px 10px",
+                  borderRadius: 3,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface)",
                   color: "var(--ink)",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               />
             </label>
           </div>
 
           <div
-            className="rounded-md p-3 mb-3 grid grid-cols-3 gap-2 text-xs"
-            style={{ background: "var(--elevated)" }}
+            className="grid"
+            style={{
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              columnGap: 12,
+              rowGap: 2,
+              marginBottom: 12,
+              paddingBottom: 12,
+              paddingTop: 6,
+              borderBottom: "1px dashed var(--line)",
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              fontVariantNumeric: "tabular-nums",
+            }}
           >
             <div>
-              <p style={{ color: "var(--ghost)" }}>Position size</p>
-              <p className="font-mono" style={{ color: "var(--ink)" }}>
+              <p
+                style={{
+                  color: "var(--ghost)",
+                  letterSpacing: "0.08em",
+                  fontSize: 10,
+                }}
+              >
+                POSITION
+              </p>
+              <p style={{ color: "var(--ink)", fontSize: 13, fontWeight: 600 }}>
                 ${positionSizeUsd(collateralUsdc, leverage).toLocaleString()}
               </p>
             </div>
             <div>
-              <p style={{ color: "var(--ghost)" }}>$/point</p>
-              <p className="font-mono" style={{ color: "var(--ink)" }}>
-                $
-                {dollarsPerPoint(collateralUsdc, leverage, gtradeOpenPrice).toLocaleString(
+              <p
+                style={{
+                  color: "var(--ghost)",
+                  letterSpacing: "0.08em",
+                  fontSize: 10,
+                }}
+              >
+                $/POINT
+              </p>
+              <p style={{ color: "var(--ink)", fontSize: 13, fontWeight: 600 }}>
+                ${dollarsPerPoint(collateralUsdc, leverage, gtradeOpenPrice).toLocaleString(
                   undefined,
                   { maximumFractionDigits: 4 },
                 )}
               </p>
             </div>
             <div>
-              <p style={{ color: "var(--ghost)" }}>Max loss</p>
-              <p className="font-mono" style={{ color: "var(--ink)" }}>
+              <p
+                style={{
+                  color: "var(--ghost)",
+                  letterSpacing: "0.08em",
+                  fontSize: 10,
+                }}
+              >
+                MAX LOSS
+              </p>
+              <p style={{ color: "var(--bear)", fontSize: 13, fontWeight: 600 }}>
                 ${collateralUsdc.toFixed(2)}
               </p>
             </div>
@@ -753,11 +1010,18 @@ export function ExecutionClient() {
           <button
             onClick={placeTrade}
             disabled={tradePanelDisabled}
-            className="w-full py-2.5 rounded-lg text-sm font-medium"
             style={{
+              width: "100%",
+              fontFamily: "var(--font-jb)",
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "10px 14px",
+              borderRadius: 4,
+              border: `1px solid ${tradePanelDisabled ? "var(--line)" : "var(--brand)"}`,
               background: tradePanelDisabled ? "var(--elevated)" : "var(--brand)",
               color: tradePanelDisabled ? "var(--ghost)" : "#fff",
               cursor: tradePanelDisabled ? "not-allowed" : "pointer",
+              letterSpacing: "0.06em",
             }}
           >
             {tradeStage.kind === "approving"

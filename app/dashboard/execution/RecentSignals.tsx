@@ -56,34 +56,70 @@ export function RecentSignals() {
   }, [load]);
 
   return (
-    <div
-      className="rounded-lg p-4 border"
-      style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
-          Recent signals
-        </h2>
+    <div>
+      {/* Sprint 115: SectionRule idiom matches the rest of Execution and the app. */}
+      <div
+        className="flex items-center gap-3"
+        style={{
+          marginBottom: 12,
+          paddingBottom: 8,
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.14em",
+            color: "var(--ink)",
+          }}
+        >
+          TAPE · RECENT SIGNALS
+        </span>
+        <span aria-hidden style={{ flex: 1 }} />
         <button
           onClick={load}
           disabled={loading}
-          className="text-[11px]"
-          style={{ color: "var(--ghost)", background: "transparent", border: "none" }}
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 10,
+            color: "var(--ghost)",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            letterSpacing: "0.04em",
+            textDecoration: "underline",
+          }}
         >
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
       {err && (
-        <p className="text-xs mb-2" style={{ color: "var(--bear)" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--bear)",
+            marginBottom: 8,
+          }}
+        >
           {err}
         </p>
       )}
 
       {events.length === 0 && !loading ? (
-        <p className="text-xs" style={{ color: "var(--ghost)" }}>
-          No signals yet. Watch a strategy from its detail page and Atlas will
-          evaluate it every 5 minutes; fired signals land here.
+        <p
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--ghost)",
+            lineHeight: 1.6,
+          }}
+        >
+          No signals yet. Watch a strategy from its detail page — Atlas
+          evaluates every 5 minutes; fired signals land here.
         </p>
       ) : (
         <div className="flex flex-col gap-2">
