@@ -53,3 +53,62 @@ export async function GET(
 
   return Response.json({ strategy: data });
 }
+
+/**
+ * PATCH /api/v1/ticket-logics/[id] — owner-gated update of mutable fields.
+ * Sprint 129: initial scope is visibility only. Values: 'private' | 'unlisted' | 'public'.
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  const user = await getUserFromRequest(req);
+  if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+
+  let body: { visibility?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "invalid json" }, { status: 400 });
+  }
+
+  const visibility = body.visibility;
+  if (
+    visibility !== "private" &&
+    visibility !== "unlisted" &&
+    visibility !== "public"
+  ) {
+    return Response.json(
+      { error: "visibility must be private | unlisted | public" },
+      { status: 400 },
+    );
+  }
+
+  const sb = getServiceClient();
+
+  const { data: existing } = await sb
+    .from("ticket_logics")
+    .select("id, created_by_user_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!existing) return Response.json({ error: "not found" }, { status: 404 });
+  const row = existing as { id: string; created_by_user_id: string | null };
+  if (row.created_by_user_id !== user.userId) {
+    // Non-owner — lie with 404 as elsewhere in this file
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+
+  const { error: updateError } = await sb
+    .from("ticket_logics")
+    .update({ visibility })
+    .eq("id", id);
+
+  if (updateError) {
+    return Response.json({ error: updateError.message }, { status: 500 });
+  }
+
+  return Response.json({ ok: true, visibility });
+}

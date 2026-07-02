@@ -392,12 +392,129 @@ export function StrategyDetailClient({
       {/* PROVENANCE — origin verb + lineage + tags */}
       <ProvenanceSection detail={detail} family={family} />
 
-      {/* SHARE (owner only) */}
+      {/* SHARE + VISIBILITY (owner only) */}
       {detail.is_mine && (
         <section className="mb-8">
+          <SectionRule label="VISIBILITY" />
+          <VisibilityPanel
+            strategyId={detail.id}
+            initialVisibility={detail.visibility}
+          />
+          <div style={{ height: 24 }} />
           <SectionRule label="SHARE" />
           <SharePanel strategyId={detail.id} initialShares={detail.shares} />
         </section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Sprint 129: publicize toggle. Three visibility states:
+ *   - Private (default): only you can see it
+ *   - Unlisted: anyone with the link can view; not in the public library
+ *   - Public: appears on the Public tab and can be forked by anyone
+ * PATCH /api/v1/ticket-logics/[id] persists the change.
+ */
+function VisibilityPanel({
+  strategyId,
+  initialVisibility,
+}: {
+  strategyId: string;
+  initialVisibility: "private" | "unlisted" | "public";
+}) {
+  const [value, setValue] = useState<"private" | "unlisted" | "public">(
+    initialVisibility,
+  );
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const options: {
+    key: "private" | "unlisted" | "public";
+    label: string;
+    hint: string;
+  }[] = [
+    { key: "private", label: "Private", hint: "Only you" },
+    { key: "unlisted", label: "Unlisted", hint: "Anyone with the link" },
+    { key: "public", label: "Public", hint: "Listed on the Public tab · forkable" },
+  ];
+
+  async function onPick(next: "private" | "unlisted" | "public") {
+    if (next === value) return;
+    setBusy(true);
+    setMsg(null);
+    const prev = value;
+    setValue(next);
+    try {
+      const res = await fetch(`/api/v1/ticket-logics/${strategyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visibility: next }),
+      });
+      if (!res.ok) {
+        setValue(prev);
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setMsg(j.error ?? `HTTP ${res.status}`);
+      } else {
+        setMsg("Updated.");
+        setTimeout(() => setMsg(null), 2000);
+      }
+    } catch {
+      setValue(prev);
+      setMsg("Network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex gap-2 flex-wrap" style={{ marginBottom: 8 }}>
+        {options.map((o) => {
+          const active = value === o.key;
+          return (
+            <button
+              key={o.key}
+              onClick={() => onPick(o.key)}
+              disabled={busy}
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 12,
+                padding: "6px 14px",
+                borderRadius: 4,
+                border: `1px solid ${active ? "var(--brand)" : "var(--line)"}`,
+                background: active ? "var(--brand)" : "transparent",
+                color: active ? "#fff" : "var(--ink)",
+                cursor: busy ? "default" : "pointer",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          color: "var(--ghost)",
+          letterSpacing: "0.02em",
+        }}
+      >
+        {options.find((o) => o.key === value)?.hint}
+      </div>
+      {msg && (
+        <div
+          style={{
+            marginTop: 6,
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: msg === "Updated." ? "var(--bull)" : "var(--bear)",
+          }}
+        >
+          {msg}
+        </div>
       )}
     </div>
   );
