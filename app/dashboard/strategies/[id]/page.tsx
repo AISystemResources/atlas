@@ -407,6 +407,27 @@ export default async function StrategyDetailPage({
   const body = parseTicketLogicBody(row.body);
   const rendered = renderTicketLogicBody(body);
 
+  // Sprint 148: resolve the current value of each tunable by walking its
+  // `path` into the body. Lets the merged RULES section show the knob's
+  // current setting instead of a bare range.
+  const tunablesWithValues = (body.tunable_parameters ?? []).map((t) => {
+    let cursor: unknown = body as unknown;
+    for (const key of t.path) {
+      if (cursor == null || typeof cursor !== "object") {
+        cursor = undefined;
+        break;
+      }
+      cursor = (cursor as Record<string, unknown>)[key];
+    }
+    return {
+      ...t,
+      current_value:
+        typeof cursor === "number" || typeof cursor === "string"
+          ? cursor
+          : null,
+    };
+  });
+
   // Sprint 075a: when the caller is the owner, surface the share list.
   let shares: Array<{ email: string; granted_at: string }> = [];
   if (isOwner) {
@@ -443,7 +464,7 @@ export default async function StrategyDetailPage({
     is_my_scalper: isMyScalper,
     created_at: row.created_at,
     rendered,
-    tunable_parameters: body.tunable_parameters ?? [],
+    tunable_parameters: tunablesWithValues,
     timeframe: body.timeframe,
     direction: body.direction,
     ticker: row.ticker ?? null,
