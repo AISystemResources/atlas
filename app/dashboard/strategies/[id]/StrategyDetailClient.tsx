@@ -441,19 +441,6 @@ export function StrategyDetailClient({
       )}
 
       <ProvenanceSection detail={detail} family={family} />
-
-      {detail.is_mine && (
-        <section className="mb-8">
-          <SectionRule label="VISIBILITY" />
-          <VisibilityPanel
-            strategyId={detail.id}
-            initialVisibility={detail.visibility}
-          />
-          <div style={{ height: 24 }} />
-          <SectionRule label="SHARE" />
-          <SharePanel strategyId={detail.id} initialShares={detail.shares} />
-        </section>
-      )}
     </div>
   );
 }
@@ -1696,6 +1683,13 @@ function IdentityStrip({
               {forkBusy ? "Forking…" : "Fork to my library"}
             </button>
           )}
+          {detail.is_mine && (
+            <ShareButton
+              strategyId={detail.id}
+              visibility={detail.visibility}
+              shares={detail.shares}
+            />
+          )}
           {detail.is_mine && !detail.is_my_scalper && (
             <button
               onClick={onUseAsScalper}
@@ -1720,6 +1714,177 @@ function IdentityStrip({
     </header>
   );
 }
+
+/**
+ * Sprint 145: Drive-style Share button. Sits in the identity strip next to
+ * "Use as my scalper" and opens a modal with the visibility segmented control,
+ * email-invite row, and the list of people with access. Owner-only. Replaces
+ * the old bottom-of-page VISIBILITY + SHARE sections.
+ */
+function ShareButton({
+  strategyId,
+  visibility,
+  shares,
+}: {
+  strategyId: string;
+  visibility: "private" | "unlisted" | "public";
+  shares: StrategyShareEntry[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  // Sprint 145: match the visibility state's affordance colour to the current
+  // publicity level so the button reads as a status pill, not just an action.
+  const dotColor =
+    visibility === "public"
+      ? "var(--bull)"
+      : visibility === "unlisted"
+        ? "#f5a623"
+        : "var(--ghost)";
+  const label =
+    visibility === "public"
+      ? "Public"
+      : visibility === "unlisted"
+        ? "Unlisted"
+        : "Private";
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          fontFamily: "var(--font-jb)",
+          fontSize: 12,
+          padding: "6px 14px",
+          borderRadius: 4,
+          border: "1px solid var(--line)",
+          background: "transparent",
+          color: "var(--ink)",
+          cursor: "pointer",
+          letterSpacing: "0.02em",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+        title="Share this strategy"
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: dotColor,
+          }}
+        />
+        Share · {label}
+      </button>
+      {open && (
+        <ShareModal
+          strategyId={strategyId}
+          initialVisibility={visibility}
+          initialShares={shares}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function ShareModal({
+  strategyId,
+  initialVisibility,
+  initialShares,
+  onClose,
+}: {
+  strategyId: string;
+  initialVisibility: "private" | "unlisted" | "public";
+  initialShares: StrategyShareEntry[];
+  onClose: () => void;
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 17, 21, 0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 60,
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg)",
+          borderRadius: 10,
+          border: "1px solid var(--line)",
+          padding: 28,
+          width: "100%",
+          maxWidth: 560,
+          maxHeight: "90vh",
+          overflow: "auto",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+        }}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 15,
+              fontWeight: 700,
+              letterSpacing: "0.02em",
+              color: "var(--ink)",
+            }}
+          >
+            Share strategy
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 20,
+              color: "var(--ghost)",
+              lineHeight: 1,
+              padding: 4,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <VisibilityPanel
+            strategyId={strategyId}
+            initialVisibility={initialVisibility}
+          />
+        </div>
+
+        <div>
+          <div
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.14em",
+              color: "var(--ink)",
+              marginBottom: 12,
+            }}
+          >
+            PEOPLE WITH ACCESS
+          </div>
+          <SharePanel strategyId={strategyId} initialShares={initialShares} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function deriveOriginWord(detail: StrategyDetail): string {
   if (detail.paper_extracted || detail.paper_source_url) return "arXiv";
