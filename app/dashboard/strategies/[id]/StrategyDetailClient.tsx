@@ -23,6 +23,12 @@ import { useState, type ReactNode } from "react";
 import type { RenderedSections } from "@/lib/strategies/render-rules";
 import type { TunableParameter } from "@/lib/strategies/types";
 
+// Sprint 148: server-resolved current value of the tunable (walked from body
+// at build time). Kept optional at type-level for legacy call sites.
+export type TunableWithValue = TunableParameter & {
+  current_value?: number | string | null;
+};
+
 export interface VersionFamilyEntry {
   id: string;
   version: number;
@@ -117,7 +123,7 @@ export interface StrategyDetail {
   is_my_scalper: boolean;
   created_at: string;
   rendered: RenderedSections;
-  tunable_parameters: TunableParameter[];
+  tunable_parameters: TunableWithValue[];
   timeframe: string;
   direction: string;
   ticker: string | null;
@@ -299,10 +305,11 @@ export function StrategyDetailClient({
           style={{ gridTemplateColumns: "minmax(0, 7fr) minmax(0, 5fr)" }}
         >
           <div className="min-w-0">
-            <PlaybookSection
+            <RulesSection
               rendered={detail.rendered}
               timeframe={detail.timeframe}
               direction={detail.direction}
+              tunables={detail.tunable_parameters}
               changedStageNumbers={
                 promotionInsight
                   ? computeChangedStageNumbers(
@@ -338,17 +345,15 @@ export function StrategyDetailClient({
           </div>
         </div>
       ) : (
-        <PlaybookSection
+        <RulesSection
           rendered={detail.rendered}
           timeframe={detail.timeframe}
           direction={detail.direction}
+          tunables={detail.tunable_parameters}
           changedStageNumbers={new Set()}
         />
       )}
 
-      {detail.tunable_parameters.length > 0 && (
-        <TunableSection tunables={detail.tunable_parameters} />
-      )}
     </div>
   );
 }
@@ -547,7 +552,7 @@ export function tunablePathToStageNumber(
 
 export function computeChangedStageNumbers(
   changes: PromotionInsightChange[],
-  tunables: TunableParameter[],
+  tunables: TunableWithValue[],
   bodyChangePaths: string[][] = [],
 ): Set<string> {
   const byName = new Map(tunables.map((t) => [t.name, t.path]));
@@ -667,7 +672,7 @@ function WhyPanel({
 }: {
   insight: PromotionInsight;
   currentVersion: number;
-  tunables: TunableParameter[];
+  tunables: TunableWithValue[];
   pointValue: number;
 }) {
   const parentV = currentVersion - 1;
@@ -1770,69 +1775,88 @@ function BacktestRow({
   );
 }
 
-// ── PLAYBOOK — 6 numbered stages in trade lifecycle order ───────────────────
+// ── RULES — Sprint 148 ──────────────────────────────────────────────────────
+// Merged view: the 6 trade-lifecycle stages (SESSION → EXIT), with each
+// stage's tunable knobs inlined directly under it. Replaces the old
+// PLAYBOOK + TUNABLE split — knobs live next to the rule they modify.
+// Unmapped tunables fall into stage 06 (rarely used in practice).
 
-function PlaybookSection({
+function RulesSection({
   rendered,
   timeframe,
   direction,
   changedStageNumbers,
+  tunables,
 }: {
   rendered: RenderedSections;
   timeframe: string;
   direction: string;
   changedStageNumbers: Set<string>;
+  tunables: TunableWithValue[];
 }) {
   const exit = [
     ...(rendered.timeStop ? [rendered.timeStop] : []),
     ...rendered.exitConditions,
   ];
 
+  const knobsByStage = new Map<string, TunableWithValue[]>();
+  for (const t of tunables) {
+    const stage = tunablePathToStageNumber(t.path) ?? "06";
+    if (!knobsByStage.has(stage)) knobsByStage.set(stage, []);
+    knobsByStage.get(stage)!.push(t);
+  }
+
   return (
     <section className="mb-10">
-      <SectionRule label="PLAYBOOK" note={`${direction}-only · ${timeframe}`} />
+      <SectionRule label="RULES" note={`${direction}-only · ${timeframe}`} />
 
-      <div className="flex flex-col" style={{ gap: 20 }}>
-        <PlaybookStage
+      <div className="flex flex-col" style={{ gap: 24 }}>
+        <RuleRow
           number="01"
           name="SESSION"
           value={rendered.whenItFires ?? "Always active — no session filter"}
           muted={!rendered.whenItFires}
           changed={changedStageNumbers.has("01")}
+          knobs={knobsByStage.get("01") ?? []}
         />
-        <PlaybookStage
+        <RuleRow
           number="02"
           name="SIGNAL BAR"
           value={rendered.signalBar[0] ?? "—"}
           continuation={rendered.signalBar.slice(1)}
           changed={changedStageNumbers.has("02")}
+          knobs={knobsByStage.get("02") ?? []}
         />
-        <PlaybookStage
+        <RuleRow
           number="03"
           name="ENTRY"
           value={rendered.entry[0] ?? "—"}
           continuation={rendered.entry.slice(1)}
           changed={changedStageNumbers.has("03")}
+          knobs={knobsByStage.get("03") ?? []}
         />
-        <PlaybookStage
+        <RuleRow
           number="04"
           name="STOP"
           value={rendered.stopLoss}
           changed={changedStageNumbers.has("04")}
+          knobs={knobsByStage.get("04") ?? []}
         />
-        <PlaybookStage
+        <RuleRow
           number="05"
           name="TARGET"
           value={rendered.takeProfit}
           changed={changedStageNumbers.has("05")}
+          knobs={knobsByStage.get("05") ?? []}
         />
-        <PlaybookStage
+        <RuleRow
           number="06"
           name="EXIT"
           value={exit[0] ?? "No time-based exit"}
           continuation={exit.slice(1)}
           muted={exit.length === 0}
           changed={changedStageNumbers.has("06")}
+          knobs={knobsByStage.get("06") ?? []}
         />
       </div>
 
@@ -1840,7 +1864,7 @@ function PlaybookSection({
         <div
           className="flex flex-wrap items-baseline gap-2"
           style={{
-            marginTop: 20,
+            marginTop: 24,
             paddingTop: 14,
             borderTop: "1px dashed var(--line)",
           }}
@@ -1873,21 +1897,22 @@ function PlaybookSection({
   );
 }
 
-function PlaybookStage({
+function RuleRow({
   number,
   name,
   value,
   continuation,
   muted,
   changed,
+  knobs,
 }: {
   number: string;
   name: string;
   value: string;
   continuation?: string[];
   muted?: boolean;
-  /** Sprint 120: this stage carries a proposed_change from the promotion insight. */
   changed?: boolean;
+  knobs: TunableWithValue[];
 }) {
   return (
     <div
@@ -1895,9 +1920,6 @@ function PlaybookStage({
       style={{
         gridTemplateColumns: "32px 110px minmax(0, 1fr)",
         columnGap: 16,
-        // Sprint 120: subtle left-edge tint on changed stages so the eye picks
-        // them out immediately. Uses --brand at ~15% alpha via inline rgba
-        // fallback — we don't have a --brand-15 token.
         paddingLeft: changed ? 8 : 0,
         marginLeft: changed ? -8 : 0,
         borderLeft: changed
@@ -1975,89 +1997,86 @@ function PlaybookStage({
             ))}
           </ul>
         )}
+
+        {knobs.length > 0 && (
+          <div
+            className="flex flex-col"
+            style={{
+              gap: 8,
+              marginTop: 10,
+              paddingTop: 8,
+              borderTop: "1px dashed var(--line)",
+            }}
+          >
+            {knobs.map((k) => (
+              <KnobRow key={k.name} knob={k} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── TUNABLE — compact 3-col table ───────────────────────────────────────────
-
-function TunableSection({ tunables }: { tunables: TunableParameter[] }) {
-  // Sprint 144: collapse behind a toggle. The full description column is
-  // reference material and was creating a "wall of words" — hide by default.
-  const [open, setOpen] = useState(false);
+/**
+ * Sprint 148: one tunable knob rendered inline under its owning rule.
+ * Answers "how is this strategy set right now?" at a glance — the current
+ * value gets the bold weight, the range and description are secondary.
+ */
+function KnobRow({ knob }: { knob: TunableWithValue }) {
   return (
-    <section className="mb-10">
-      <SectionRule
-        label={`TUNABLE · ${tunables.length}`}
-        right={
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
+    <div>
+      <div
+        className="flex items-baseline flex-wrap"
+        style={{ gap: 10 }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 11,
+            color: "var(--dim)",
+          }}
+        >
+          {knob.name}
+        </span>
+        {knob.current_value != null && (
+          <span
             style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
               fontFamily: "var(--font-jb)",
-              fontSize: 11,
-              color: "var(--ghost)",
-              letterSpacing: "0.04em",
-              textDecoration: "underline",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--ink)",
+              fontVariantNumeric: "tabular-nums",
             }}
           >
-            {open ? "Hide" : "Show"} →
-          </button>
-        }
-      />
-      {!open ? null : (
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <tbody>
-          {tunables.map((t) => (
-            <tr
-              key={t.name}
-              style={{ borderBottom: "1px solid rgba(141, 164, 178, 0.14)" }}
-            >
-              <td
-                style={{
-                  padding: "9px 12px 9px 0",
-                  fontFamily: "var(--font-jb)",
-                  fontSize: 12,
-                  color: "var(--ink)",
-                  verticalAlign: "top",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {t.name}
-              </td>
-              <td
-                style={{
-                  padding: "9px 16px 9px 0",
-                  fontFamily: "var(--font-jb)",
-                  fontSize: 11,
-                  color: "var(--dim)",
-                  verticalAlign: "top",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {t.min ?? "—"} … {t.max ?? "—"}
-              </td>
-              <td
-                style={{
-                  padding: "9px 0",
-                  fontFamily: "var(--font-nunito)",
-                  fontSize: 13,
-                  color: "var(--dim)",
-                  lineHeight: 1.5,
-                }}
-              >
-                {t.description}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+            {knob.current_value}
+          </span>
+        )}
+        <span
+          style={{
+            fontFamily: "var(--font-jb)",
+            fontSize: 10,
+            color: "var(--ghost)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          [{knob.min ?? "—"} … {knob.max ?? "—"}]
+        </span>
+      </div>
+      {knob.description && (
+        <div
+          style={{
+            fontFamily: "var(--font-nunito)",
+            fontSize: 12,
+            color: "var(--ghost)",
+            lineHeight: 1.45,
+            marginTop: 2,
+          }}
+        >
+          {knob.description}
+        </div>
       )}
-    </section>
+    </div>
   );
 }
 
