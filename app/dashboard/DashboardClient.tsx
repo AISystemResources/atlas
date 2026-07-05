@@ -14,11 +14,9 @@ const API_URL = "/api";
 
 export function PortfolioTab({
   strategies,
-  pendingCount,
 }: {
   tier: "free" | "pro";
   strategies: StrategyHealth[];
-  pendingCount: number;
 }) {
   return (
     <div className="flex flex-col pb-6" style={{ gap: 0 }}>
@@ -31,7 +29,7 @@ export function PortfolioTab({
 
       <div style={{ height: 20 }} />
 
-      <StrategyBench strategies={strategies} pendingCount={pendingCount} />
+      <StrategyBench strategies={strategies} />
     </div>
   );
 }
@@ -177,10 +175,8 @@ function AggregateCell({
 
 function StrategyBench({
   strategies,
-  pendingCount,
 }: {
   strategies: StrategyHealth[];
-  pendingCount: number;
 }) {
   const router = useRouter();
   const activeCount = strategies.length;
@@ -191,18 +187,6 @@ function StrategyBench({
         label={`STRATEGY BENCH · ${activeCount} ACTIVE`}
         right={
           <div className="flex items-center gap-3">
-            {pendingCount > 0 && (
-              <span
-                style={{
-                  fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.04em",
-                  color: "var(--brand)", background: "rgba(200,16,46,0.08)",
-                  border: "1px solid rgba(200,16,46,0.25)", borderRadius: 4,
-                  padding: "2px 7px",
-                }}
-              >
-                {pendingCount} pending
-              </span>
-            )}
             <button
               onClick={() => router.push("/dashboard/strategies")}
               style={{

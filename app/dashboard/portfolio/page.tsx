@@ -38,16 +38,11 @@ export default async function PortfolioPage() {
   }
 
   // Pro path — analytics dashboard
-  const [strategiesResult, pendingResult] = await Promise.all([
-    sb.from("ticket_logics")
-      .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_points, total_trades, created_at)")
-      .neq("status", "archived")
-      .order("created_at", { ascending: false }),
-
-    sb.from("ticket_logics")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "proposed"),
-  ]);
+  const strategiesResult = await sb
+    .from("ticket_logics")
+    .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_points, total_trades, created_at)")
+    .neq("status", "archived")
+    .order("created_at", { ascending: false });
 
   const allStrategies: StrategyHealth[] = ((strategiesResult.data ?? []) as Record<string, unknown>[]).map((row) => {
     const backtests = (row["ticket_backtests"] as Record<string, unknown>[] | null) ?? [];
@@ -80,13 +75,10 @@ export default async function PortfolioPage() {
       (a.latestBacktest?.total_pnl_points ?? -Infinity),
   );
 
-  const pendingCount = pendingResult.count ?? 0;
-
   return (
     <PortfolioPageClient
       tier="pro"
       strategies={strategies}
-      pendingCount={pendingCount}
     />
   );
 }

@@ -15,7 +15,6 @@ type Props =
   | {
       tier: "pro";
       strategies: StrategyHealth[];
-      pendingCount: number;
     };
 
 export function PortfolioPageClient(props: Props) {
@@ -60,7 +59,6 @@ export function PortfolioPageClient(props: Props) {
         <PortfolioTab
           tier={props.tier}
           strategies={props.strategies}
-          pendingCount={props.pendingCount}
         />
       )}
     </div>
