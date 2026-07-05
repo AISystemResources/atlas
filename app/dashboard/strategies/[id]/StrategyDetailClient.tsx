@@ -807,9 +807,14 @@ function StructuralWhyPanel({
   const changesInPlainEnglish = promotion.body_change_paths
     .map(humanizeBodyPath)
     .filter((s, i, arr) => arr.indexOf(s) === i);
-  // In compact mode the Playbook column tints changed stages, so a redundant
-  // plain-English list here would double up. Keep it for the wide layout only.
-  const showBodyList = !compact && changesInPlainEnglish.length > 0;
+  // Sprint 149: in compact mode we normally suppress the body list because
+  // RULES tints the changed stages. BUT when there's no change_summary either
+  // (fallback path — hand-written descriptions on older v2+ rows), the CHANGES
+  // section would render empty. In that case, fall back to showing the body
+  // list so the reader always sees SOMETHING under CHANGES.
+  const showBodyList =
+    changesInPlainEnglish.length > 0 &&
+    (!compact || !promotion.change_summary);
   const hasChanges = promotion.change_summary || showBodyList;
 
   return (
