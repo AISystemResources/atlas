@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useTier } from "../DashboardShell";
 
@@ -168,10 +169,21 @@ export function StrategiesClient({
   const isPro = tier === "pro";
   const [tab, setTab] = useState<Tab>(isPro ? "mine" : "public");
 
-  const mine = useMemo(() => cards.filter((c) => c.is_mine), [cards]);
+  // Sprint 147: honour ?tag=<name> from the TagPill on the detail page. The
+  // filter applies to both Mine and Public tabs — clicking #keltner should
+  // show all keltner strategies regardless of authorship.
+  const searchParams = useSearchParams();
+  const tagFilter = searchParams.get("tag");
+
+  const filtered = useMemo(
+    () => (tagFilter ? cards.filter((c) => c.tags.includes(tagFilter)) : cards),
+    [cards, tagFilter],
+  );
+
+  const mine = useMemo(() => filtered.filter((c) => c.is_mine), [filtered]);
   const publik = useMemo(
-    () => cards.filter((c) => !c.is_mine && c.visibility === "public"),
-    [cards],
+    () => filtered.filter((c) => !c.is_mine && c.visibility === "public"),
+    [filtered],
   );
 
   // Sprint 126: sort state — column + direction. Default: points desc
@@ -219,12 +231,56 @@ export function StrategiesClient({
     <div className="mx-auto pb-12" style={{ maxWidth: 1100, color: "var(--ink)" }}>
       {/* ── page header ─────────────────────────────────────────────── */}
       <header className="flex items-start justify-between gap-4 mb-6">
-        <h1
-          className="font-display font-bold"
-          style={{ fontSize: 28, color: "var(--ink)", letterSpacing: "-0.02em" }}
-        >
-          Strategies
-        </h1>
+        <div>
+          <h1
+            className="font-display font-bold"
+            style={{ fontSize: 28, color: "var(--ink)", letterSpacing: "-0.02em" }}
+          >
+            Strategies
+          </h1>
+          {tagFilter && (
+            <div
+              className="flex items-center gap-2"
+              style={{ marginTop: 8 }}
+            >
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  color: "var(--ghost)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Filtered by
+              </span>
+              <span
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  padding: "3px 9px",
+                  borderRadius: 999,
+                  border: "1px solid var(--brand)",
+                  background: "rgba(200,16,46,0.06)",
+                  color: "var(--brand)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                #{tagFilter}
+              </span>
+              <Link
+                href="/dashboard/strategies"
+                style={{
+                  fontFamily: "var(--font-jb)",
+                  fontSize: 11,
+                  color: "var(--ghost)",
+                  textDecoration: "underline",
+                }}
+              >
+                clear
+              </Link>
+            </div>
+          )}
+        </div>
 
         {isPro && (
           <div

@@ -289,31 +289,15 @@ export function StrategyDetailClient({
 
       <ProofSection backtests={backtests} />
 
-      {/* WHY | PLAYBOOK side-by-side. Playbook stages tint on changed rows,
-          so the WHY panel doesn't need its own "what changed" column when
-          embedded here (Structural: compact=true). If there's no WHY,
-          Playbook takes the full width. */}
+      {/* Sprint 147: PLAYBOOK | WHY side-by-side. Playbook is the anchor
+          (v1 has no WHY), so it lives on the left and gets the wider column;
+          WHY sits on the right when it exists. Playbook stages tint on
+          changed rows so WHY doesn't need its own what-changed column. */}
       {(promotionInsight || structuralPromotion) ? (
         <div
           className="grid gap-8 mb-10"
-          style={{ gridTemplateColumns: "minmax(0, 5fr) minmax(0, 7fr)" }}
+          style={{ gridTemplateColumns: "minmax(0, 7fr) minmax(0, 5fr)" }}
         >
-          <div className="min-w-0">
-            {promotionInsight ? (
-              <WhyPanel
-                insight={promotionInsight}
-                currentVersion={detail.version}
-                tunables={detail.tunable_parameters}
-                pointValue={pointValue}
-              />
-            ) : structuralPromotion ? (
-              <StructuralWhyPanel
-                promotion={structuralPromotion}
-                currentVersion={detail.version}
-                compact
-              />
-            ) : null}
-          </div>
           <div className="min-w-0">
             <PlaybookSection
               rendered={detail.rendered}
@@ -336,6 +320,22 @@ export function StrategyDetailClient({
               }
             />
           </div>
+          <div className="min-w-0">
+            {promotionInsight ? (
+              <WhyPanel
+                insight={promotionInsight}
+                currentVersion={detail.version}
+                tunables={detail.tunable_parameters}
+                pointValue={pointValue}
+              />
+            ) : structuralPromotion ? (
+              <StructuralWhyPanel
+                promotion={structuralPromotion}
+                currentVersion={detail.version}
+                compact
+              />
+            ) : null}
+          </div>
         </div>
       ) : (
         <PlaybookSection
@@ -349,8 +349,6 @@ export function StrategyDetailClient({
       {detail.tunable_parameters.length > 0 && (
         <TunableSection tunables={detail.tunable_parameters} />
       )}
-
-      <ProvenanceSection detail={detail} family={family} />
     </div>
   );
 }
@@ -683,30 +681,18 @@ function WhyPanel({
       />
       <div
         className="flex items-center gap-3 flex-wrap"
-        style={{ marginBottom: 12 }}
+        style={{ marginBottom: 16 }}
       >
         <ModelChip model={insight.model} />
-        {/* Sprint 120b: honest forward-A/B delta — the same-bars comparison
-            the server ran. Sprint 124: points-first with a dollar echo
-            scaled by the user's point_value_dollars setting. */}
         <AbDeltaChip insight={insight} pointValue={pointValue} />
       </div>
-      {insight.rationale && (
-        <p
-          style={{
-            fontFamily: "var(--font-nunito)",
-            fontSize: 14,
-            lineHeight: 1.55,
-            color: "var(--ink)",
-            marginBottom: 14,
-            maxWidth: 720,
-          }}
-        >
-          {insight.rationale}
-        </p>
-      )}
+
+      {/* Sprint 147: [CHANGES] top — the concrete diffs.
+          [REASONS] bottom — the LLM's narrative for why. Two sub-headers so
+          a reader can skim "what got moved" before diving into "why". */}
+      <SubHeader label="CHANGES" />
       {insight.changes.length > 0 ? (
-        <div className="flex flex-col" style={{ gap: 6 }}>
+        <div className="flex flex-col" style={{ gap: 6, marginBottom: 20 }}>
           {insight.changes.map((c) => {
             const stage = tunablePathToStageNumber(pathByName.get(c.name));
             return (
@@ -752,12 +738,49 @@ function WhyPanel({
             fontSize: 12,
             color: "var(--ghost)",
             fontStyle: "italic",
+            marginBottom: 20,
           }}
         >
           No parameter changes — this promotion was cosmetic (metadata only).
         </p>
       )}
+
+      {insight.rationale && (
+        <>
+          <SubHeader label="REASONS" />
+          <p
+            style={{
+              fontFamily: "var(--font-nunito)",
+              fontSize: 14,
+              lineHeight: 1.55,
+              color: "var(--ink)",
+            }}
+          >
+            {insight.rationale}
+          </p>
+        </>
+      )}
     </section>
+  );
+}
+
+// Sprint 147: small sub-section header for the [CHANGES] / [REASONS] split
+// inside WHY. Lighter weight than SectionRule so the panel keeps its own
+// visual hierarchy above the sub-headers.
+function SubHeader({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        fontFamily: "var(--font-jb)",
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.14em",
+        color: "var(--ghost)",
+        marginBottom: 10,
+      }}
+    >
+      {label}
+    </div>
   );
 }
 
@@ -779,6 +802,11 @@ function StructuralWhyPanel({
   const changesInPlainEnglish = promotion.body_change_paths
     .map(humanizeBodyPath)
     .filter((s, i, arr) => arr.indexOf(s) === i);
+  // In compact mode the Playbook column tints changed stages, so a redundant
+  // plain-English list here would double up. Keep it for the wide layout only.
+  const showBodyList = !compact && changesInPlainEnglish.length > 0;
+  const hasChanges = promotion.change_summary || showBodyList;
+
   return (
     <section className="mb-10">
       <SectionRule
@@ -787,7 +815,7 @@ function StructuralWhyPanel({
       />
       <div
         className="flex items-center gap-3 flex-wrap"
-        style={{ marginBottom: 12 }}
+        style={{ marginBottom: 16 }}
       >
         {promotion.model && <ModelChip model={promotion.model} />}
         <span
@@ -806,18 +834,9 @@ function StructuralWhyPanel({
         </span>
       </div>
 
-      {/* Side-by-side: description (left) · plain-English changes (right).
-          When compact=true (embedded next to Playbook), stack single-column
-          so Playbook can carry the "what changed" story via stage tinting. */}
-      <div
-        className="grid gap-8"
-        style={{
-          gridTemplateColumns: compact
-            ? "minmax(0, 1fr)"
-            : "minmax(0, 3fr) minmax(0, 2fr)",
-        }}
-      >
-        <div className="min-w-0">
+      {hasChanges && (
+        <>
+          <SubHeader label="CHANGES" />
           {promotion.change_summary && (
             <p
               style={{
@@ -825,40 +844,23 @@ function StructuralWhyPanel({
                 fontSize: 13,
                 fontWeight: 600,
                 color: "var(--ink)",
-                marginBottom: 12,
+                marginBottom: showBodyList ? 12 : 20,
+                lineHeight: 1.5,
               }}
             >
               {promotion.change_summary}
             </p>
           )}
-          {promotion.rationale && (
-            <p
+          {showBodyList && (
+            <ul
+              className="flex flex-col"
               style={{
-                fontFamily: "var(--font-nunito)",
-                fontSize: 14,
-                lineHeight: 1.55,
-                color: "var(--ink)",
+                gap: 0,
+                paddingLeft: 0,
+                listStyle: "none",
+                marginBottom: 20,
               }}
             >
-              {promotion.rationale}
-            </p>
-          )}
-        </div>
-
-        {!compact && changesInPlainEnglish.length > 0 && (
-          <div className="min-w-0">
-            <div
-              style={{
-                fontFamily: "var(--font-jb)",
-                fontSize: 10,
-                letterSpacing: "0.08em",
-                color: "var(--ghost)",
-                marginBottom: 10,
-              }}
-            >
-              WHAT CHANGED · {changesInPlainEnglish.length}
-            </div>
-            <ul className="flex flex-col" style={{ gap: 0, paddingLeft: 0, listStyle: "none" }}>
               {changesInPlainEnglish.slice(0, 14).map((label, i) => (
                 <li
                   key={i}
@@ -887,9 +889,25 @@ function StructuralWhyPanel({
                 </li>
               )}
             </ul>
-          </div>
-        )}
-      </div>
+          )}
+        </>
+      )}
+
+      {promotion.rationale && (
+        <>
+          <SubHeader label="REASONS" />
+          <p
+            style={{
+              fontFamily: "var(--font-nunito)",
+              fontSize: 14,
+              lineHeight: 1.55,
+              color: "var(--ink)",
+            }}
+          >
+            {promotion.rationale}
+          </p>
+        </>
+      )}
     </section>
   );
 }
@@ -1283,6 +1301,17 @@ function IdentityStrip({
           >
             {sublineBits.join(" · ")}
           </p>
+
+          {detail.tags.length > 0 && (
+            <div
+              className="flex flex-wrap items-center"
+              style={{ gap: 6, marginTop: 12 }}
+            >
+              {detail.tags.map((t) => (
+                <TagPill key={t} tag={t} />
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -1529,6 +1558,52 @@ function ShareModal({
   );
 }
 
+
+/**
+ * Sprint 147: clickable tag pill. Colour derives from a stable hash of the
+ * tag string so "keltner" always looks the same across strategies — the
+ * palette is a small curated set (bull/brand/hold plus two blues + purple)
+ * so the pills read as categorical, not random. Click routes to
+ * /dashboard/strategies?tag=<tag> — the Mine tab filters to matching rows.
+ */
+function TagPill({ tag }: { tag: string }) {
+  const palette = [
+    { fg: "#2C8F5E", bg: "rgba(44, 143, 94, 0.10)", border: "rgba(44, 143, 94, 0.30)" },
+    { fg: "#C8102E", bg: "rgba(200, 16, 46, 0.08)", border: "rgba(200, 16, 46, 0.28)" },
+    { fg: "#B87500", bg: "rgba(184, 117, 0, 0.10)", border: "rgba(184, 117, 0, 0.30)" },
+    { fg: "#2762C5", bg: "rgba(39, 98, 197, 0.10)", border: "rgba(39, 98, 197, 0.30)" },
+    { fg: "#6E44B0", bg: "rgba(110, 68, 176, 0.10)", border: "rgba(110, 68, 176, 0.30)" },
+    { fg: "#0E7E96", bg: "rgba(14, 126, 150, 0.10)", border: "rgba(14, 126, 150, 0.30)" },
+  ];
+  let hash = 0;
+  for (let i = 0; i < tag.length; i += 1) {
+    hash = (hash * 31 + tag.charCodeAt(i)) >>> 0;
+  }
+  const c = palette[hash % palette.length];
+  return (
+    <Link
+      href={`/dashboard/strategies?tag=${encodeURIComponent(tag)}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        fontFamily: "var(--font-jb)",
+        fontSize: 10,
+        letterSpacing: "0.06em",
+        padding: "3px 9px",
+        borderRadius: 999,
+        border: `1px solid ${c.border}`,
+        background: c.bg,
+        color: c.fg,
+        textDecoration: "none",
+        transition: "transform 100ms ease",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-1px)")}
+      onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}
+    >
+      #{tag}
+    </Link>
+  );
+}
 
 function deriveOriginWord(detail: StrategyDetail): string {
   if (detail.paper_extracted || detail.paper_source_url) return "arXiv";
@@ -1986,180 +2061,6 @@ function TunableSection({ tunables }: { tunables: TunableParameter[] }) {
   );
 }
 
-// ── PROVENANCE — origin verb + full lineage + tags ─────────────────────────
-
-function ProvenanceSection({
-  detail,
-  family,
-}: {
-  detail: StrategyDetail;
-  family: VersionFamilyEntry[];
-}) {
-  const originWord = deriveOriginWord(detail);
-  const priorVersions = family.filter((f) => !f.is_current);
-
-  return (
-    <section className="mb-10">
-      <SectionRule label="PROVENANCE" />
-
-      <div
-        className="grid"
-        style={{
-          gridTemplateColumns: "110px minmax(0, 1fr)",
-          columnGap: 16,
-          rowGap: 10,
-          fontFamily: "var(--font-jb)",
-          fontSize: 12,
-        }}
-      >
-        <span
-          style={{
-            color: "var(--ghost)",
-            letterSpacing: "0.06em",
-          }}
-        >
-          ORIGIN
-        </span>
-        <span style={{ color: "var(--ink)" }}>
-          {originWord}
-          {detail.paper_source_url && (
-            <>
-              {" · "}
-              <a
-                href={detail.paper_source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: "var(--brand)",
-                  textDecoration: "underline",
-                  textUnderlineOffset: 2,
-                }}
-              >
-                arXiv ↗
-              </a>
-            </>
-          )}
-        </span>
-
-        {detail.linked_papers.length > 0 && (
-          <>
-            <span
-              style={{
-                color: "var(--ghost)",
-                letterSpacing: "0.06em",
-              }}
-            >
-              PAPERS
-            </span>
-            <div className="flex flex-col" style={{ gap: 6 }}>
-              {detail.linked_papers.map((p) => (
-                <div
-                  key={p.paper_id}
-                  style={{
-                    fontFamily: "var(--font-jb)",
-                    fontSize: 12,
-                    color: "var(--ink)",
-                  }}
-                >
-                  {p.source_url ? (
-                    <a
-                      href={p.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: "var(--ink)",
-                        textDecoration: "underline",
-                        textUnderlineOffset: 2,
-                      }}
-                    >
-                      {p.title}
-                    </a>
-                  ) : (
-                    <span>{p.title}</span>
-                  )}
-                  <span style={{ color: "var(--ghost)", marginLeft: 8 }}>
-                    {p.is_origin ? "origin" : "also cited"}
-                    {p.added_by_model && (
-                      <> · by {shortModelLabel(p.added_by_model)}</>
-                    )}
-                  </span>
-                  {p.inspiration_note && !p.is_origin && (
-                    <div
-                      style={{
-                        fontFamily: "var(--font-nunito)",
-                        fontSize: 12,
-                        color: "var(--dim)",
-                        marginTop: 2,
-                        lineHeight: 1.45,
-                        maxWidth: 620,
-                      }}
-                    >
-                      {p.inspiration_note}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {priorVersions.length > 0 && (
-          <>
-            <span
-              style={{
-                color: "var(--ghost)",
-                letterSpacing: "0.06em",
-              }}
-            >
-              LINEAGE
-            </span>
-            <span>
-              {priorVersions.map((v, i) => (
-                <span key={v.id}>
-                  <Link
-                    href={`/dashboard/strategies/${v.id}`}
-                    style={{
-                      color: "var(--dim)",
-                      textDecoration: "underline",
-                      textUnderlineOffset: 2,
-                    }}
-                  >
-                    v{v.version}
-                  </Link>
-                  {i < priorVersions.length - 1 && (
-                    <span style={{ color: "var(--ghost)" }}> → </span>
-                  )}
-                </span>
-              ))}
-              <span style={{ color: "var(--ghost)" }}> → </span>
-              <span style={{ color: "var(--ink)" }}>v{detail.version}</span>
-            </span>
-          </>
-        )}
-
-        {detail.tags.length > 0 && (
-          <>
-            <span
-              style={{
-                color: "var(--ghost)",
-                letterSpacing: "0.06em",
-              }}
-            >
-              TAGS
-            </span>
-            <span style={{ color: "var(--dim)" }}>
-              {detail.tags.join(" · ")}
-            </span>
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
-
-// Sprint 113: VersionTimeline / VisibilityChip / StatusChip removed — their
-// info is now carried inline by the IdentityStrip sub-line and the
-// ProvenanceSection lineage row.
 
 // ── SharePanel — Sprint 075a ──────────────────────────────────────────────────
 
