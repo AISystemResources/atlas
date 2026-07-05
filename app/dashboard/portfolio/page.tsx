@@ -49,7 +49,7 @@ export default async function PortfolioPage() {
       .eq("status", "proposed"),
   ]);
 
-  const strategies: StrategyHealth[] = ((strategiesResult.data ?? []) as Record<string, unknown>[]).map((row) => {
+  const allStrategies: StrategyHealth[] = ((strategiesResult.data ?? []) as Record<string, unknown>[]).map((row) => {
     const backtests = (row["ticket_backtests"] as Record<string, unknown>[] | null) ?? [];
     const latest = backtests.sort((a, b) =>
       new Date(b["created_at"] as string).getTime() - new Date(a["created_at"] as string).getTime()
@@ -67,6 +67,18 @@ export default async function PortfolioPage() {
       } : null,
     };
   });
+
+  // Collapse to latest version per family (matches Strategies + Research pages).
+  const latestByFamily = new Map<string, StrategyHealth>();
+  for (const s of allStrategies) {
+    const prev = latestByFamily.get(s.name);
+    if (!prev || s.version > prev.version) latestByFamily.set(s.name, s);
+  }
+  const strategies = Array.from(latestByFamily.values()).sort(
+    (a, b) =>
+      (b.latestBacktest?.total_pnl_points ?? -Infinity) -
+      (a.latestBacktest?.total_pnl_points ?? -Infinity),
+  );
 
   const pendingCount = pendingResult.count ?? 0;
 
