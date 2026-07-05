@@ -41,7 +41,7 @@ export default async function PortfolioPage() {
   const [strategiesResult, pendingResult] = await Promise.all([
     sb.from("ticket_logics")
       .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_points, total_trades, created_at)")
-      .eq("status", "active")
+      .neq("status", "archived")
       .order("created_at", { ascending: false }),
 
     sb.from("ticket_logics")
