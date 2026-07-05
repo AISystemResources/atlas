@@ -19,7 +19,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { RenderedSections } from "@/lib/strategies/render-rules";
 import type { TunableParameter } from "@/lib/strategies/types";
 
@@ -302,7 +302,7 @@ export function StrategyDetailClient({
   }
 
   return (
-    <div className="mx-auto pb-12" style={{ maxWidth: 900, color: "var(--ink)" }}>
+    <div className="mx-auto pb-12" style={{ maxWidth: 1100, color: "var(--ink)" }}>
       {/* Breadcrumb */}
       <div className="mb-5" style={{ paddingTop: 8 }}>
         <Link
@@ -344,31 +344,18 @@ export function StrategyDetailClient({
         </p>
       )}
 
-      {/* Sprint 120: version timeline — sibling versions with PnL under each */}
+      {/* Sprint 144: reordered — VERSIONS → PROOF (collapsed) → PENDING →
+          WHY | PLAYBOOK (side-by-side) → TUNABLE (collapsed) → PROVENANCE →
+          VISIBILITY/SHARE. Reasoning: proof is the buyer signal (put it high
+          but tight); the WHY/PLAYBOOK pairing lets a reader see the rationale
+          and the mechanics without scrolling; TUNABLE/INDICATORS are
+          reference material and belong below the fold. */}
       {family.length > 1 && (
         <VersionTimeline family={family} />
       )}
 
-      {/* Sprint 120: WHY this version — LLM rationale + changes for v2+ */}
-      {promotionInsight && (
-        <WhyPanel
-          insight={promotionInsight}
-          currentVersion={detail.version}
-          tunables={detail.tunable_parameters}
-          pointValue={pointValue}
-        />
-      )}
+      <ProofSection backtests={backtests} />
 
-      {/* Sprint 137: WHY this version — structural (body-change) fallback.
-          Only renders if there's no ratchet insight (that path is richer). */}
-      {!promotionInsight && structuralPromotion && (
-        <StructuralWhyPanel
-          promotion={structuralPromotion}
-          currentVersion={detail.version}
-        />
-      )}
-
-      {/* Pending proposals — owner-only, action-required, top billing */}
       {detail.is_mine && pendingProposals.length > 0 && (
         <section className="mb-10">
           <SectionRule
@@ -392,34 +379,69 @@ export function StrategyDetailClient({
         </section>
       )}
 
-      {/* PROOF — backtests hoisted from bottom */}
-      <ProofSection backtests={backtests} />
+      {/* WHY | PLAYBOOK side-by-side. Playbook stages tint on changed rows,
+          so the WHY panel doesn't need its own "what changed" column when
+          embedded here (Structural: compact=true). If there's no WHY,
+          Playbook takes the full width. */}
+      {(promotionInsight || structuralPromotion) ? (
+        <div
+          className="grid gap-8 mb-10"
+          style={{ gridTemplateColumns: "minmax(0, 5fr) minmax(0, 7fr)" }}
+        >
+          <div className="min-w-0">
+            {promotionInsight ? (
+              <WhyPanel
+                insight={promotionInsight}
+                currentVersion={detail.version}
+                tunables={detail.tunable_parameters}
+                pointValue={pointValue}
+              />
+            ) : structuralPromotion ? (
+              <StructuralWhyPanel
+                promotion={structuralPromotion}
+                currentVersion={detail.version}
+                compact
+              />
+            ) : null}
+          </div>
+          <div className="min-w-0">
+            <PlaybookSection
+              rendered={detail.rendered}
+              timeframe={detail.timeframe}
+              direction={detail.direction}
+              changedStageNumbers={
+                promotionInsight
+                  ? computeChangedStageNumbers(
+                      promotionInsight.changes,
+                      detail.tunable_parameters,
+                      promotionInsight.body_change_paths,
+                    )
+                  : structuralPromotion
+                    ? computeChangedStageNumbers(
+                        [],
+                        detail.tunable_parameters,
+                        structuralPromotion.body_change_paths,
+                      )
+                    : new Set()
+              }
+            />
+          </div>
+        </div>
+      ) : (
+        <PlaybookSection
+          rendered={detail.rendered}
+          timeframe={detail.timeframe}
+          direction={detail.direction}
+          changedStageNumbers={new Set()}
+        />
+      )}
 
-      {/* PLAYBOOK — 6 numbered stages in trade-lifecycle order */}
-      <PlaybookSection
-        rendered={detail.rendered}
-        timeframe={detail.timeframe}
-        direction={detail.direction}
-        changedStageNumbers={
-          promotionInsight
-            ? computeChangedStageNumbers(
-                promotionInsight.changes,
-                detail.tunable_parameters,
-                promotionInsight.body_change_paths,
-              )
-            : new Set()
-        }
-      />
-
-      {/* TUNABLE — compact 3-col table */}
       {detail.tunable_parameters.length > 0 && (
         <TunableSection tunables={detail.tunable_parameters} />
       )}
 
-      {/* PROVENANCE — origin verb + lineage + tags */}
       <ProvenanceSection detail={detail} family={family} />
 
-      {/* SHARE + VISIBILITY (owner only) */}
       {detail.is_mine && (
         <section className="mb-8">
           <SectionRule label="VISIBILITY" />
@@ -1114,9 +1136,13 @@ function WhyPanel({
 function StructuralWhyPanel({
   promotion,
   currentVersion,
+  compact,
 }: {
   promotion: StructuralPromotionView;
   currentVersion: number;
+  /** Sprint 144: when true, hide the internal "WHAT CHANGED" column — used
+      when this panel sits next to Playbook, which tints changed stages. */
+  compact?: boolean;
 }) {
   const parentV = currentVersion - 1;
   const changesInPlainEnglish = promotion.body_change_paths
@@ -1149,10 +1175,16 @@ function StructuralWhyPanel({
         </span>
       </div>
 
-      {/* Side-by-side: description (left) · plain-English changes (right). */}
+      {/* Side-by-side: description (left) · plain-English changes (right).
+          When compact=true (embedded next to Playbook), stack single-column
+          so Playbook can carry the "what changed" story via stage tinting. */}
       <div
         className="grid gap-8"
-        style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)" }}
+        style={{
+          gridTemplateColumns: compact
+            ? "minmax(0, 1fr)"
+            : "minmax(0, 3fr) minmax(0, 2fr)",
+        }}
       >
         <div className="min-w-0">
           {promotion.change_summary && (
@@ -1182,7 +1214,7 @@ function StructuralWhyPanel({
           )}
         </div>
 
-        {changesInPlainEnglish.length > 0 && (
+        {!compact && changesInPlainEnglish.length > 0 && (
           <div className="min-w-0">
             <div
               style={{
@@ -1462,10 +1494,13 @@ function SectionRule({
   label,
   note,
   noteColor,
+  right,
 }: {
   label: string;
   note?: string;
   noteColor?: string;
+  /** Sprint 144: optional trailing element (e.g. a Show/Hide toggle). */
+  right?: ReactNode;
 }) {
   return (
     <div
@@ -1503,6 +1538,7 @@ function SectionRule({
           {note}
         </span>
       )}
+      {right}
     </div>
   );
 }
@@ -1694,10 +1730,16 @@ function deriveOriginWord(detail: StrategyDetail): string {
 // ── PROOF — recent backtests + mini bar chart ───────────────────────────────
 
 function ProofSection({ backtests }: { backtests: BacktestListEntry[] }) {
+  // Sprint 144: default to showing only the latest backtest; user expands to
+  // reveal history. The "latest" is the first entry (page.tsx already sorts
+  // by created_at desc).
+  const [expanded, setExpanded] = useState(false);
   const maxAbs = Math.max(
     1,
     ...backtests.map((b) => Math.abs(b.total_pnl_points ?? 0)),
   );
+  const visible = expanded ? backtests : backtests.slice(0, 1);
+  const hiddenCount = backtests.length - visible.length;
 
   return (
     <section className="mb-10">
@@ -1717,9 +1759,49 @@ function ProofSection({ backtests }: { backtests: BacktestListEntry[] }) {
         </p>
       ) : (
         <div className="flex flex-col">
-          {backtests.map((b) => (
+          {visible.map((b) => (
             <BacktestRow key={b.id} bt={b} maxAbs={maxAbs} />
           ))}
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "var(--font-jb)",
+                fontSize: 11,
+                color: "var(--ghost)",
+                textAlign: "left",
+                padding: "10px 4px 0",
+                letterSpacing: "0.04em",
+                textDecoration: "underline",
+              }}
+            >
+              Show {hiddenCount} more →
+            </button>
+          )}
+          {expanded && backtests.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "var(--font-jb)",
+                fontSize: 11,
+                color: "var(--ghost)",
+                textAlign: "left",
+                padding: "10px 4px 0",
+                letterSpacing: "0.04em",
+                textDecoration: "underline",
+              }}
+            >
+              Collapse
+            </button>
+          )}
         </div>
       )}
     </section>
@@ -2017,9 +2099,33 @@ function PlaybookStage({
 // ── TUNABLE — compact 3-col table ───────────────────────────────────────────
 
 function TunableSection({ tunables }: { tunables: TunableParameter[] }) {
+  // Sprint 144: collapse behind a toggle. The full description column is
+  // reference material and was creating a "wall of words" — hide by default.
+  const [open, setOpen] = useState(false);
   return (
     <section className="mb-10">
-      <SectionRule label={`TUNABLE · ${tunables.length}`} />
+      <SectionRule
+        label={`TUNABLE · ${tunables.length}`}
+        right={
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--ghost)",
+              letterSpacing: "0.04em",
+              textDecoration: "underline",
+            }}
+          >
+            {open ? "Hide" : "Show"} →
+          </button>
+        }
+      />
+      {!open ? null : (
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <tbody>
           {tunables.map((t) => (
@@ -2066,6 +2172,7 @@ function TunableSection({ tunables }: { tunables: TunableParameter[] }) {
           ))}
         </tbody>
       </table>
+      )}
     </section>
   );
 }
