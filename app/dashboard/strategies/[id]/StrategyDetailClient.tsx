@@ -152,6 +152,7 @@ export function StrategyDetailClient({
   promotionInsight,
   structuralPromotion,
   pointValue,
+  prevRendered,
 }: {
   detail: StrategyDetail;
   family: VersionFamilyEntry[];
@@ -162,6 +163,9 @@ export function StrategyDetailClient({
   structuralPromotion: StructuralPromotionView | null;
   /** Sprint 124: user's point-to-dollar ratio for the WHY panel's dollar echo. */
   pointValue: number;
+  /** Sprint 150: parent-version rules rendered the same way. Enables inline
+      old→new diffs on changed rule lines. Null for v1 or unreadable parents. */
+  prevRendered?: RenderedSections | null;
 }) {
   const router = useRouter();
   const [forkBusy, setForkBusy] = useState(false);
@@ -307,6 +311,7 @@ export function StrategyDetailClient({
           <div className="min-w-0">
             <RulesSection
               rendered={detail.rendered}
+              prevRendered={prevRendered ?? null}
               timeframe={detail.timeframe}
               direction={detail.direction}
               tunables={detail.tunable_parameters}
@@ -347,6 +352,7 @@ export function StrategyDetailClient({
       ) : (
         <RulesSection
           rendered={detail.rendered}
+          prevRendered={null}
           timeframe={detail.timeframe}
           direction={detail.direction}
           tunables={detail.tunable_parameters}
@@ -1788,12 +1794,14 @@ function BacktestRow({
 
 function RulesSection({
   rendered,
+  prevRendered,
   timeframe,
   direction,
   changedStageNumbers,
   tunables,
 }: {
   rendered: RenderedSections;
+  prevRendered: RenderedSections | null;
   timeframe: string;
   direction: string;
   changedStageNumbers: Set<string>;
@@ -1803,6 +1811,12 @@ function RulesSection({
     ...(rendered.timeStop ? [rendered.timeStop] : []),
     ...rendered.exitConditions,
   ];
+  const prevExit = prevRendered
+    ? [
+        ...(prevRendered.timeStop ? [prevRendered.timeStop] : []),
+        ...prevRendered.exitConditions,
+      ]
+    : [];
 
   const knobsByStage = new Map<string, TunableWithValue[]>();
   for (const t of tunables) {
@@ -1820,6 +1834,7 @@ function RulesSection({
           number="01"
           name="SESSION"
           value={rendered.whenItFires ?? "Always active — no session filter"}
+          prevValue={prevRendered?.whenItFires ?? undefined}
           muted={!rendered.whenItFires}
           changed={changedStageNumbers.has("01")}
           knobs={knobsByStage.get("01") ?? []}
@@ -1828,7 +1843,9 @@ function RulesSection({
           number="02"
           name="SIGNAL BAR"
           value={rendered.signalBar[0] ?? "—"}
+          prevValue={prevRendered?.signalBar[0]}
           continuation={rendered.signalBar.slice(1)}
+          prevContinuation={prevRendered?.signalBar.slice(1)}
           changed={changedStageNumbers.has("02")}
           knobs={knobsByStage.get("02") ?? []}
         />
@@ -1836,7 +1853,9 @@ function RulesSection({
           number="03"
           name="ENTRY"
           value={rendered.entry[0] ?? "—"}
+          prevValue={prevRendered?.entry[0]}
           continuation={rendered.entry.slice(1)}
+          prevContinuation={prevRendered?.entry.slice(1)}
           changed={changedStageNumbers.has("03")}
           knobs={knobsByStage.get("03") ?? []}
         />
@@ -1844,6 +1863,7 @@ function RulesSection({
           number="04"
           name="STOP"
           value={rendered.stopLoss}
+          prevValue={prevRendered?.stopLoss}
           changed={changedStageNumbers.has("04")}
           knobs={knobsByStage.get("04") ?? []}
         />
@@ -1851,6 +1871,7 @@ function RulesSection({
           number="05"
           name="TARGET"
           value={rendered.takeProfit}
+          prevValue={prevRendered?.takeProfit}
           changed={changedStageNumbers.has("05")}
           knobs={knobsByStage.get("05") ?? []}
         />
@@ -1858,7 +1879,9 @@ function RulesSection({
           number="06"
           name="EXIT"
           value={exit[0] ?? "No time-based exit"}
+          prevValue={prevRendered ? (prevExit[0] ?? "No time-based exit") : undefined}
           continuation={exit.slice(1)}
+          prevContinuation={prevRendered ? prevExit.slice(1) : undefined}
           muted={exit.length === 0}
           changed={changedStageNumbers.has("06")}
           knobs={knobsByStage.get("06") ?? []}
@@ -1906,7 +1929,9 @@ function RuleRow({
   number,
   name,
   value,
+  prevValue,
   continuation,
+  prevContinuation,
   muted,
   changed,
   knobs,
@@ -1914,11 +1939,18 @@ function RuleRow({
   number: string;
   name: string;
   value: string;
+  prevValue?: string;
   continuation?: string[];
+  prevContinuation?: string[];
   muted?: boolean;
   changed?: boolean;
   knobs: TunableWithValue[];
 }) {
+  // Sprint 150: inline word-level diff. Only when the row is marked changed
+  // AND we have a comparable prev string that actually differs. Otherwise we
+  // render plain text to avoid noisy re-highlights on identical lines.
+  const showDiff =
+    changed && prevValue !== undefined && prevValue !== value;
   return (
     <div
       className="grid items-baseline"
@@ -1965,7 +1997,7 @@ function RuleRow({
             fontStyle: muted ? "italic" : "normal",
           }}
         >
-          {value}
+          {showDiff ? <InlineDiff prev={prevValue!} next={value} /> : value}
         </div>
         {continuation && continuation.length > 0 && (
           <ul
@@ -1975,31 +2007,35 @@ function RuleRow({
               margin: "4px 0 0 0",
             }}
           >
-            {continuation.map((c, i) => (
-              <li
-                key={i}
-                style={{
-                  fontFamily: "var(--font-jb)",
-                  fontSize: 12,
-                  color: "var(--dim)",
-                  lineHeight: 1.5,
-                  paddingLeft: 12,
-                  position: "relative",
-                }}
-              >
-                <span
-                  aria-hidden
+            {continuation.map((c, i) => {
+              const prevC = prevContinuation?.[i];
+              const rowChanged = changed && prevC !== undefined && prevC !== c;
+              return (
+                <li
+                  key={i}
                   style={{
-                    position: "absolute",
-                    left: 0,
-                    color: "var(--ghost)",
+                    fontFamily: "var(--font-jb)",
+                    fontSize: 12,
+                    color: "var(--dim)",
+                    lineHeight: 1.5,
+                    paddingLeft: 12,
+                    position: "relative",
                   }}
                 >
-                  ─
-                </span>
-                {c}
-              </li>
-            ))}
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      color: "var(--ghost)",
+                    }}
+                  >
+                    ─
+                  </span>
+                  {rowChanged ? <InlineDiff prev={prevC!} next={c} /> : c}
+                </li>
+              );
+            })}
           </ul>
         )}
 
@@ -2021,6 +2057,114 @@ function RuleRow({
       </div>
     </div>
   );
+}
+
+/**
+ * Sprint 150: inline word-level diff between the parent-version rule string
+ * and the current-version rule string. Removed tokens render with a red
+ * strikethrough; added tokens render with a green highlight. Unchanged
+ * tokens render in the row's normal color. Small enough that a hand-rolled
+ * LCS beats pulling in a diff dependency.
+ */
+function InlineDiff({ prev, next }: { prev: string; next: string }) {
+  const ops = diffWords(prev, next);
+  return (
+    <>
+      {ops.map((op, i) => {
+        if (op.type === "equal") return <span key={i}>{op.text}</span>;
+        if (op.type === "remove")
+          return (
+            <span
+              key={i}
+              style={{
+                textDecoration: "line-through",
+                color: "var(--bear)",
+                backgroundColor: "rgba(200, 16, 46, 0.08)",
+                padding: "0 3px",
+                borderRadius: 3,
+              }}
+            >
+              {op.text}
+            </span>
+          );
+        return (
+          <span
+            key={i}
+            style={{
+              color: "var(--bull)",
+              backgroundColor: "rgba(34, 139, 90, 0.10)",
+              padding: "0 3px",
+              borderRadius: 3,
+              fontWeight: 600,
+            }}
+          >
+            {op.text}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+type DiffOp = { type: "equal" | "add" | "remove"; text: string };
+
+/**
+ * Word-level diff via LCS. Tokens split on whitespace but keep whitespace
+ * runs as their own tokens so re-joining preserves the original spacing.
+ * O(n*m) time / space — fine for one-line rule strings (< ~200 tokens).
+ */
+function diffWords(a: string, b: string): DiffOp[] {
+  const toks = (s: string): string[] => s.split(/(\s+)/).filter((x) => x !== "");
+  const A = toks(a);
+  const B = toks(b);
+  const n = A.length;
+  const m = B.length;
+  // LCS length table
+  const dp: number[][] = Array.from({ length: n + 1 }, () =>
+    new Array<number>(m + 1).fill(0),
+  );
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i][j] =
+        A[i - 1] === B[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  // Backtrack to build ops
+  const rev: DiffOp[] = [];
+  let i = n;
+  let j = m;
+  while (i > 0 && j > 0) {
+    if (A[i - 1] === B[j - 1]) {
+      rev.push({ type: "equal", text: A[i - 1] });
+      i--;
+      j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      rev.push({ type: "remove", text: A[i - 1] });
+      i--;
+    } else {
+      rev.push({ type: "add", text: B[j - 1] });
+      j--;
+    }
+  }
+  while (i > 0) {
+    rev.push({ type: "remove", text: A[i - 1] });
+    i--;
+  }
+  while (j > 0) {
+    rev.push({ type: "add", text: B[j - 1] });
+    j--;
+  }
+  rev.reverse();
+  // Merge consecutive same-type ops so adjacent removes/adds render as one span.
+  const merged: DiffOp[] = [];
+  for (const op of rev) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.type === op.type) prev.text += op.text;
+    else merged.push({ ...op });
+  }
+  return merged;
 }
 
 /**

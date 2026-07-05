@@ -407,6 +407,26 @@ export default async function StrategyDetailPage({
   const body = parseTicketLogicBody(row.body);
   const rendered = renderTicketLogicBody(body);
 
+  // Sprint 150: render the parent version's body too so RULES can show
+  // inline old→new diffs on changed lines. Kept null for v1 (no parent) or
+  // when the parent body is unreadable.
+  let prevRendered: ReturnType<typeof renderTicketLogicBody> | null = null;
+  if (row.parent_version_id) {
+    const { data: parentRow } = await sb
+      .from("ticket_logics")
+      .select("body")
+      .eq("id", row.parent_version_id)
+      .maybeSingle();
+    const parentBody = (parentRow as { body: unknown } | null)?.body ?? null;
+    if (parentBody !== null) {
+      try {
+        prevRendered = renderTicketLogicBody(parseTicketLogicBody(parentBody));
+      } catch {
+        prevRendered = null;
+      }
+    }
+  }
+
   // Sprint 148: resolve the current value of each tunable by walking its
   // `path` into the body. Lets the merged RULES section show the knob's
   // current setting instead of a bare range.
@@ -484,6 +504,7 @@ export default async function StrategyDetailPage({
       promotionInsight={promotionInsight}
       structuralPromotion={structuralPromotion}
       pointValue={pointValue}
+      prevRendered={prevRendered}
     />
   );
 }
