@@ -77,7 +77,7 @@ export interface PromotionInsight {
 // can render the same "what changed and why" story it does for ratchet
 // promotions.
 export interface StructuralPromotionView {
-  change_summary: string;
+  change_summary: string | null;
   rationale: string | null;
   model: string | null;
   created_at: string;
@@ -1155,17 +1155,19 @@ function StructuralWhyPanel({
         style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)" }}
       >
         <div className="min-w-0">
-          <p
-            style={{
-              fontFamily: "var(--font-jb)",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--ink)",
-              marginBottom: 12,
-            }}
-          >
-            {promotion.change_summary}
-          </p>
+          {promotion.change_summary && (
+            <p
+              style={{
+                fontFamily: "var(--font-jb)",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--ink)",
+                marginBottom: 12,
+              }}
+            >
+              {promotion.change_summary}
+            </p>
+          )}
           {promotion.rationale && (
             <p
               style={{

@@ -380,20 +380,32 @@ export default async function StrategyDetailPage({
       row.description,
       row.created_at,
     );
+    // Fallback: older v2+ rows (created directly via create_ticket_logic before
+    // promote_with_body_change existed) still have a hand-written description
+    // explaining the change but no parseable markers. Surface the raw
+    // description as rationale so the user sees *something* under WHY instead
+    // of a blank strategy detail page.
+    if (!structuralPromotion) {
+      structuralPromotion = {
+        change_summary: null,
+        rationale: row.description,
+        model: null,
+        created_at: row.created_at,
+        body_change_paths: [],
+      };
+    }
     // Reuse the same body-diff walk as the ratchet path so PLAYBOOK stage
     // tinting still lights up on structural changes.
-    if (structuralPromotion) {
-      const { data: parentRow } = await sb
-        .from("ticket_logics")
-        .select("body")
-        .eq("id", row.parent_version_id)
-        .maybeSingle();
-      const parentBody = (parentRow as { body: unknown } | null)?.body ?? null;
-      if (parentBody !== null) {
-        const bodyChangePaths: string[][] = [];
-        diffJson(parentBody, row.body, [], bodyChangePaths);
-        structuralPromotion.body_change_paths = bodyChangePaths;
-      }
+    const { data: parentRow } = await sb
+      .from("ticket_logics")
+      .select("body")
+      .eq("id", row.parent_version_id)
+      .maybeSingle();
+    const parentBody = (parentRow as { body: unknown } | null)?.body ?? null;
+    if (parentBody !== null) {
+      const bodyChangePaths: string[][] = [];
+      diffJson(parentBody, row.body, [], bodyChangePaths);
+      structuralPromotion.body_change_paths = bodyChangePaths;
     }
   }
 
