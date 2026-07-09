@@ -1829,6 +1829,8 @@ function RulesSection({
     <section className="mb-10">
       <SectionRule label="RULES" note={`${direction}-only · ${timeframe}`} />
 
+      <RulesLegend />
+
       <div className="flex flex-col" style={{ gap: 24 }}>
         <RuleRow
           number="01"
@@ -1925,6 +1927,82 @@ function RulesSection({
   );
 }
 
+// Sprint 151: one-sentence definition per stage — surfaced as a tooltip on
+// the row label and, once, as a legend block under the RULES header. The
+// examiner reading a screenshot doesn't hover, so the legend carries the
+// explanation without cluttering each row.
+const STAGE_HINTS: Record<string, string> = {
+  SESSION: "When the strategy is allowed to look for setups — trading window and weekdays.",
+  "SIGNAL BAR": "The bar-level pattern that must be true before Atlas will enter — the trigger.",
+  ENTRY: "How the position is opened — the fill price expression and position size.",
+  STOP: "The invalidation price. If the market hits this level, the trade is closed at a loss.",
+  TARGET: "The take-profit price. If the market hits this level, the trade is closed at a gain.",
+  EXIT: "Any other early-exit rule — time-based (end of day, N bars) or indicator-driven.",
+};
+
+function RulesLegend() {
+  const rows: Array<[string, string]> = [
+    ["01 SESSION", STAGE_HINTS.SESSION],
+    ["02 SIGNAL BAR", STAGE_HINTS["SIGNAL BAR"]],
+    ["03 ENTRY", STAGE_HINTS.ENTRY],
+    ["04 STOP", STAGE_HINTS.STOP],
+    ["05 TARGET", STAGE_HINTS.TARGET],
+    ["06 EXIT", STAGE_HINTS.EXIT],
+  ];
+  return (
+    <details
+      style={{
+        marginTop: 8,
+        marginBottom: 20,
+        border: "1px solid var(--line)",
+        borderRadius: 6,
+        padding: "6px 12px",
+        background: "var(--surface)",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontFamily: "var(--font-jb)",
+          fontSize: 11,
+          letterSpacing: "0.06em",
+          color: "var(--dim)",
+          listStyle: "revert",
+        }}
+      >
+        WHAT THE SIX STAGES MEAN
+      </summary>
+      <ul
+        style={{
+          listStyle: "none",
+          padding: 0,
+          margin: "10px 0 4px 0",
+          display: "grid",
+          gridTemplateColumns: "minmax(120px, auto) 1fr",
+          columnGap: 14,
+          rowGap: 6,
+        }}
+      >
+        {rows.map(([label, hint]) => (
+          <li
+            key={label}
+            style={{
+              display: "contents",
+              fontFamily: "var(--font-jb)",
+              fontSize: 12,
+            }}
+          >
+            <span style={{ color: "var(--ink)", fontWeight: 600, letterSpacing: "0.04em" }}>
+              {label}
+            </span>
+            <span style={{ color: "var(--dim)", lineHeight: 1.45 }}>{hint}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function RuleRow({
   number,
   name,
@@ -1977,12 +2055,16 @@ function RuleRow({
         {number}
       </span>
       <span
+        title={STAGE_HINTS[name] ?? undefined}
         style={{
           fontFamily: "var(--font-jb)",
           fontSize: 11,
           fontWeight: 600,
           letterSpacing: "0.08em",
           color: "var(--ink)",
+          cursor: STAGE_HINTS[name] ? "help" : undefined,
+          textDecoration: STAGE_HINTS[name] ? "underline dotted var(--ghost)" : undefined,
+          textUnderlineOffset: 3,
         }}
       >
         {name}
