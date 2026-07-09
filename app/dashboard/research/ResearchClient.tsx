@@ -164,6 +164,24 @@ function InUseCard({ paper, animate }: { paper: PaperRow; animate: boolean }) {
         </div>
       </header>
 
+      {paper.abstract && (
+        <p
+          style={{
+            fontFamily: "var(--font-nunito)",
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "var(--dim)",
+            marginTop: 10,
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical" as const,
+            overflow: "hidden",
+          }}
+        >
+          {paper.abstract}
+        </p>
+      )}
+
       <div style={{ marginTop: 16 }}>
         {visible.map((s, i) => (
           <BranchRow key={s.id} strategy={s} animate={animate} delayMs={i * 60} />
@@ -270,6 +288,7 @@ function BranchRow({
 function UnreadRow({ paper, isPro }: { paper: PaperRow; isPro: boolean }) {
   const arxivId = arxivIdFromUrl(paper.source_url, paper.source);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   async function copyExtractPrompt(e: React.MouseEvent) {
     e.preventDefault();
@@ -296,7 +315,7 @@ Paper UUID for reference: ${paper.id}`;
 
   return (
     <div
-      className="grid items-center"
+      className="grid items-start"
       style={{
         gridTemplateColumns: "110px minmax(0, 1fr) auto",
         gap: 16,
@@ -314,7 +333,9 @@ Paper UUID for reference: ${paper.id}`;
         </span>
       </div>
 
-      {/* Title only — no abstract clamp. Reads like a scholarly listing. */}
+      {/* Title + expandable abstract. Sprint 151: examiners need to see why
+          each paper is here — the abstract does that job. Collapsed by
+          default to preserve the dense listing feel. */}
       <div style={{ minWidth: 0 }}>
         {paper.source_url ? (
           <a
@@ -343,6 +364,42 @@ Paper UUID for reference: ${paper.id}`;
           >
             {paper.title}
           </span>
+        )}
+        {paper.abstract && (
+          <>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                setExpanded((v) => !v);
+              }}
+              style={{
+                marginTop: 6,
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                fontFamily: "var(--font-jb)",
+                fontSize: 10,
+                letterSpacing: "0.06em",
+                color: "var(--ghost)",
+              }}
+            >
+              {expanded ? "▾ hide abstract" : "▸ show abstract"}
+            </button>
+            {expanded && (
+              <p
+                style={{
+                  fontFamily: "var(--font-nunito)",
+                  fontSize: 12.5,
+                  lineHeight: 1.55,
+                  color: "var(--dim)",
+                  marginTop: 6,
+                }}
+              >
+                {paper.abstract}
+              </p>
+            )}
+          </>
         )}
       </div>
 
@@ -382,9 +439,18 @@ export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] })
   const router = useRouter();
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
+  const [query, setQuery] = useState("");
 
-  const inUse = initialPapers.filter((p) => p.extracted_strategies.length > 0);
-  const unread = initialPapers.filter((p) => p.extracted_strategies.length === 0);
+  const q = query.trim().toLowerCase();
+  const matches = (p: PaperRow) =>
+    q.length === 0 ||
+    p.title.toLowerCase().includes(q) ||
+    (p.abstract ?? "").toLowerCase().includes(q) ||
+    p.source.toLowerCase().includes(q);
+
+  const filtered = initialPapers.filter(matches);
+  const inUse = filtered.filter((p) => p.extracted_strategies.length > 0);
+  const unread = filtered.filter((p) => p.extracted_strategies.length === 0);
 
   async function fetchMore() {
     setFetching(true);
@@ -447,6 +513,42 @@ export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] })
           {fetching ? "Fetching…" : "Fetch from arXiv"}
         </button>
       </header>
+
+      {/* Sprint 151: search across title + abstract. Simple client-side
+          filter — the corpus is small (hundreds of papers) so a debounced
+          server query would be over-engineered. */}
+      <div className="mb-5">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search title or abstract (e.g. 'Keltner', 'momentum', 'mean reversion')"
+          style={{
+            width: "100%",
+            padding: "8px 12px",
+            borderRadius: 6,
+            border: "1px solid var(--line)",
+            background: "var(--surface)",
+            color: "var(--ink)",
+            fontFamily: "var(--font-jb)",
+            fontSize: 12,
+            letterSpacing: "0.02em",
+          }}
+        />
+        {query.trim().length > 0 && (
+          <p
+            style={{
+              fontFamily: "var(--font-jb)",
+              fontSize: 11,
+              color: "var(--ghost)",
+              marginTop: 6,
+            }}
+          >
+            {filtered.length} match{filtered.length === 1 ? "" : "es"} · {inUse.length} in use ·{" "}
+            {unread.length} unread
+          </p>
+        )}
+      </div>
 
       {fetchMsg && (
         <p
