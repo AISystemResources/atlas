@@ -39,10 +39,15 @@ const expressionSchema: z.ZodType<Expression> = z.lazy(() =>
   ]),
 );
 
+// Sprint 152: optional display-only role on any ConditionNode. Missing = "signal".
+// Zod rejects unknown values with a clear enum error.
+const conditionRoleSchema = z.enum(["signal", "filter"]).optional();
+
 const conditionSchema = z.object({
   op: comparisonOp,
   left: expressionSchema,
   right: expressionSchema,
+  role: conditionRoleSchema,
 });
 
 // Sprint 080D: recursive compound condition tree.
@@ -56,16 +61,19 @@ const conditionNodeSchema: z.ZodType<ConditionNode> = z.lazy(() =>
     z.object({
       type: z.literal("and"),
       children: z.array(conditionNodeSchema).min(1),
+      role: conditionRoleSchema,
     }),
     // Compound OR: any child must hold.
     z.object({
       type: z.literal("or"),
       children: z.array(conditionNodeSchema).min(1),
+      role: conditionRoleSchema,
     }),
     // Compound NOT: child must not hold.
     z.object({
       type: z.literal("not"),
       child: conditionNodeSchema,
+      role: conditionRoleSchema,
     }),
   ]),
 );
