@@ -1851,6 +1851,17 @@ function RulesSection({
           changed={changedStageNumbers.has("02")}
           knobs={knobsByStage.get("02") ?? []}
         />
+        {rendered.filters.length > 0 && (
+          <RuleRow
+            number=""
+            name="FILTER"
+            value={rendered.filters[0]}
+            prevValue={prevRendered?.filters?.[0]}
+            continuation={rendered.filters.slice(1)}
+            prevContinuation={prevRendered?.filters?.slice(1)}
+            knobs={[]}
+          />
+        )}
         <RuleRow
           number="03"
           name="ENTRY"
@@ -1934,6 +1945,7 @@ function RulesSection({
 const STAGE_HINTS: Record<string, string> = {
   SESSION: "When the strategy is allowed to look for setups — trading window and weekdays.",
   "SIGNAL BAR": "The bar-level pattern that must be true before Atlas will enter — the trigger.",
+  FILTER: "Regime or trend gates that must hold on top of the signal — e.g. \"only trade while EMA(50) is falling.\"",
   ENTRY: "How the position is opened — the fill price expression and position size.",
   STOP: "The invalidation price. If the market hits this level, the trade is closed at a loss.",
   TARGET: "The take-profit price. If the market hits this level, the trade is closed at a gain.",
@@ -1944,6 +1956,7 @@ function RulesLegend() {
   const rows: Array<[string, string]> = [
     ["01 SESSION", STAGE_HINTS.SESSION],
     ["02 SIGNAL BAR", STAGE_HINTS["SIGNAL BAR"]],
+    ["   FILTER", STAGE_HINTS.FILTER],
     ["03 ENTRY", STAGE_HINTS.ENTRY],
     ["04 STOP", STAGE_HINTS.STOP],
     ["05 TARGET", STAGE_HINTS.TARGET],

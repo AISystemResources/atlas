@@ -69,11 +69,25 @@ export type Expression =
 
 export type ComparisonOp = "gt" | "lt" | "gte" | "lte" | "eq" | "neq";
 
+/**
+ * Sprint 152: optional display-only role tag on any ConditionNode.
+ *
+ * - "signal" (default when omitted) — renders under SIGNAL BAR.
+ * - "filter" — renders under a distinct FILTER heading (or the ENTRY stage,
+ *   depending on FILTER_RENDER_TARGET in the renderer).
+ *
+ * Execution semantics are unaffected: every condition is evaluated identically
+ * (logical AND) regardless of role. Backtest / evaluator ignore this field.
+ */
+export type ConditionRole = "signal" | "filter";
+
 /** Leaf comparison — the original v1 condition type. */
 export interface Condition {
   op: ComparisonOp;
   left: Expression;
   right: Expression;
+  /** Sprint 152: display-only grouping hint. Default "signal". */
+  role?: ConditionRole;
 }
 
 /**
@@ -91,9 +105,9 @@ export interface Condition {
  */
 export type ConditionNode =
   | Condition
-  | { type: "and"; children: ConditionNode[] }
-  | { type: "or"; children: ConditionNode[] }
-  | { type: "not"; child: ConditionNode };
+  | { type: "and"; children: ConditionNode[]; role?: ConditionRole }
+  | { type: "or"; children: ConditionNode[]; role?: ConditionRole }
+  | { type: "not"; child: ConditionNode; role?: ConditionRole };
 
 // ── Sizing ───────────────────────────────────────────────────────────────────
 

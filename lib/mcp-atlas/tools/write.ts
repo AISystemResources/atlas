@@ -150,7 +150,12 @@ export const WRITE_TOOL_DEFS = [
             "Full TicketLogicBody JSON for v(N+1). Same shape as create_ticket_logic's body arg. " +
             "The AI can restructure freely within schema constraints — add/remove indicators, add/remove " +
             "entry.conditions, adjust computed{} expressions, etc. Schema gotcha: tunable_parameters[].path " +
-            "entries are ALL strings including array indices.",
+            "entries are ALL strings including array indices. " +
+            "**Sprint 152 — role tag on entry.conditions**: when the structural change adds a regime, trend, or " +
+            "volatility gate (e.g. EMA-slope, ATR floor, higher-timeframe RSI band), tag that condition with " +
+            "`role: \"filter\"`. Signal-bar triggers omit `role` or set `\"signal\"`. Display-only, no execution " +
+            "impact — but the UI groups filter conditions under a distinct FILTER heading, which is exactly the " +
+            "distinction reviewers care about.",
         },
         rationale: {
           type: "string",
@@ -330,7 +335,8 @@ export const WRITE_TOOL_DEFS = [
           type: "object",
           description:
             "Full TicketLogicBody JSON: universe, timeframe, direction, indicators, entry, exit, etc. See get_ticket_logic on an existing strategy for the shape. " +
-            "**Schema gotcha**: tunable_parameters[].path entries are ALL strings, including array indices — use `\"0\"` not `0` when targeting an array element (e.g. `[\"entry\", \"conditions\", \"0\", \"right\", \"value\"]`). The Zod validator rejects numeric indices cleanly with a descriptive error.",
+            "**Schema gotcha**: tunable_parameters[].path entries are ALL strings, including array indices — use `\"0\"` not `0` when targeting an array element (e.g. `[\"entry\", \"conditions\", \"0\", \"right\", \"value\"]`). The Zod validator rejects numeric indices cleanly with a descriptive error. " +
+            "**Sprint 152 — role tag on entry.conditions**: any regime, trend, or volatility gate (e.g. \"EMA(50) is falling\", \"ATR > 1.5\", \"1h RSI < 60\") should carry `role: \"filter\"`. Signal-bar predicates that describe the entry trigger itself (bar patterns, level touches, crossings on the current bar) either omit `role` or set it to `\"signal\"`. This is display-only — evaluator still ANDs everything — but a correct tag surfaces the filter under a distinct FILTER heading in the UI, which makes the strategy far easier to review.",
         },
         description: {
           type: "string",

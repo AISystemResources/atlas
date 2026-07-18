@@ -186,8 +186,27 @@ function capitalize(s: string): string {
 
 // ── Top-level: structured sections for the detail page ───────────────────────
 
+/**
+ * Sprint 152: controls where `entry.conditions` tagged with `role: "filter"` render.
+ * - "filter_section" (default) → surfaced under a distinct FILTER heading between
+ *   SIGNAL BAR and ENTRY, populated in `RenderedSections.filters`.
+ * - "entry_stage" → appended to the ENTRY stage prose instead. Use this if we
+ *   later prefer collapsing the filter/entry distinction in the UI.
+ *
+ * Flip this constant to change UI behaviour globally with no downstream schema
+ * or DB change.
+ */
+export const FILTER_RENDER_TARGET: "filter_section" | "entry_stage" =
+  "filter_section";
+
 export interface RenderedSections {
   signalBar: string[];
+  /**
+   * Sprint 152: role-tagged filter conditions from `entry.conditions`. Empty
+   * when no condition carries `role: "filter"` or when `FILTER_RENDER_TARGET`
+   * is set to `"entry_stage"` (in which case the same prose lands in `entry`).
+   */
+  filters: string[];
   entry: string[];
   stopLoss: string;
   takeProfit: string;
@@ -199,6 +218,16 @@ export interface RenderedSections {
   exitConditions: string[];
   /** Sprint 080F: staged partial-exit descriptions, one per stage */
   stages: string[];
+}
+
+/**
+ * Sprint 152: role lives on both leaf and compound ConditionNode variants,
+ * but only the top-level entry-condition nodes drive rendering grouping.
+ * Missing role behaves as `"signal"`.
+ */
+function conditionRole(node: ConditionNode): "signal" | "filter" {
+  const role = (node as { role?: "signal" | "filter" }).role;
+  return role === "filter" ? "filter" : "signal";
 }
 
 /**
@@ -236,9 +265,18 @@ export function renderSlMethodProse(
 }
 
 export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
-  const signalBar = body.entry.conditions.map((c) =>
-    renderConditionProse(c, body.indicators, body.computed),
-  );
+  // Sprint 152: partition entry.conditions by role. Untagged nodes default to
+  // "signal" so existing strategies render exactly as before.
+  const signalBar: string[] = [];
+  const filters: string[] = [];
+  for (const c of body.entry.conditions) {
+    const prose = renderConditionProse(c, body.indicators, body.computed);
+    if (conditionRole(c) === "filter") {
+      filters.push(prose);
+    } else {
+      signalBar.push(prose);
+    }
+  }
   if (body.regime_filter) {
     signalBar.unshift(
       `(Regime) ${renderConditionProse(body.regime_filter, body.indicators, body.computed)}`,
@@ -261,6 +299,14 @@ export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
     entryLines.push(`Position size: ${sizing.value} shares per trade`);
   } else {
     entryLines.push(`Position size: ${sizing.value}% portfolio risk per trade`);
+  }
+
+  // Sprint 152: when the target is "entry_stage", append filter prose to entry
+  // and empty out the filters bucket so the UI has one place to look.
+  const emittedFilters: string[] =
+    FILTER_RENDER_TARGET === "entry_stage" ? [] : filters;
+  if (FILTER_RENDER_TARGET === "entry_stage") {
+    for (const line of filters) entryLines.push(`(Filter) ${line}`);
   }
 
   // Sprint 079G: render sl_method as prose when set; fall back to the
@@ -314,5 +360,16 @@ export function renderTicketLogicBody(body: TicketLogicBody): RenderedSections {
     return `Stage ${i + 1} (${pct}%): TP = ${tp}`;
   });
 
-  return { signalBar, entry: entryLines, stopLoss, takeProfit, timeStop, indicators, whenItFires, exitConditions, stages };
+  return {
+    signalBar,
+    filters: emittedFilters,
+    entry: entryLines,
+    stopLoss,
+    takeProfit,
+    timeStop,
+    indicators,
+    whenItFires,
+    exitConditions,
+    stages,
+  };
 }
