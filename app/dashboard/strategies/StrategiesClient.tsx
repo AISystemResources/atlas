@@ -561,7 +561,8 @@ function TableRow({ card, gridCols }: { card: StrategyCard; gridCols: string }) 
   const [hover, setHover] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const [hoverAbove, setHoverAbove] = useState(false);
-  const selected = card.versions[card.versions.length - 1];
+  const nonArchived = card.versions.filter((v) => v.status !== "archived");
+  const selected = nonArchived[nonArchived.length - 1] ?? card.versions[card.versions.length - 1];
   const origin = originTag(card);
   const bt = selected?.latest_backtest ?? null;
   const pnl = bt?.total_pnl_points ?? null;
