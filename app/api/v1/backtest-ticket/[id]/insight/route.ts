@@ -1,7 +1,7 @@
 /**
  * Legacy alias for /api/v1/backtest-ticket/[id]/distillation (Sprint 062).
  * Sprint 053e shipped this under the "insight" name; renamed to
- * "distillation" because that's what the strategy author (Sandy) called the
+ * "distillation" because that's what the strategy author (Edmund) called the
  * process, and it distinguishes from the per-day Reflection on the Insights
  * page.
  *

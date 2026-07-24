@@ -56,7 +56,7 @@ export function computeWholeShareQty(notionalDollars: number, referencePrice: nu
 }
 
 /**
- * Build a long-side Ticket from Sandy S1 signal mechanics + per-user parameters.
+ * Build a long-side Ticket from Edmund S1 signal mechanics + per-user parameters.
  *
  * Defaults if no per-user parameters loaded:
  *   stop_buffer_pct = 0.5  (signal_bar_low * (1 - 0.005))
@@ -73,7 +73,7 @@ export function buildS1LongTicket(input: {
   current_price: number;
   stop_buffer_pct?: number;        // default 0.5
   target_atr_multiple?: number;    // default 0.5
-  entry_buffer_pct?: number;       // default 0.05 (Sandy: SB high + 0.05%)
+  entry_buffer_pct?: number;       // default 0.05 (Edmund: SB high + 0.05%)
 }): Ticket | null {
   const stop_buffer_pct = input.stop_buffer_pct ?? 0.5;
   const target_atr_multiple = input.target_atr_multiple ?? 0.5;

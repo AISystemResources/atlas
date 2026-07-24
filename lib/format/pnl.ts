@@ -1,7 +1,7 @@
 /**
  * Sprint 124: points-first PnL formatting.
  *
- * Traders think in points. Sandy Jadeja teaches "3 points above the high",
+ * Traders think in points. Edmund Jadeja teaches "3 points above the high",
  * not "$0.006 above the high." Backtests already store total_pnl_points
  * alongside total_pnl_dollars — this helper renders the points as the
  * headline with the dollar-equivalent as secondary context.

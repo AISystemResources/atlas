@@ -207,7 +207,7 @@ export default async function StrategiesPage() {
     // Sprint 127: pull ALL siblings (including archived) from the full-history
     // map, not the non-archived-only familyMap. Sprint 125's chevron widget
     // otherwise silently tops out at whatever's non-archived — e.g.,
-    // sandy-s1-long only exposes v3+v4 while v1+v2 are archived in DB.
+    // edmund-s1-long only exposes v3+v4 while v1+v2 are archived in DB.
     const familyKey = `${s.created_by_user_id ?? "—"}::${s.name}`;
     const siblings =
       allVersionsByFamily.get(familyKey) ?? familyMap.get(familyKey) ?? [];

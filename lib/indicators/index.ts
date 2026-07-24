@@ -77,7 +77,7 @@ export interface KCResult {
 
 /**
  * Keltner Channel with EMA(period) ± innerMult×ATR (inner) and ± outerMult×ATR (outer).
- * Sandy Jadeja S1 uses period=13, innerMult=1.3, outerMult=2.0.
+ * Edmund Jadeja S1 uses period=13, innerMult=1.3, outerMult=2.0.
  * Returns null when bars.length < period + 2 (insufficient history).
  */
 export function computeKeltnerChannel(
@@ -143,7 +143,7 @@ const RSI_REGIME_MIN = 50;    // RSI(21) must be above 50 for long signals
 const REGIME_RSI_PERIOD = 21;
 
 /**
- * Sandy Jadeja S1 signal detection on a bar series.
+ * Edmund Jadeja S1 signal detection on a bar series.
  *
  * Long signal conditions (all must hold):
  *   1. RSI(21) > 50 — bullish regime (long-only; short selling deferred per supervisor)
@@ -152,7 +152,7 @@ const REGIME_RSI_PERIOD = 21;
  *   4. Final bar close > inner lower KC band (bounced back above inner band)
  *
  * Returns null when conditions are not met or bars are insufficient.
- * Entry, stop, and target follow Sandy's mechanics: SB high/low ± 0.05% buffer, target = ATR(14)/2.
+ * Entry, stop, and target follow Edmund's mechanics: SB high/low ± 0.05% buffer, target = ATR(14)/2.
  */
 export function detectS1Signal(
   bars: { high: number; low: number; close: number; open?: number }[],

@@ -168,7 +168,7 @@ describe("AtlasSimAdapter", () => {
       take_profit_price: 520,
       stop_loss_price: 510,
       referencePrice: 515,
-      strategy: "sandy-s1-long",
+      strategy: "edmund-s1-long",
     });
     const pos = fakeStore.simulated_positions[0] as {
       take_profit_price: number;

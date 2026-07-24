@@ -157,7 +157,7 @@ export const BROKER_PROFILES: BrokerProfile[] = [
     id: "pepperstone-cfd-dow",
     label: "Pepperstone CFD — Dow / US30",
     description:
-      "Spread is the cost — typical 3-point spread on the US30 CFD during normal market hours. Zero commission. The 3-point spread eats directly into Sandy S1's 3-point buffer; this profile is the canonical example of friction-vs-edge separation.",
+      "Spread is the cost — typical 3-point spread on the US30 CFD during normal market hours. Zero commission. The 3-point spread eats directly into Edmund S1's 3-point buffer; this profile is the canonical example of friction-vs-edge separation.",
     asset_classes: ["cfd"],
     supports_fractional: true,
     supports_brackets_by_asset: { cfd: true },

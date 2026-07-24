@@ -1,7 +1,7 @@
 -- Sprint 080A follow-up: add 'exit_condition' to the exit_reason check constraint.
 -- The exit_condition exit reason was introduced in simulate-exit.ts (080A) but the
 -- table constraint was never updated, causing INSERT failures when strategies use
--- exit_conditions[] (e.g. sandy-s2-long-v2, sandy-s2-short-v2).
+-- exit_conditions[] (e.g. edmund-s2-long-v2, edmund-s2-short-v2).
 ALTER TABLE ticket_backtest_trades
   DROP CONSTRAINT IF EXISTS ticket_backtest_trades_exit_reason_check;
 

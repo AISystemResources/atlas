@@ -3,7 +3,7 @@
  *
  * Proves that detectStrategySignal (the new ticket_logics-driven signal
  * producer) emits entry/SL/TP prices that match the legacy
- * buildS1LongTicket output to 4 dp on a fixture that triggers Sandy S1.
+ * buildS1LongTicket output to 4 dp on a fixture that triggers Edmund S1.
  *
  * The legacy detectS1Signal + buildS1LongTicket code in lib/indicators and
  * lib/signals still exists but is no longer wired into production — its
@@ -14,7 +14,7 @@ import {
   detectStrategySignal,
   type ActiveStrategy,
 } from "@/lib/scheduler/ticket-adapter";
-import { SANDY_S1_LONG_V1 } from "@/lib/strategies/seeds";
+import { EDMUND_S1_LONG_V1 } from "@/lib/strategies/seeds";
 import type { TicketLogic } from "@/lib/strategies/types";
 import { detectS1Signal, computeIndicators } from "@/lib/indicators";
 import { buildS1LongTicket } from "@/lib/signals/types";
@@ -22,11 +22,11 @@ import { buildS1LongTicket } from "@/lib/signals/types";
 function makeStrategy(): ActiveStrategy {
   const logic: TicketLogic = {
     id: "00000000-0000-0000-0000-000000000001",
-    name: "sandy-s1-long",
+    name: "edmund-s1-long",
     version: 1,
     parent_version_id: null,
     description: "test fixture",
-    body: SANDY_S1_LONG_V1,
+    body: EDMUND_S1_LONG_V1,
     status: "active",
     created_by: "default",
     created_at: new Date().toISOString(),
@@ -56,7 +56,7 @@ describe("detectStrategySignal (Sprint 054 live-scalper rewire)", () => {
 
     expect(signal).not.toBeNull();
     expect(signal!.direction).toBe("long");
-    expect(signal!.logic_name).toBe("sandy-s1-long");
+    expect(signal!.logic_name).toBe("edmund-s1-long");
     expect(signal!.logic_version).toBe(1);
     expect(signal!.notional_dollars).toBe(200);
   });
@@ -85,7 +85,7 @@ describe("detectStrategySignal (Sprint 054 live-scalper rewire)", () => {
     expect(legacyTicket).not.toBeNull();
 
     // The new ticket_logics-driven path MUST agree with the legacy oracle.
-    // If this ever drifts, either (a) the JSON body of sandy-s1-long v1 was
+    // If this ever drifts, either (a) the JSON body of edmund-s1-long v1 was
     // mis-edited, or (b) the legacy hardcoded path was changed in isolation.
     expect(signal!.entry_price).toBeCloseTo(legacyTicket!.entry_price, 3);
     expect(signal!.stop_loss).toBeCloseTo(legacyTicket!.stop_loss, 3);

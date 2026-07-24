@@ -202,7 +202,7 @@ export async function POST(req: Request): Promise<Response> {
       created_by_user_id: user.userId,
       visibility: "private", // promoted versions are private drafts by default
       // Sprint 068: promoted versions inherit ticker + tags from the parent.
-      // A v2 of "sandy-s1-long" is still calibrated for ^DJI; the artifact
+      // A v2 of "edmund-s1-long" is still calibrated for ^DJI; the artifact
       // metadata travels with the version chain.
       ticker: parent.ticker,
       tags: parent.tags ?? [],

@@ -29,7 +29,7 @@ interface TicketLogicRow {
 
 const ACTIVATIONS = [
   {
-    label: "sandy-s1-long v4",
+    label: "edmund-s1-long v4",
     newDraftId: "d8780220-e86c-4205-814a-acb2a76f65d5",
     currentActiveId: "3865513a-180e-4107-b1b9-d41cbdf2415a",
     sessionWindowTunables: [
@@ -46,7 +46,7 @@ const ACTIVATIONS = [
     ],
   },
   {
-    label: "sandy-s2-short v2",
+    label: "edmund-s2-short v2",
     newDraftId: "3f0e57a7-1546-4ad1-b682-6022da4d8333",
     currentActiveId: "193cb396-4a82-4170-a5ce-468d2a2a076d",
     sessionWindowTunables: [

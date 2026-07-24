@@ -5,7 +5,7 @@
 --      were created BEFORE the promote_ticket_logic_version fix that inherits
 --      parent_paper_id. They show "Tune" instead of "arXiv" even though their
 --      lineage-root is a paper-extracted v1.
---   2. The whole sandy-* family originated from Edmund's post-seminar Claude
+--   2. The whole edmund-* family originated from Edmund's post-seminar Claude
 --      chat discussions, but v1 was created before the created_by='claude_chat'
 --      convention landed, so it defaulted to 'default'. Subsequent v2+ were
 --      distillations, all mis-labelled.
@@ -34,8 +34,8 @@ WHERE t.id = pl.id
   AND t.parent_paper_id IS NULL
   AND pl.parent_paper_id IS NOT NULL;
 
--- (2) Force the whole sandy-* family to claude_chat authorship. The family
+-- (2) Force the whole edmund-* family to claude_chat authorship. The family
 -- came from Edmund's post-seminar discussions with Claude, not from any
 -- paper or hand-authoring.
 UPDATE ticket_logics SET created_by = 'claude_chat'
-WHERE name LIKE 'sandy-%';
+WHERE name LIKE 'edmund-%';

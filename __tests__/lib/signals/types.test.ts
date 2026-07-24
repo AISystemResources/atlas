@@ -29,7 +29,7 @@ describe("computeWholeShareQty", () => {
   });
 });
 
-describe("buildS1LongTicket — default Sandy S1 mechanics", () => {
+describe("buildS1LongTicket — default Edmund S1 mechanics", () => {
   const baseInput = {
     ticker: "AAPL",
     signal_bar_high: 200,

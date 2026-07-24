@@ -1,5 +1,5 @@
 /**
- * Sprint 059 — evaluator test for sandy-s1-long v2 (canonical Sandy S1).
+ * Sprint 059 — evaluator test for edmund-s1-long v2 (canonical Edmund S1).
  *
  * Asserts the v2 mechanics produce the right entry/SL/TP shape on a fixture
  * that satisfies all three signal-bar conditions:
@@ -12,7 +12,7 @@
  */
 
 import { evaluate } from "@/lib/strategies/evaluate";
-import { SANDY_S1_LONG_V2 } from "@/lib/strategies/seeds";
+import { EDMUND_S1_LONG_V2 } from "@/lib/strategies/seeds";
 
 function bar(close: number, high: number, low: number, open: number) {
   return { open, high, low, close };
@@ -26,7 +26,7 @@ function bar(close: number, high: number, low: number, open: number) {
  *   - close < EMA(13) median
  *   - entry_price (= sb.high + 3) < EMA(13)
  *
- * The +3 absolute buffer is Sandy's Dow convention; for it to fit under the
+ * The +3 absolute buffer is Edmund's Dow convention; for it to fit under the
  * median, signal_bar.high needs to be ~5+ points below median. Fixture
  * anchors median at ~50,000 then dips signal bar close to ~49,990 with
  * high ≈ 49,994.
@@ -46,10 +46,10 @@ function makeS1V2TriggerBars() {
   return bars;
 }
 
-describe("sandy-s1-long v2 evaluator", () => {
+describe("edmund-s1-long v2 evaluator", () => {
   it("fires on a fixture that satisfies all four signal-bar conditions", () => {
     const bars = makeS1V2TriggerBars();
-    const entries = evaluate(SANDY_S1_LONG_V2, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V2, bars);
     const last = entries.find((e) => e.bar_index === bars.length - 1);
     expect(last).toBeDefined();
 
@@ -65,14 +65,14 @@ describe("sandy-s1-long v2 evaluator", () => {
     const bars = makeS1V2TriggerBars();
     // Flip signal bar close above EMA (~50,000)
     bars[bars.length - 1] = bar(50_010, 50_015, 50_000, 50_005);
-    const entries = evaluate(SANDY_S1_LONG_V2, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V2, bars);
     expect(entries.find((e) => e.bar_index === bars.length - 1)).toBeUndefined();
   });
 
   it("does NOT fire when signal bar is bearish (close < open)", () => {
     const bars = makeS1V2TriggerBars();
     bars[bars.length - 1] = bar(49_985, 49_995, 49_980, 49_993);
-    const entries = evaluate(SANDY_S1_LONG_V2, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V2, bars);
     expect(entries.find((e) => e.bar_index === bars.length - 1)).toBeUndefined();
   });
 
@@ -81,15 +81,15 @@ describe("sandy-s1-long v2 evaluator", () => {
     // Signal bar close below EMA but high close enough that +3 pushes above EMA.
     // EMA is ~49,998. Set high = 49,997 → entry = 50,000 ≥ EMA → reject.
     bars[bars.length - 1] = bar(49_995, 49_997, 49_990, 49_991);
-    const entries = evaluate(SANDY_S1_LONG_V2, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V2, bars);
     expect(entries.find((e) => e.bar_index === bars.length - 1)).toBeUndefined();
   });
 });
 
-describe("sandy-s1-long v2 — risk/reward shape vs v1", () => {
+describe("edmund-s1-long v2 — risk/reward shape vs v1", () => {
   it("produces stop distance = signal-bar range + 6 points (not multiplicative)", () => {
     const bars = makeS1V2TriggerBars();
-    const entries = evaluate(SANDY_S1_LONG_V2, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V2, bars);
     const last = entries.find((e) => e.bar_index === bars.length - 1);
     expect(last).toBeDefined();
 

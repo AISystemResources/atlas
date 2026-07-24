@@ -8,10 +8,10 @@
 --   - public:   discoverable in the library
 --
 -- forked_from_id traces lineage across users — when mom forks Edmund's
--- sandy-s1-long, the new row has created_by_user_id=mom and
+-- edmund-s1-long, the new row has created_by_user_id=mom and
 -- forked_from_id=<Edmund's strategy id>.
 --
--- Existing rows (sandy-s1-long v1 + v2) are backfilled to Edmund's user_id
+-- Existing rows (edmund-s1-long v1 + v2) are backfilled to Edmund's user_id
 -- and visibility='public' so future users can see/fork them.
 
 ALTER TABLE public.ticket_logics
@@ -35,4 +35,4 @@ CREATE INDEX IF NOT EXISTS ticket_logics_fork_lineage_idx
 UPDATE public.ticket_logics
 SET created_by_user_id = 'user_3B4k96FjK9wZUDi8Xs0AzeNLnvy',
     visibility = 'public'
-WHERE name = 'sandy-s1-long';
+WHERE name = 'edmund-s1-long';

@@ -2,8 +2,8 @@
  * One-shot: narrow session windows on two draft strategies based on
  * time-of-day trade analysis.
  *
- *  sandy-s1-long v4  — end:   "11:00" → "10:00"  (09:31-09:59 ET = 8W/0L)
- *  sandy-s2-short v2 — start: "09:31" → "10:30"  (10:00-10:29 ET dead zone)
+ *  edmund-s1-long v4  — end:   "11:00" → "10:00"  (09:31-09:59 ET = 8W/0L)
+ *  edmund-s2-short v2 — start: "09:31" → "10:30"  (10:00-10:29 ET dead zone)
  *
  * Run:  npx tsx --env-file .env.local scripts/patch-session-windows.ts
  */
