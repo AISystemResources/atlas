@@ -6,7 +6,7 @@
 -- about where it has been validated.
 --
 -- Tags are a cross-cutting layer for grouping similar strategies across
--- tickers (e.g. "mean-reversion", "5m", "edmund-jadeja") without forcing a
+-- tickers (e.g. "mean-reversion", "5m") without forcing a
 -- single hierarchy.
 --
 -- watchlist.strategy_id pairs a watchlist row (the user's intent to trade a
@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS watchlist_strategy_idx
 -- Backfill existing strategies (edmund-s1-long was tuned for ^DJI).
 UPDATE public.ticket_logics
 SET ticker = '^DJI',
-    tags = ARRAY['mean-reversion', '5m', 'edmund-jadeja']
+    tags = ARRAY['mean-reversion', '5m']
 WHERE name = 'edmund-s1-long';
 
 -- Backfill Edmund's watchlist DIA row → edmund-s1-long v2 (preserves
