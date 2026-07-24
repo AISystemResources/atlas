@@ -11,7 +11,7 @@
  */
 
 import { evaluate } from "@/lib/strategies/evaluate";
-import { SANDY_S1_LONG_V1 } from "@/lib/strategies/seeds";
+import { EDMUND_S1_LONG_V1 } from "@/lib/strategies/seeds";
 import { ticketLogicBodySchema } from "@/lib/strategies/schema";
 import { detectS1Signal, computeIndicators } from "@/lib/indicators";
 import { buildS1LongTicket } from "@/lib/signals/types";
@@ -26,7 +26,7 @@ function makeBar(close: number, high?: number, low?: number, open?: number) {
 }
 
 /**
- * Synthetic series that reliably triggers Sandy S1.
+ * Synthetic series that reliably triggers Edmund S1.
  *   - 25 bars of mild uptrend (drives RSI(21) ≈ 72)
  *   - Penultimate bar with deep wick down to 96 (touches outer lower KC band)
  *   - Final bar bullish recovery (close > open, close > inner lower KC band)
@@ -50,9 +50,9 @@ const FALLING_BARS = Array.from({ length: 35 }, (_, i) =>
   makeBar(100 - i * 0.5, 101 - i * 0.5, 99 - i * 0.5),
 );
 
-describe("SANDY_S1_LONG_V1 seed is valid", () => {
+describe("EDMUND_S1_LONG_V1 seed is valid", () => {
   it("passes the Zod body schema", () => {
-    expect(() => ticketLogicBodySchema.parse(SANDY_S1_LONG_V1)).not.toThrow();
+    expect(() => ticketLogicBodySchema.parse(EDMUND_S1_LONG_V1)).not.toThrow();
   });
 });
 
@@ -61,7 +61,7 @@ describe("evaluator vs detectS1Signal (firing decision)", () => {
     const oracle = detectS1Signal(FALLING_BARS);
     expect(oracle).toBeNull();
 
-    const entries = evaluate(SANDY_S1_LONG_V1, FALLING_BARS);
+    const entries = evaluate(EDMUND_S1_LONG_V1, FALLING_BARS);
     // Stronger than "no entry at last bar": no entry anywhere in the series.
     expect(entries.length).toBe(0);
   });
@@ -71,7 +71,7 @@ describe("evaluator vs detectS1Signal (firing decision)", () => {
     const oracle = detectS1Signal(bars);
     expect(oracle).not.toBeNull();
 
-    const entries = evaluate(SANDY_S1_LONG_V1, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V1, bars);
     // detectS1Signal only ever evaluates the last bar; the parity invariant
     // here is that the evaluator fires AT the last bar and not elsewhere on
     // this fixture.
@@ -83,7 +83,7 @@ describe("evaluator vs detectS1Signal (firing decision)", () => {
     const bars = makeS1TriggerBars();
     bars[bars.length - 1] = makeBar(97, 100, 95, 99.5); // bearish close < open
     expect(detectS1Signal(bars)).toBeNull();
-    const entries = evaluate(SANDY_S1_LONG_V1, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V1, bars);
     const lastBarEntry = entries.find((e) => e.bar_index === bars.length - 1);
     expect(lastBarEntry).toBeUndefined();
   });
@@ -92,7 +92,7 @@ describe("evaluator vs detectS1Signal (firing decision)", () => {
 describe("evaluator vs buildS1LongTicket (price parity)", () => {
   it("entry/stop/target prices match buildS1LongTicket exactly (4 dp)", () => {
     const bars = makeS1TriggerBars();
-    const entries = evaluate(SANDY_S1_LONG_V1, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V1, bars);
     const lastBarEntry = entries.find((e) => e.bar_index === bars.length - 1);
     expect(lastBarEntry).toBeDefined();
 
@@ -118,13 +118,13 @@ describe("evaluator vs buildS1LongTicket (price parity)", () => {
 describe("evaluator output shape", () => {
   it("returns empty array on insufficient bars (no throw)", () => {
     const bars = Array.from({ length: 5 }, () => makeBar(100));
-    const entries = evaluate(SANDY_S1_LONG_V1, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V1, bars);
     expect(entries).toEqual([]);
   });
 
   it("returned entries carry indicator_snapshot", () => {
     const bars = makeS1TriggerBars();
-    const entries = evaluate(SANDY_S1_LONG_V1, bars);
+    const entries = evaluate(EDMUND_S1_LONG_V1, bars);
     const lastBarEntry = entries.find((e) => e.bar_index === bars.length - 1);
     expect(lastBarEntry).toBeDefined();
 

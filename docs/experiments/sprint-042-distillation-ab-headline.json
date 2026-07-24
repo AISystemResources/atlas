@@ -10,7 +10,7 @@
   "strategies": [
     {
       "strategy": {
-        "name": "sandy-s2-long",
+        "name": "edmund-s2-long",
         "starting_version": 1
       },
       "in_sample_window": {
@@ -602,7 +602,7 @@
     },
     {
       "strategy": {
-        "name": "sandy-s2-short",
+        "name": "edmund-s2-short",
         "starting_version": 1
       },
       "in_sample_window": {
@@ -1118,7 +1118,7 @@
     },
     {
       "strategy": {
-        "name": "sandy-s2-long-v2",
+        "name": "edmund-s2-long-v2",
         "starting_version": 1
       },
       "in_sample_window": {
@@ -1738,7 +1738,7 @@
     },
     {
       "strategy": {
-        "name": "sandy-s2-short-v2",
+        "name": "edmund-s2-short-v2",
         "starting_version": 1
       },
       "in_sample_window": {

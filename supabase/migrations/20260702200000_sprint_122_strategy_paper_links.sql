@@ -2,7 +2,7 @@
 --
 -- Prior state: ticket_logics.parent_paper_id is a singular pointer to the
 -- paper that inspired the strategy. Real world: multiple papers may converge
--- on the same trading thesis (Sandy Jadeja + a Turtle-style breakout paper
+-- on the same trading thesis (Edmund Jadeja + a Turtle-style breakout paper
 -- both suggesting time-of-day trend fade). Convergence is a validation
 -- signal, not a duplicate. This migration adds the many-to-many surface.
 --

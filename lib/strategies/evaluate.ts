@@ -76,7 +76,7 @@ function evaluateAtBar(
   if (!isBarInSession(bars[barIdx], logic)) return null;
 
   // Resolve computed values FIRST so entry conditions can reference them
-  // (e.g. "entry_price < ema_13" — the mean-reversion guard in Sandy S1 v2).
+  // (e.g. "entry_price < ema_13" — the mean-reversion guard in Edmund S1 v2).
   // Computed entries are evaluated in declaration order and cannot reference
   // each other (no dependency resolution in this engine).
   const computed: Record<string, number> = {};

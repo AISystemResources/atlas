@@ -1,11 +1,11 @@
 /**
- * Activate improved versions of sandy-s1-short and sandy-s2-long.
+ * Activate improved versions of edmund-s1-short and edmund-s2-long.
  *
- *  sandy-s1-short v3 — stop_buffer 2.25→1.69, session 09:50–11:00 ET
+ *  edmund-s1-short v3 — stop_buffer 2.25→1.69, session 09:50–11:00 ET
  *    Archive: v1 (ee4ab270) + intermediate v2 draft (a5de891b)
  *    Activate: v3 (0f38f9ee)
  *
- *  sandy-s2-long v2  — atr_stop_multiple 1.5→1.125, session 10:30–11:00 ET
+ *  edmund-s2-long v2  — atr_stop_multiple 1.5→1.125, session 10:30–11:00 ET
  *    Archive: v1 (1cdd57bd)
  *    Activate: v2 (3d77801e)
  *    Note: v3 (e93ebf3b) left as draft — WR regression experiment for traceability.
@@ -36,7 +36,7 @@ interface TicketLogicRow {
 
 const ACTIVATIONS = [
   {
-    label: "sandy-s1-short v3",
+    label: "edmund-s1-short v3",
     newDraftId: "0f38f9ee-5abb-4c61-90a2-eccb2d15e2c3",
     archiveIds: [
       { id: "ee4ab270-a8cc-4de4-8769-e91c4e3106a1", fromStatus: "active" },
@@ -58,7 +58,7 @@ const ACTIVATIONS = [
     ],
   },
   {
-    label: "sandy-s2-long v2",
+    label: "edmund-s2-long v2",
     newDraftId: "3d77801e-bec6-4b3a-92f1-4fdfa69ba564",
     archiveIds: [
       { id: "1cdd57bd-93e3-4d44-8000-3343a24dbc35", fromStatus: "active" },

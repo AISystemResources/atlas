@@ -1,7 +1,7 @@
 /**
  * Tests for Keltner Channel computation and S1 signal detection.
  *
- * S1 (Sandy Jadeja): Two KCs (EMA 13, 1.3× and 2.0×). Long signal bar =
+ * S1 (Edmund Jadeja): Two KCs (EMA 13, 1.3× and 2.0×). Long signal bar =
  * close > open AND close > inner lower KC band, after a prior bar touched
  * the outer lower band. Regime filter: RSI(21) > 50.
  */

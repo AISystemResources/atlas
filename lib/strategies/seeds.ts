@@ -1,7 +1,7 @@
 /**
  * Canonical TicketLogicBody constants.
  *
- * V1 (Sprint 053a) was a naive first encoding that diverged from Sandy's
+ * V1 (Sprint 053a) was a naive first encoding that diverged from Edmund's
  * actual S1 mechanics — outer KC touch + RSI(21) regime + multiplicative
  * buffers + ATR-based TP. v1 backtested at -$2.58 on ^DJI 58 days and the
  * AI aggregate review recommended deprecation. Kept here for the parity
@@ -25,7 +25,7 @@
 
 import type { TicketLogicBody } from "./types";
 
-export const SANDY_S1_LONG_V1: TicketLogicBody = {
+export const EDMUND_S1_LONG_V1: TicketLogicBody = {
   universe: { asset_class: "any" },
   timeframe: "5m",
   direction: "long",
@@ -81,7 +81,7 @@ export const SANDY_S1_LONG_V1: TicketLogicBody = {
   },
 };
 
-export const SANDY_S1_LONG_V2: TicketLogicBody = {
+export const EDMUND_S1_LONG_V2: TicketLogicBody = {
   universe: { asset_class: "any" },
   timeframe: "5m",
   direction: "long",
@@ -107,7 +107,7 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
       // 4. The ENTRY price (signal_bar.high + 3) must also be below the EMA(13)
       //    median. Without this, a long trade entered above the median with TP
       //    at the median would be an immediate guaranteed loss. This is
-      //    Sandy's "signal bar's high is too high" quality filter, encoded as
+      //    Edmund's "signal bar's high is too high" quality filter, encoded as
       //    a strict rejection.
       { op: "lt",
         left:  { type: "computed", id: "entry_price" },
@@ -139,7 +139,7 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
       name: "entry_buffer_points",
       path: ["computed", "entry_price", "right", "value"],
       description:
-        "Absolute points added to signal_bar.high for the entry trigger. Sandy's Dow convention is 3.",
+        "Absolute points added to signal_bar.high for the entry trigger. Edmund's Dow convention is 3.",
       min: 1,
       max: 100,
       // Sprint 053.1: structural — small buffer is identity of the strategy.
@@ -165,7 +165,7 @@ export const SANDY_S1_LONG_V2: TicketLogicBody = {
       max_step_pct: 0.5,
     },
   ],
-  // Sprint 069: Sandy's S1 was authored as a US-equity-morning strategy.
+  // Sprint 069: Edmund's S1 was authored as a US-equity-morning strategy.
   // Restrict firing to weekdays 09:31–11:00 ET, matching the window the
   // strategy was originally observed and calibrated on.
   session_window: {

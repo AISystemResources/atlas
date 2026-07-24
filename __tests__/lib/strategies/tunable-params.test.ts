@@ -14,11 +14,11 @@ import {
   readByPath,
   setByPath,
 } from "@/lib/strategies/tunable-params";
-import { SANDY_S1_LONG_V2 } from "@/lib/strategies/seeds";
+import { EDMUND_S1_LONG_V2 } from "@/lib/strategies/seeds";
 
 describe("getTunables reads from body.tunable_parameters", () => {
-  it("returns the embedded tunables on SANDY_S1_LONG_V2", () => {
-    const tunables = getTunables(SANDY_S1_LONG_V2);
+  it("returns the embedded tunables on EDMUND_S1_LONG_V2", () => {
+    const tunables = getTunables(EDMUND_S1_LONG_V2);
     const names = tunables.map((t) => t.name);
     expect(names).toEqual([
       "entry_buffer_points",
@@ -28,7 +28,7 @@ describe("getTunables reads from body.tunable_parameters", () => {
   });
 
   it("returns [] when the body has no tunable_parameters field", () => {
-    const bare = { ...SANDY_S1_LONG_V2, tunable_parameters: undefined };
+    const bare = { ...EDMUND_S1_LONG_V2, tunable_parameters: undefined };
     expect(getTunables(bare)).toEqual([]);
   });
 
@@ -37,10 +37,10 @@ describe("getTunables reads from body.tunable_parameters", () => {
     ["stop_buffer_points", 3],
     ["notional_per_trade", 200],
   ])("tunable '%s' resolves to %s via its declared path", (name, expected) => {
-    const tunables = getTunables(SANDY_S1_LONG_V2);
+    const tunables = getTunables(EDMUND_S1_LONG_V2);
     const t = tunables.find((x) => x.name === name);
     expect(t).toBeDefined();
-    expect(readByPath(SANDY_S1_LONG_V2, t!.path)).toBe(expected);
+    expect(readByPath(EDMUND_S1_LONG_V2, t!.path)).toBe(expected);
   });
 });
 
@@ -63,29 +63,29 @@ describe("setByPath", () => {
 
 describe("applyParameterChanges (body-driven)", () => {
   it("returns a new body with one tunable updated", () => {
-    const result = applyParameterChanges(SANDY_S1_LONG_V2, [
+    const result = applyParameterChanges(EDMUND_S1_LONG_V2, [
       { name: "entry_buffer_points", proposed_value: 5 },
     ]);
-    const tunable = getTunables(SANDY_S1_LONG_V2).find(
+    const tunable = getTunables(EDMUND_S1_LONG_V2).find(
       (t) => t.name === "entry_buffer_points",
     )!;
     expect(readByPath(result, tunable.path)).toBe(5);
   });
 
   it("does not mutate the input body", () => {
-    const before = JSON.stringify(SANDY_S1_LONG_V2);
-    applyParameterChanges(SANDY_S1_LONG_V2, [
+    const before = JSON.stringify(EDMUND_S1_LONG_V2);
+    applyParameterChanges(EDMUND_S1_LONG_V2, [
       { name: "stop_buffer_points", proposed_value: 6 },
     ]);
-    expect(JSON.stringify(SANDY_S1_LONG_V2)).toBe(before);
+    expect(JSON.stringify(EDMUND_S1_LONG_V2)).toBe(before);
   });
 
   it("applies multiple changes simultaneously", () => {
-    const result = applyParameterChanges(SANDY_S1_LONG_V2, [
+    const result = applyParameterChanges(EDMUND_S1_LONG_V2, [
       { name: "entry_buffer_points", proposed_value: 4 },
       { name: "notional_per_trade", proposed_value: 500 },
     ]);
-    const tunables = getTunables(SANDY_S1_LONG_V2);
+    const tunables = getTunables(EDMUND_S1_LONG_V2);
     expect(
       readByPath(result, tunables.find((t) => t.name === "entry_buffer_points")!.path),
     ).toBe(4);
@@ -96,7 +96,7 @@ describe("applyParameterChanges (body-driven)", () => {
 
   it("throws for an unknown tunable name (not declared in body)", () => {
     expect(() =>
-      applyParameterChanges(SANDY_S1_LONG_V2, [
+      applyParameterChanges(EDMUND_S1_LONG_V2, [
         { name: "made_up_param", proposed_value: 99 },
       ]),
     ).toThrow(/unknown tunable/);
@@ -104,7 +104,7 @@ describe("applyParameterChanges (body-driven)", () => {
 
   it("works on a strategy whose body declares custom tunables (no global registry)", () => {
     const customStrategy = {
-      ...SANDY_S1_LONG_V2,
+      ...EDMUND_S1_LONG_V2,
       tunable_parameters: [
         {
           name: "my_custom_thing",

@@ -2,7 +2,7 @@
  * Smoke test for Sprint 054 — live scalper rewire.
  *
  * Exercises the actual production code path:
- *   1. loadActiveStrategy('sandy-s1-long') — confirms DB load works
+ *   1. loadActiveStrategy('edmund-s1-long') — confirms DB load works
  *   2. fetchIntradayBars on a real ticker — confirms Alpaca fetch works
  *   3. detectStrategySignal — confirms adapter math doesn't throw on real bars
  *   4. (does NOT submit any orders — read-only verification)
@@ -31,8 +31,8 @@ async function main() {
   console.log("─".repeat(70));
 
   // [1/3] Load active strategy from DB
-  console.log("\n[1/3] Loading active ticket_logic for 'sandy-s1-long'");
-  const strategy = await loadActiveStrategy("sandy-s1-long");
+  console.log("\n[1/3] Loading active ticket_logic for 'edmund-s1-long'");
+  const strategy = await loadActiveStrategy("edmund-s1-long");
   if (!strategy) {
     console.error("  ✗ FAILED: no active row in ticket_logics");
     console.error("     The live scalper would abort the cycle.");

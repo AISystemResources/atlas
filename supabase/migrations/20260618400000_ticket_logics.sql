@@ -40,12 +40,12 @@ ALTER TABLE public.ticket_logics ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Backend service key bypasses RLS"
   ON public.ticket_logics FOR ALL USING (true);
 
--- Seed: Sandy Jadeja S1 KC Mean Reversion (Long), version 1.
+-- Seed: Edmund Jadeja S1 KC Mean Reversion (Long), version 1.
 -- Encodes the exact mechanics of detectS1Signal() in lib/indicators/index.ts:157-204.
 INSERT INTO public.ticket_logics (name, version, description, body, status, created_by) VALUES (
-  'sandy-s1-long',
+  'edmund-s1-long',
   1,
-  'Sandy Jadeja S1 KC Mean Reversion (Long). RSI(21)>50 regime, previous bar low touches outer lower KC band (EMA13 - 2.0*ATR13), signal bar bullish (close > open) and closes above inner lower KC band (EMA13 - 1.3*ATR13). Entry = SB high + 0.05%, SL = SB low - 0.5%, TP = entry + 0.5*ATR14.',
+  'Edmund Jadeja S1 KC Mean Reversion (Long). RSI(21)>50 regime, previous bar low touches outer lower KC band (EMA13 - 2.0*ATR13), signal bar bullish (close > open) and closes above inner lower KC band (EMA13 - 1.3*ATR13). Entry = SB high + 0.05%, SL = SB low - 0.5%, TP = entry + 0.5*ATR14.',
   '{
     "universe": { "asset_class": "any" },
     "timeframe": "5m",

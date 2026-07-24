@@ -64,7 +64,7 @@ export const WRITE_TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
-        logic_name: { type: "string", description: "Strategy name (e.g. 'sandy-s1-long')." },
+        logic_name: { type: "string", description: "Strategy name (e.g. 'edmund-s1-long')." },
         version: { type: "integer", minimum: 1, description: "Specific version to backtest. Omit for latest active." },
         ticker: { type: "string", description: "Ticker symbol (e.g. '^DJI', 'TSLA', 'BTC/USD')." },
         start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "ISO date YYYY-MM-DD." },
@@ -325,7 +325,7 @@ export const WRITE_TOOL_DEFS = [
           type: "string",
           minLength: 1,
           maxLength: 64,
-          description: "Short identifier for the strategy family (e.g. 'sandy-s1-long', 'tsla-momentum-15m'). Cannot collide with the caller's existing v1 of the same name.",
+          description: "Short identifier for the strategy family (e.g. 'edmund-s1-long', 'tsla-momentum-15m'). Cannot collide with the caller's existing v1 of the same name.",
         },
         ticker: {
           type: "string",

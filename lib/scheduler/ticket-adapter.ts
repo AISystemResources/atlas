@@ -49,7 +49,7 @@ export interface StrategySignal {
  * (Sprint 060C).
  */
 export async function loadActiveStrategy(
-  strategyName = "sandy-s1-long",
+  strategyName = "edmund-s1-long",
 ): Promise<ActiveStrategy | null> {
   const logic = await loadTicketLogic(strategyName);
   if (!logic) return null;

@@ -1,5 +1,5 @@
--- Sprint 069: backfill sandy-s1-long v2 with the session window + weekday
--- filter the strategy was originally calibrated for. Sandy's S1 is a
+-- Sprint 069: backfill edmund-s1-long v2 with the session window + weekday
+-- filter the strategy was originally calibrated for. Edmund's S1 is a
 -- US-equity-morning mean-reversion play — 09:31–11:00 ET, Mon–Fri.
 --
 -- The TicketLogicBody schema now carries session_window + valid_weekdays
@@ -16,4 +16,4 @@ SET body = body
        ),
        'valid_weekdays', jsonb_build_array(1, 2, 3, 4, 5)
      )
-WHERE name = 'sandy-s1-long' AND version = 2;
+WHERE name = 'edmund-s1-long' AND version = 2;

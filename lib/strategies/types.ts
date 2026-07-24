@@ -5,7 +5,7 @@
  * `ticket_logics` table. Replaces hardcoded S1 in lib/indicators/index.ts.
  *
  * Design call: Conditions are an implicit AND across an array. Explicit
- * AND/OR/NOT compound conditions are a v2 concern — Sandy S1, S2, and most
+ * AND/OR/NOT compound conditions are a v2 concern — Edmund S1, S2, and most
  * retail mean-reversion strategies don't need them.
  */
 
@@ -197,7 +197,7 @@ export interface TunableParameter {
  * Intraday session window. Strategy only fires on bars whose timestamp
  * falls inside [start, end) in the named IANA timezone.
  *
- * Sandy S1 was calibrated for the 09:31–11:00 ET morning window — applying
+ * Edmund S1 was calibrated for the 09:31–11:00 ET morning window — applying
  * it to bars outside that window changes the strategy in practice. By
  * making the window a first-class field we stop pretending it doesn't
  * matter and let the live scalper enforce what the backtest assumed.

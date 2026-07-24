@@ -148,7 +148,7 @@ function originTag(card: StrategyCard): OriginTag {
 
 // ─── Family grouping ─────────────────────────────────────────────────────────
 // A strategy's "family" is the first two hyphenated tokens of its name.
-// sandy-s1-short + sandy-s1-long-fork-4p35 → family "sandy-s1".
+// edmund-s1-short + edmund-s1-long-fork-4p35 → family "edmund-s1".
 // bounce-fade-close + bounce-fade-long → family "bounce-fade".
 // mcp-test-rsi-cross → family "mcp-test".
 

@@ -2,8 +2,8 @@
  * One-shot: narrow session windows on s1-short v2 and s2-long v2 based on
  * time-of-day analysis.
  *
- *  sandy-s1-short v2 — start: "09:31" → "09:50"  (09:31-09:44 dead zone, 09:45 = 0W/3L)
- *  sandy-s2-long  v2 — start: "09:31" → "10:30"  (09:31-10:29 sub-25% WR across all buckets)
+ *  edmund-s1-short v2 — start: "09:31" → "09:50"  (09:31-09:44 dead zone, 09:45 = 0W/3L)
+ *  edmund-s2-long  v2 — start: "09:31" → "10:30"  (09:31-10:29 sub-25% WR across all buckets)
  *
  * Run:  npx tsx --env-file .env.local scripts/patch-session-windows-v2.ts
  */
