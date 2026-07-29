@@ -200,12 +200,38 @@ const BASE_URL = (
 
 const WWW_AUTHENTICATE = `Bearer realm="atlas-api-mcp", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`;
 
+// CORS for browser-based MCP clients (ChatGPT connectors). Native clients
+// like Claude Desktop skip preflight; without these headers a browser
+// client's OPTIONS preflight gets a bare 204 and the subsequent POST
+// never fires — surfaces as "no MCP server was found" to the user.
+// Origin is wildcarded because tokens live in the Authorization header
+// (not cookies), so credential-scoped CORS isn't required.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Session-Id",
+  "Access-Control-Expose-Headers": "WWW-Authenticate",
+  "Access-Control-Max-Age": "86400",
+};
+
+function withCors(res: NextResponse): NextResponse {
+  for (const [k, v] of Object.entries(CORS_HEADERS)) res.headers.set(k, v);
+  return res;
+}
+
+export function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function POST(req: NextRequest) {
   const ctx = await authenticate(req);
   if (!ctx) {
-    return NextResponse.json(
-      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "unauthorized" } },
-      { status: 401, headers: { "WWW-Authenticate": WWW_AUTHENTICATE } },
+    return withCors(
+      NextResponse.json(
+        { jsonrpc: "2.0", id: null, error: { code: -32001, message: "unauthorized" } },
+        { status: 401, headers: { "WWW-Authenticate": WWW_AUTHENTICATE } },
+      ),
     );
   }
 
@@ -213,9 +239,11 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } },
-      { status: 400 },
+    return withCors(
+      NextResponse.json(
+        { jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } },
+        { status: 400 },
+      ),
     );
   }
 
@@ -223,30 +251,34 @@ export async function POST(req: NextRequest) {
     const responses = await Promise.all(
       body.map((m) => dispatch(m as JsonRpcRequest, ctx)),
     );
-    return NextResponse.json(responses.filter((r) => r !== null));
+    return withCors(NextResponse.json(responses.filter((r) => r !== null)));
   }
 
   const response = await dispatch(body as JsonRpcRequest, ctx);
-  if (response === null) return new NextResponse(null, { status: 204 });
-  return NextResponse.json(response);
+  if (response === null) return withCors(new NextResponse(null, { status: 204 }));
+  return withCors(NextResponse.json(response));
 }
 
 export async function GET(req: NextRequest) {
   const ctx = await authenticate(req);
   if (!ctx) {
-    return NextResponse.json(
-      { error: "unauthorized" },
-      { status: 401, headers: { "WWW-Authenticate": WWW_AUTHENTICATE } },
+    return withCors(
+      NextResponse.json(
+        { error: "unauthorized" },
+        { status: 401, headers: { "WWW-Authenticate": WWW_AUTHENTICATE } },
+      ),
     );
   }
 
   const tools = await buildToolsList(ctx);
 
-  return NextResponse.json({
-    server: SERVER_INFO,
-    transport: "http",
-    method: "POST application/json with JSON-RPC 2.0 body",
-    tools: tools.map((t) => t.name),
-    context: { scope: ctx.scope, role: ctx.role },
-  });
+  return withCors(
+    NextResponse.json({
+      server: SERVER_INFO,
+      transport: "http",
+      method: "POST application/json with JSON-RPC 2.0 body",
+      tools: tools.map((t) => t.name),
+      context: { scope: ctx.scope, role: ctx.role },
+    }),
+  );
 }

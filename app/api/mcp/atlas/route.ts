@@ -10,6 +10,6 @@
 // hitting a Next.js 404 because this directory existed but had no
 // route.ts.
 
-export { POST } from "../route";
+export { POST, OPTIONS, GET } from "../route";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
