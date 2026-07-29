@@ -14,7 +14,14 @@
 
 import { useState } from "react";
 
-const MCP_URL = "https://atlas-broker.vercel.app/api/mcp/atlas";
+// Canonical endpoint — matches what OAuth discovery advertises in
+// /.well-known/oauth-protected-resource. The /api/mcp/atlas alias also
+// works (see app/api/mcp/atlas/route.ts) but Settings advertises the
+// canonical path so the URL in-copy matches the one OAuth negotiates
+// against. Reported 2026-07-29: showing /api/mcp/atlas caused ChatGPT
+// connect flows to complete OAuth against /api/mcp but tools/list
+// against /api/mcp/atlas, which pre-alias returned 404.
+const MCP_URL = "https://atlas-broker.vercel.app/api/mcp";
 const CLAUDE_CODE_CMD = `claude mcp add atlas --transport http ${MCP_URL}`;
 
 function CopyableLine({ value }: { value: string }) {
