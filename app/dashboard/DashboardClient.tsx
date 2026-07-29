@@ -376,39 +376,6 @@ function SectionHeader({
 
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
-function ManageBillingButton() {
-  const [loading, setLoading] = useState(false);
-
-  async function handleClick() {
-    setLoading(true);
-    try {
-      const res = await fetchWithAuth("/api/v1/stripe/portal", { method: "POST" });
-      const data = await res?.json() as { url?: string } | undefined;
-      if (data?.url) window.location.href = data.url;
-    } catch {
-      // non-fatal
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <button
-      onClick={handleClick}
-      disabled={loading}
-      style={{
-        fontSize: 11, fontFamily: "var(--font-jb)",
-        color: "var(--ghost)", background: "none",
-        border: "1px solid var(--line)", borderRadius: 4,
-        padding: "2px 8px", cursor: loading ? "default" : "pointer",
-        letterSpacing: "0.04em",
-      }}
-    >
-      {loading ? "Loading…" : "Manage billing"}
-    </button>
-  );
-}
-
 // Sprint 124: per-user PnL display ratio. Traders think in points, not
 // fractional dollars. This card lets the user configure "1 point = $X" so
 // the dollar echo on PnL surfaces (WHY panel, backtest detail, scoreboard)
@@ -614,28 +581,16 @@ function DisplayPreferencesCard() {
   );
 }
 
-export function SettingsTab({ tier }: { tier: "free" | "pro" }) {
-  const tierColor = tier === "pro" ? "var(--tier-pro)" : "var(--dim)";
-  const isPro = tier === "pro";
+export function SettingsTab(_: { tier: "free" | "pro" }) {
+  // SUS-eval window: no tier badge, no billing surface, no upgrade UI.
+  // Every signup is silently on the Pro plan — the tier prop is retained
+  // so the API surface doesn't change but nothing is rendered from it.
 
   return (
     <div className="flex flex-col gap-4 pb-6">
-      {/* Tier badge + billing management */}
-      <div className="flex items-center justify-between gap-2">
-        <span style={{
-          fontSize: 10,
-          fontFamily: "var(--font-jb)",
-          color: tierColor,
-          border: `1px solid ${tierColor}`,
-          padding: "2px 8px",
-          borderRadius: 4,
-          textTransform: "uppercase" as const,
-          letterSpacing: "0.06em",
-        }}>
-          {tier}
-        </span>
-        {isPro && <ManageBillingButton />}
-      </div>
+      {/* MCP connector first — it's the entire product surface. Everything
+          else on this page is supporting context. */}
+      <AtlasMcpConnectorCard />
 
       {/* How Atlas works — the architecture story, not a list of dependencies. */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
@@ -663,16 +618,6 @@ export function SettingsTab({ tier }: { tier: "free" | "pro" }) {
               </span>
             </span>
           </li>
-          <li className="flex gap-3">
-            <span style={{ color: "var(--bull)", fontSize: 12, fontFamily: "var(--font-jb)", flexShrink: 0, marginTop: 2 }}>·</span>
-            <span style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.5 }}>
-              <strong>Your wallet signs every trade.</strong>{" "}
-              <span style={{ color: "var(--dim)" }}>
-                Atlas holds no keys, signs no transactions. The EBC matrix lives at execution
-                only — backtest is deterministic and not modelled by it.
-              </span>
-            </span>
-          </li>
         </ul>
       </div>
 
@@ -686,7 +631,6 @@ export function SettingsTab({ tier }: { tier: "free" | "pro" }) {
             ["OHLCV bars", "Yahoo Finance · per-day cache"],
             ["Research papers", "arXiv q-fin.TR · daily fetch"],
             ["Live signal evaluation", "deterministic, on-demand"],
-            ["Execution venue", "Base mainnet · gTrade DIA pair"],
           ].map(([k, v]) => (
             <div key={k} className="flex items-center justify-between">
               <span style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-jb)" }}>{k}</span>
@@ -696,50 +640,8 @@ export function SettingsTab({ tier }: { tier: "free" | "pro" }) {
         </div>
       </div>
 
-      {/* Sprint 124: Display preferences — point-to-dollar ratio for PnL. */}
+      {/* Display preferences — point-to-dollar ratio for PnL. */}
       <DisplayPreferencesCard />
-
-      {/* MCP connector — Pro only. Free tier sees a CTA. */}
-      <div style={{ marginBottom: 32 }}>
-        {isPro ? (
-          <AtlasMcpConnectorCard />
-        ) : (
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              padding: "20px 22px",
-              boxShadow: "var(--card-shadow)",
-            }}
-          >
-            <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>
-              CONNECT MCP CLIENT · PRO
-            </div>
-            <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
-              Atlas exposes <strong>17 MCP tools</strong> (10 read-only, 7 writes — zero destructive)
-              that let you author and improve strategies using your own LLM via Claude Desktop or ChatGPT.
-              You bring the model; Atlas stays deterministic.
-            </p>
-            <a
-              href="/pricing"
-              style={{
-                display: "inline-block",
-                background: "var(--brand)",
-                color: "#fff",
-                fontSize: 12,
-                fontFamily: "var(--font-jb)",
-                padding: "8px 16px",
-                borderRadius: 6,
-                textDecoration: "none",
-                letterSpacing: "0.04em",
-              }}
-            >
-              Upgrade to Pro
-            </a>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

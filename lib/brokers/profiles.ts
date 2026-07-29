@@ -84,51 +84,6 @@ export const BROKER_PROFILES: BrokerProfile[] = [
     ],
   },
   {
-    id: "alpaca-paper",
-    label: "Alpaca paper",
-    description:
-      "Alpaca paper trading — zero commission on equity and crypto, IEX-only market data. Spread modeled at typical liquidity levels.",
-    asset_classes: ["equity", "etf", "crypto"],
-    supports_fractional: true,
-    supports_brackets_by_asset: { equity: true, etf: true, crypto: false },
-    commission: {},
-    spread: {
-      half_spread_bps: 5,
-      by_asset: { equity: 5, etf: 5, crypto: 10 },
-    },
-    slippage: { additive_bps: 2 },
-    not_modeled: [
-      "intra-day spread widening on news",
-      "halts",
-      "partial fills",
-      "PDT enforcement",
-      "overnight gaps",
-    ],
-  },
-  {
-    id: "alpaca-live",
-    label: "Alpaca live",
-    description:
-      "Alpaca live trading — same commission structure as paper (zero on equity/crypto) but live order book. Treat as a near-substitute for paper-mode physics.",
-    asset_classes: ["equity", "etf", "crypto"],
-    supports_fractional: true,
-    supports_brackets_by_asset: { equity: true, etf: true, crypto: false },
-    commission: {},
-    spread: {
-      half_spread_bps: 5,
-      by_asset: { equity: 5, etf: 5, crypto: 10 },
-    },
-    slippage: { additive_bps: 2 },
-    not_modeled: [
-      "intra-day spread widening on news",
-      "halts",
-      "partial fills",
-      "PDT enforcement",
-      "overnight gaps",
-      "fees from regulators (SEC TAF, FINRA TAF)",
-    ],
-  },
-  {
     id: "ibkr-paper",
     label: "IBKR paper (tiered pricing)",
     description:

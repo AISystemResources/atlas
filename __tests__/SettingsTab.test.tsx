@@ -30,60 +30,54 @@ jest.mock("../app/dashboard/AtlasMcpConnectorCard", () => ({
 
 import { SettingsTab } from "../app/dashboard/DashboardClient";
 
-describe("SettingsTab", () => {
-  it("renders tier badge", () => {
-    render(<SettingsTab tier="pro" />);
-    expect(screen.getByText("pro")).toBeInTheDocument();
-  });
-
-  it("renders free tier badge", () => {
-    render(<SettingsTab tier="free" />);
-    expect(screen.getByText("free")).toBeInTheDocument();
-  });
-
-  it("renders How Atlas Works architecture story (Sprint 100)", () => {
-    render(<SettingsTab tier="free" />);
-    expect(screen.getByText(/HOW ATLAS WORKS/)).toBeInTheDocument();
-    expect(screen.getByText(/No server-side AI/)).toBeInTheDocument();
-    expect(screen.getByText(/Backtests are deterministic/)).toBeInTheDocument();
-    expect(screen.getByText(/Your wallet signs every trade/)).toBeInTheDocument();
-  });
-
-  it("renders Data Sources section with truthful labels (Sprint 100)", () => {
-    render(<SettingsTab tier="free" />);
-    expect(screen.getByText(/DATA SOURCES/)).toBeInTheDocument();
-    expect(screen.getByText("OHLCV bars")).toBeInTheDocument();
-    expect(screen.getByText("Research papers")).toBeInTheDocument();
-    expect(screen.getByText("Execution venue")).toBeInTheDocument();
-  });
-
-  it("does not falsely claim Groq Llama is the engine (Sprint 095 / 100)", () => {
-    render(<SettingsTab tier="free" />);
-    expect(screen.queryByText(/Groq Llama/i)).toBeNull();
-    expect(screen.queryByText(/US Equities/i)).toBeNull();
-  });
-
-  it("renders MCP connector for Pro tier", () => {
+describe("SettingsTab (SUS-eval simplified)", () => {
+  it("renders MCP connector as the first thing on the page", () => {
     render(<SettingsTab tier="pro" />);
     expect(screen.getByTestId("mcp-connector")).toBeInTheDocument();
   });
 
-  it("renders Pro CTA instead of MCP connector for free tier (Sprint 100)", () => {
-    render(<SettingsTab tier="free" />);
-    expect(screen.queryByTestId("mcp-connector")).toBeNull();
-    expect(screen.getByText(/Upgrade to Pro/i)).toBeInTheDocument();
+  it("renders How Atlas Works architecture story", () => {
+    render(<SettingsTab tier="pro" />);
+    expect(screen.getByText(/HOW ATLAS WORKS/)).toBeInTheDocument();
+    expect(screen.getByText(/No server-side AI/)).toBeInTheDocument();
+    expect(screen.getByText(/Backtests are deterministic/)).toBeInTheDocument();
   });
 
-  it("shows manage billing for pro tier", () => {
+  it("no longer surfaces EBC-matrix or wallet-signs copy (not live yet)", () => {
     render(<SettingsTab tier="pro" />);
-    // ManageBillingButton renders a button for pro/max
-    const buttons = screen.getAllByRole("button");
-    expect(buttons.length).toBeGreaterThan(0);
+    expect(screen.queryByText(/EBC matrix/i)).toBeNull();
+    expect(screen.queryByText(/Your wallet signs every trade/i)).toBeNull();
   });
 
-  it("does not show execution mode sub-view (removed)", () => {
+  it("renders Data Sources without the execution venue row", () => {
     render(<SettingsTab tier="pro" />);
-    expect(screen.queryByText(/Tap to change/i)).toBeNull();
-    expect(screen.queryByText(/Autonomous \+ Guardrail/i)).toBeNull();
+    expect(screen.getByText(/DATA SOURCES/)).toBeInTheDocument();
+    expect(screen.getByText("OHLCV bars")).toBeInTheDocument();
+    expect(screen.getByText("Research papers")).toBeInTheDocument();
+    expect(screen.queryByText(/Execution venue/)).toBeNull();
+    expect(screen.queryByText(/gTrade/)).toBeNull();
+  });
+
+  it("no tier badge and no upgrade / billing surface (silent Pro)", () => {
+    render(<SettingsTab tier="pro" />);
+    // Tier text should NOT render — check container has no "pro"/"free" label
+    // (case-sensitive to avoid matching PROXY etc.)
+    const tierBadges = screen.queryAllByText(/^pro$/i);
+    // Filter to strict text-node matches — allows unrelated substrings elsewhere.
+    expect(tierBadges.filter((el) => el.textContent === "pro")).toHaveLength(0);
+    expect(screen.queryByText(/Upgrade to Pro/i)).toBeNull();
+    expect(screen.queryByText(/Manage billing/i)).toBeNull();
+  });
+
+  it("renders identically regardless of tier prop (tier is not rendered)", () => {
+    const { container: proContainer } = render(<SettingsTab tier="pro" />);
+    const { container: freeContainer } = render(<SettingsTab tier="free" />);
+    expect(proContainer.textContent).toBe(freeContainer.textContent);
+  });
+
+  it("does not falsely claim Groq Llama is the engine", () => {
+    render(<SettingsTab tier="pro" />);
+    expect(screen.queryByText(/Groq Llama/i)).toBeNull();
+    expect(screen.queryByText(/US Equities/i)).toBeNull();
   });
 });

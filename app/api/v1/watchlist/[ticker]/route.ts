@@ -21,7 +21,7 @@ const PatchSchema = z.object({
   strategy_id: z.string().uuid().nullable().optional(),
   // Sprint 077B.2 — only consulted when execution_mode='sim'
   broker_profile_id: z
-    .enum(["pure", "alpaca-paper", "alpaca-live", "ibkr-paper", "pepperstone-cfd-dow"])
+    .enum(["pure", "ibkr-paper", "pepperstone-cfd-dow"])
     .optional(),
 });
 

@@ -32,7 +32,7 @@ export async function POST(req: Request): Promise<Response> {
     metadata: { userId: user.userId },
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${origin}/dashboard?checkout=success`,
-    cancel_url: `${origin}/pricing`,
+    cancel_url: `${origin}/dashboard`,
   });
 
   return Response.json({ url: session.url });

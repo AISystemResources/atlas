@@ -63,12 +63,17 @@ export async function POST(req: Request): Promise<Response> {
 
   // Upsert profile with advisory defaults
   try {
+    // SUS-eval window: every new signup lands as Pro so testers exercise
+    // the full feature surface (MCP authoring, backtests, distillation).
+    // Revisit when the evaluation closes and normal free-vs-pro gating
+    // resumes.
     await sb.from("profiles").upsert({
       id: userId,
       email,
       display_name: displayName,
       boundary_mode: "advisory",
       onboarding_completed: false,
+      tier: "pro",
     });
   } catch (err) {
     console.error("Failed to upsert profile for user_id=%s: %s", userId, err);

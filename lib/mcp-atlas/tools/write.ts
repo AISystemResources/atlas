@@ -77,7 +77,7 @@ export const WRITE_TOOL_DEFS = [
         },
         broker_profile_id: {
           type: "string",
-          enum: ["pure", "alpaca-paper", "alpaca-live", "ibkr-paper", "pepperstone-cfd-dow"],
+          enum: ["pure", "ibkr-paper", "pepperstone-cfd-dow"],
           default: "pure",
           description:
             "Apply this broker's spread + commission + slippage during fill simulation. 'pure' = frictionless reference. Run the same strategy under multiple profiles to isolate raw edge vs friction-dependent edge.",
@@ -1233,7 +1233,7 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
 
       case "create_ticket_logic": {
         // Sprint 075b: gating — authoring strategies via Chat is a Pro feature.
-        // Free users get a friendly message pointing at /pricing or invites.
+        // Free users get a friendly message pointing at the invite path.
         const { requireProTier } = await import("@/lib/auth/effective-tier");
         const gate = await requireProTier(userId);
         if (!gate.ok) return toolError(gate.reason, "forbidden");

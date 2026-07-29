@@ -52,6 +52,6 @@ export async function requireProTier(userId: string): Promise<{ ok: true } | { o
   return {
     ok: false,
     reason:
-      "This action requires the Pro plan. Authoring strategies via Claude / ChatGPT is a Pro feature — upgrade at /pricing, or ask the Atlas founder for an invite code that grants a 14-day Pro trial.",
+      "This action requires the Pro plan. Authoring strategies via Claude / ChatGPT is a Pro feature — ask the Atlas founder for an invite code that grants a 14-day Pro trial.",
   };
 }
