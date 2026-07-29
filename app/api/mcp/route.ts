@@ -94,50 +94,12 @@ async function buildToolsList(_ctx: AuthContext) {
 
 // ─── Tool call dispatch ───────────────────────────────────────────────────────
 
-// Sprint 073: trimmed to the post-pivot workflow — create / improve /
-// backtest / read results / distill. Legacy multi-agent pipeline tools
-// (run_pipeline, get_signals, approve_signal, tournaments, schedule
-// windows, the old backtest_jobs surface) were removed.
-// Sprint 087: trimmed to strategy pipeline only. Broker/watchlist/admin tools removed.
-const READ_TOOL_NAMES = new Set([
-  "get_profile",
-  "health_check",
-  "get_ticker_info",
-  "get_ticker_metadata",
-  // Ticket Logic read tools (Sprint 066)
-  "list_ticket_logics",
-  "get_ticket_logic",
-  "list_ticket_backtests",
-  "get_ticket_backtest",
-  // Sprint 079A: distillation workflow
-  "list_pending_proposals",
-  // Sprint 079C.2: Claude-callable distillation
-  "get_backtest_for_distillation",
-  // Research vault read access (PR #180 / #181)
-  "list_papers",
-  "get_paper",
-]);
-
-const WRITE_TOOL_NAMES = new Set([
-  "update_settings",
-  // Ticket Logic write tools (Sprint 066) + create (Sprint 073)
-  "run_ticket_backtest",
-  "promote_ticket_logic_version",
-  "fork_ticket_logic",
-  "create_ticket_logic",
-  // Sprint 079C.2 + Sprint 095: MCP-only distillation. Connected client
-  // (Claude / ChatGPT) reads via get_backtest_for_distillation and posts
-  // its analysis back here.
-  "submit_distillation_insight",
-  // Sprint 081A: arXiv ingestion
-  "fetch_papers",
-  // Paper full-text hydration (Supabase Storage + unpdf)
-  "hydrate_paper",
-  // Sprint 122: N:N paper→strategy convergent-inspiration link
-  "link_paper_to_strategy",
-  // Sprint 130: structural body-change promotion path
-  "promote_with_body_change",
-]);
+// Dispatch allowlists live in @/lib/mcp-atlas/dispatch-allowlist so they can
+// be imported by the regression test that asserts READ_TOOL_DEFS.every(d =>
+// READ_TOOL_NAMES.has(d.name)) — same for write. New tool? Add its name
+// there in the same PR as you add its DEF entry. Sprint 073 / 087 trimmings
+// documented at the top of that module.
+import { READ_TOOL_NAMES, WRITE_TOOL_NAMES } from "@/lib/mcp-atlas/dispatch-allowlist";
 
 async function handleToolCall(
   name: string,
