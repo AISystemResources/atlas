@@ -113,6 +113,9 @@ const READ_TOOL_NAMES = new Set([
   "list_pending_proposals",
   // Sprint 079C.2: Claude-callable distillation
   "get_backtest_for_distillation",
+  // Research vault read access (PR #180 / #181)
+  "list_papers",
+  "get_paper",
 ]);
 
 const WRITE_TOOL_NAMES = new Set([
