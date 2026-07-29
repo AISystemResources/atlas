@@ -37,10 +37,28 @@ export default async function PortfolioPage() {
     return <PortfolioPageClient tier="free" topPicks={topPicks} />;
   }
 
-  // Pro path — analytics dashboard
+  // Pro path — analytics dashboard.
+  // Bench = strategies the user owns OR has explicitly watched. Service-role
+  // bypasses RLS, so scope must be enforced here; an unscoped query leaks
+  // every tenant's strategies. Sharing / public visibility is honoured on
+  // the /dashboard/strategies page — the owner still controls exposure, but
+  // the bench itself is the user's personal working set.
+  const { data: watchedRows } = await sb
+    .from("watched_strategies")
+    .select("strategy_id")
+    .eq("user_id", userId);
+  const watchedIds = ((watchedRows ?? []) as Array<{ strategy_id: string }>).map(
+    (r) => r.strategy_id,
+  );
+
+  const orClauses = [
+    `created_by_user_id.eq.${userId}`,
+    ...(watchedIds.length > 0 ? [`id.in.(${watchedIds.join(",")})`] : []),
+  ];
   const strategiesResult = await sb
     .from("ticket_logics")
     .select("id, name, version, ticket_backtests(ticker, win_rate, total_pnl_points, total_trades, created_at)")
+    .or(orClauses.join(","))
     .neq("status", "archived")
     .order("created_at", { ascending: false });
 
