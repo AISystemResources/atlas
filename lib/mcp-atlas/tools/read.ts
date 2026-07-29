@@ -185,8 +185,8 @@ export const READ_TOOL_DEFS = [
   {
     name: "list_papers",
     description:
-      "List trading-research papers Atlas has ingested (arXiv q-fin.TR). Each row carries id, title, source, source_url (fetch this yourself to read the full paper), abstract, and ingested_at. " +
-      "Use this to browse the research vault the /dashboard/research tab shows — pick one, read the abstract, then WebFetch source_url for the full text if you need it.",
+      "List trading-research papers Atlas has ingested (arXiv q-fin.TR). Each row carries id, title, source, source_url (WebFetch this to read the full paper), abstract, ingested_at, extractable, and strategy_count (how many Atlas strategies already reference this paper via strategy_paper_links — 0 means nobody has mined it yet). " +
+      "Use this to browse the research vault the /dashboard/research tab shows. Common filter combos: {extractable: true, mined: false} to prioritise papers that are worth reading AND nobody has turned into a strategy yet; {mined: true} to see what's already been converted.",
     annotations: {
       title: "List research papers",
       readOnlyHint: true,
@@ -202,6 +202,16 @@ export const READ_TOOL_DEFS = [
         since: {
           type: "string",
           description: "ISO date/timestamp — only return papers ingested on/after this instant (optional).",
+        },
+        extractable: {
+          type: "boolean",
+          description:
+            "If true, only return papers Atlas flagged as extractable (concrete tradable rules present). If false, only non-extractable. Omit to return both.",
+        },
+        mined: {
+          type: "boolean",
+          description:
+            "If true, only papers that already have at least one linked strategy (strategy_paper_links). If false, only unmined papers (strategy_count = 0) — useful for finding fresh material. Omit to return both.",
         },
         limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
       },
@@ -561,23 +571,66 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
       case "list_papers": {
         const query = typeof args.query === "string" ? args.query.trim() : "";
         const since = typeof args.since === "string" ? args.since : null;
+        const extractable =
+          typeof args.extractable === "boolean" ? args.extractable : null;
+        const mined = typeof args.mined === "boolean" ? args.mined : null;
         const limit = Math.min(typeof args.limit === "number" ? args.limit : 50, 200);
 
         const sb = getServiceClient();
+        // Overfetch when we need to post-filter by mined status — the link
+        // count is joined after the paper query, so filtering happens in
+        // memory. 3× buffer keeps most callers satisfied without a second
+        // round-trip.
+        const fetchLimit = mined === null ? limit : Math.min(limit * 3, 200);
+
         let q = sb
           .from("signal_papers")
-          .select("id, title, source, source_url, abstract, ingested_at")
+          .select("id, title, source, source_url, abstract, ingested_at, extractable")
           .order("ingested_at", { ascending: false })
-          .limit(limit);
+          .limit(fetchLimit);
         if (query) {
           const escaped = query.replace(/[%,]/g, " ");
           q = q.or(`title.ilike.%${escaped}%,abstract.ilike.%${escaped}%`);
         }
         if (since) q = q.gte("ingested_at", since);
+        if (extractable !== null) q = q.eq("extractable", extractable);
 
-        const { data, error } = await q;
+        const { data: paperRows, error } = await q;
         if (error) return toolError(error.message);
-        return textContent({ papers: data ?? [] });
+
+        const papers = (paperRows ?? []) as Array<{
+          id: string;
+          title: string;
+          source: string;
+          source_url: string;
+          abstract: string | null;
+          ingested_at: string;
+          extractable: boolean | null;
+        }>;
+
+        const strategyCounts = new Map<string, number>();
+        if (papers.length > 0) {
+          const paperIds = papers.map((p) => p.id);
+          const { data: linkRows } = await sb
+            .from("strategy_paper_links")
+            .select("paper_id")
+            .in("paper_id", paperIds);
+          for (const r of (linkRows ?? []) as Array<{ paper_id: string }>) {
+            strategyCounts.set(r.paper_id, (strategyCounts.get(r.paper_id) ?? 0) + 1);
+          }
+        }
+
+        const enriched = papers.map((p) => ({
+          ...p,
+          strategy_count: strategyCounts.get(p.id) ?? 0,
+        }));
+
+        const filtered =
+          mined === null
+            ? enriched
+            : enriched.filter((p) => (mined ? p.strategy_count > 0 : p.strategy_count === 0));
+
+        return textContent({ papers: filtered.slice(0, limit) });
       }
 
       case "get_paper": {
