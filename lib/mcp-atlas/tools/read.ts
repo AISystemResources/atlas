@@ -181,6 +181,50 @@ export const READ_TOOL_DEFS = [
       },
     },
   },
+  // ── Research paper tools ───────────────────────────────────────────────
+  {
+    name: "list_papers",
+    description:
+      "List trading-research papers Atlas has ingested (arXiv q-fin.TR). Each row carries id, title, source, source_url (fetch this yourself to read the full paper), abstract, and ingested_at. " +
+      "Use this to browse the research vault the /dashboard/research tab shows — pick one, read the abstract, then WebFetch source_url for the full text if you need it.",
+    annotations: {
+      title: "List research papers",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Case-insensitive substring match against title or abstract (optional).",
+        },
+        since: {
+          type: "string",
+          description: "ISO date/timestamp — only return papers ingested on/after this instant (optional).",
+        },
+        limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+      },
+    },
+  },
+  {
+    name: "get_paper",
+    description:
+      "Fetch one research paper by id. Returns title, source, source_url, abstract, full_text (if Atlas has cached it), extractable flag, and ingested_at. " +
+      "If full_text is null, WebFetch source_url to read the paper.",
+    annotations: {
+      title: "Get research paper",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The signal_papers UUID." },
+      },
+      required: ["id"],
+    },
+  },
   {
     name: "get_backtest_for_distillation",
     description:
@@ -512,6 +556,43 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         });
 
         return textContent({ proposals });
+      }
+
+      case "list_papers": {
+        const query = typeof args.query === "string" ? args.query.trim() : "";
+        const since = typeof args.since === "string" ? args.since : null;
+        const limit = Math.min(typeof args.limit === "number" ? args.limit : 50, 200);
+
+        const sb = getServiceClient();
+        let q = sb
+          .from("signal_papers")
+          .select("id, title, source, source_url, abstract, ingested_at")
+          .order("ingested_at", { ascending: false })
+          .limit(limit);
+        if (query) {
+          const escaped = query.replace(/[%,]/g, " ");
+          q = q.or(`title.ilike.%${escaped}%,abstract.ilike.%${escaped}%`);
+        }
+        if (since) q = q.gte("ingested_at", since);
+
+        const { data, error } = await q;
+        if (error) return toolError(error.message);
+        return textContent({ papers: data ?? [] });
+      }
+
+      case "get_paper": {
+        const id = typeof args.id === "string" ? args.id : "";
+        if (!id) return toolError("id is required", "invalid_request");
+
+        const sb = getServiceClient();
+        const { data, error } = await sb
+          .from("signal_papers")
+          .select("id, title, source, source_url, abstract, full_text, extractable, extraction_notes, ingested_at")
+          .eq("id", id)
+          .maybeSingle();
+        if (error) return toolError(error.message);
+        if (!data) return toolError("not found", "not_found");
+        return textContent(data);
       }
 
       case "get_backtest_for_distillation": {
