@@ -30,12 +30,24 @@ function asString(v: string | string[] | undefined): string | null {
   return null;
 }
 
-// Conservative redirect_uri allow-list: only Claude's official MCP callback
-// hosts plus loopback for local dev. Without this, a malicious client could
-// register itself via DCR and then intercept the authorization code.
+// Conservative redirect_uri allow-list: only officially-operated MCP client
+// callback hosts plus loopback for local dev. Without this, a malicious
+// client could register itself via DCR and then intercept the authorization
+// code. Add a new host here only when we have evidence a legitimate MCP
+// client uses it (the discovery reference from the failed authorize page
+// makes this cheap to verify).
 const ALLOWED_REDIRECT_HOSTS = new Set([
+  // Anthropic — Claude Desktop, Claude.ai connectors
   "claude.ai",
   "claude.com",
+  // OpenAI — ChatGPT connectors (browser + apps; several callback paths
+  // exist under these hosts). Added 2026-07-29 to unblock the multi-vendor
+  // convergence experiment.
+  "chatgpt.com",
+  "chat.openai.com",
+  "platform.openai.com",
+  // Local development for both Claude Code CLI and any other MCP client
+  // that spins an ephemeral localhost listener to capture the callback.
   "localhost",
   "127.0.0.1",
 ]);
