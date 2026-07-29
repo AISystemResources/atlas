@@ -308,6 +308,30 @@ export const WRITE_TOOL_DEFS = [
     },
   },
   {
+    name: "hydrate_paper",
+    description:
+      "Download the arXiv PDF for one signal_papers row, cache it in the 'papers' Supabase Storage bucket, extract the text, and populate signal_papers.full_text so get_paper returns the full body (not just the abstract). Idempotent by default — if the row already has both pdf_storage_path and full_text, returns 'already_hydrated' without redownloading. " +
+      "Run one paper at a time (arXiv asks for ≥3s between requests, and Vercel functions time out on batches). For bulk backfill, use scripts/backfill-paper-fulltext.ts.",
+    annotations: {
+      title: "Hydrate paper full-text",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true, // fetches from arxiv.org
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        paper_id: { type: "string", description: "signal_papers UUID." },
+        force: {
+          type: "boolean",
+          description: "Re-extract even if already hydrated. Defaults to false.",
+        },
+      },
+      required: ["paper_id"],
+    },
+  },
+  {
     name: "create_ticket_logic",
     description:
       "Create a brand-new Ticket Logic strategy from scratch as v1 under the caller's ownership. The body is a full TicketLogicBody JSON — Atlas validates it via the same schema the rest of the system uses. Use this when iterating on a new idea in chat (the typical loop: create → run_ticket_backtest → get_ticket_backtest → reason over trades → either promote_ticket_logic_version or create_ticket_logic again with a new variant). Strategy is locked to one ticker per Sprint 068.",
@@ -1191,6 +1215,20 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           skipped: fetched - inserted,
           new_paper_ids: newPaperIds,
         });
+      }
+
+      case "hydrate_paper": {
+        const paperId = typeof args.paper_id === "string" ? args.paper_id : "";
+        if (!paperId) return toolError("paper_id is required", "invalid_request");
+        const force = args.force === true;
+
+        const { hydratePaperFullText } = await import("@/lib/paper-ingest/hydrate-fulltext");
+        try {
+          const result = await hydratePaperFullText(paperId, { force });
+          return textContent(result);
+        } catch (err) {
+          return toolError(err instanceof Error ? err.message : String(err));
+        }
       }
 
       case "create_ticket_logic": {
