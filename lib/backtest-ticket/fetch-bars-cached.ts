@@ -81,7 +81,12 @@ export async function fetchHistoricalBarsCached(
   if (allCacheableHit && rangeIncludesToday) {
     const startOfToday = new Date(today); // midnight UTC — before NYSE open
     const todayBars = await fetchHistoricalBars(ticker, startOfToday, endDate, timeframe)
-      .catch(() => [] as Bar[]);
+      .catch((err) => {
+        console.warn(
+          `[yahoo-bars-cache] today fetch failed for ${ticker} ${timeframe}: ${(err as Error).message}`,
+        );
+        return [] as Bar[];
+      });
     const freshByDay = bucketByDay(todayBars);
     return assemble(freshByDay);
   }
@@ -90,12 +95,34 @@ export async function fetchHistoricalBarsCached(
   // fetch-bars.ts auto-clamps 1m requests that pre-date the 7-day Yahoo limit,
   // so we'll get as far back as Yahoo allows and write empty rows for the rest.
   const gapStart = new Date(missingDays[0]); // earliest missing date, midnight UTC
+  let fetchThrew = false;
   const fresh = await fetchHistoricalBars(ticker, gapStart, endDate, timeframe)
-    .catch(() => [] as Bar[]);
+    .catch((err) => {
+      fetchThrew = true;
+      console.warn(
+        `[yahoo-bars-cache] gap fetch failed for ${ticker} ${timeframe} ` +
+          `(${gapStart.toISOString().slice(0, 10)} → ${endDate.toISOString().slice(0, 10)}): ${(err as Error).message}`,
+      );
+      return [] as Bar[];
+    });
   const freshByDay = bucketByDay(fresh);
 
-  // Upsert one row per missing cacheable day — empty row for days Yahoo couldn't
-  // fill (holidays, pre-limit 1m gaps) so they are not retried next run.
+  // CACHE POISONING GUARD: if the whole range fetch returned zero data (either
+  // Yahoo threw, rate-limited, or handed back an empty response), do NOT write
+  // empty rows for every missing day. Otherwise a single transient failure
+  // permanently locks that ticker+timeframe out of future backtests — you get
+  // silent zero-bar results with no error surfaced anywhere. Only write empty
+  // rows for the days that were actually missing from a partial-success
+  // response (those are legit holidays / weekends / delisted-stock gaps).
+  if (fresh.length === 0 || fetchThrew) {
+    throw new Error(
+      `No bars available for ${ticker} ${timeframe} from ` +
+        `${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)}. ` +
+        `Yahoo intraday limits: 1m → 7 days, 2m/5m/15m → 60 days, 1h → 730 days. ` +
+        `Not cached — retry after checking limits or Yahoo availability.`,
+    );
+  }
+
   const upserts = missingDays.map((d) => ({
     ticker,
     timeframe,
