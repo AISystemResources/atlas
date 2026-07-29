@@ -49,11 +49,41 @@ describe("computePairwiseAgreement", () => {
     const p = computePairwiseAgreement(a, b);
     expect(p.recommendation_agreement).toBe(true);
     expect(p.parameter_overlap_jaccard).toBe(1);
+    expect(p.both_declined_to_change).toBe(false);
     expect(p.shared_parameters).toEqual(["stop_buffer_points"]);
     expect(p.per_param).toHaveLength(1);
     expect(p.per_param[0].same_direction).toBe(true);
     expect(p.per_param[0].value_distance).toBe(0);
     expect(p.trade_citation_jaccard).toBe(1);
+  });
+
+  it("both declined to change: overlap is NULL (not 1) — flags the both-empty case cleanly", () => {
+    // Real Prod symptom: on unanimous-keep backtests my earlier metric
+    // returned jaccard(∅, ∅) = 1 and reported the pair as "tightest",
+    // artificially inflating the convergence headline. Fix: null the
+    // overlap when both are empty; consumer averaging must skip nulls.
+    const a = makeInsight({ model: "claude", recommendation: "keep", proposed_changes: [] });
+    const b = makeInsight({ model: "gpt", recommendation: "keep", proposed_changes: [] });
+    const p = computePairwiseAgreement(a, b);
+    expect(p.parameter_overlap_jaccard).toBeNull();
+    expect(p.both_declined_to_change).toBe(true);
+    expect(p.shared_parameters).toEqual([]);
+    expect(p.per_param).toEqual([]);
+  });
+
+  it("one empty, one non-empty: overlap = 0 (real disagreement about acting at all)", () => {
+    const promoter = makeInsight({
+      recommendation: "promote",
+      proposed_changes: [{ name: "stop", current_value: 3, proposed_value: 2 }],
+    });
+    const keeper = makeInsight({
+      model: "gpt",
+      recommendation: "keep",
+      proposed_changes: [],
+    });
+    const p = computePairwiseAgreement(promoter, keeper);
+    expect(p.parameter_overlap_jaccard).toBe(0);
+    expect(p.both_declined_to_change).toBe(false);
   });
 
   it("recommendation disagreement", () => {
@@ -135,7 +165,50 @@ describe("computeConvergenceSummary", () => {
     const s = computeConvergenceSummary("bt-x", []);
     expect(s.n_models).toBe(0);
     expect(s.n_pairs).toBe(0);
+    expect(s.n_actionable_pairs).toBe(0);
+    expect(s.mean_parameter_overlap).toBeNull();
     expect(s.mean_value_distance).toBeNull();
+  });
+
+  it("all pairs both-declined: mean_parameter_overlap is null (not inflated to 1)", () => {
+    // Real Prod symptom (backtest 167eb558): all three models chose keep,
+    // and the old metric reported mean_parameter_overlap = 1.0 on the
+    // strength of jaccard(∅, ∅) = 1 across all pairs. This test guards
+    // against the regression.
+    const opus = makeInsight({ model: "opus", recommendation: "keep", proposed_changes: [] });
+    const sonnet = makeInsight({ model: "sonnet", recommendation: "keep", proposed_changes: [] });
+    const gpt = makeInsight({ model: "gpt", recommendation: "keep", proposed_changes: [] });
+    const s = computeConvergenceSummary("bt-unanimous-keep", [opus, sonnet, gpt]);
+    expect(s.n_pairs).toBe(3);
+    expect(s.n_actionable_pairs).toBe(0);
+    expect(s.mean_parameter_overlap).toBeNull();
+    // Recommendation agreement is still legitimately 1 — they DO agree, on abstaining.
+    expect(s.mean_recommendation_agreement).toBe(1);
+  });
+
+  it("mixed pairs: mean_parameter_overlap averages actionable pairs only", () => {
+    const opus = makeInsight({
+      model: "opus",
+      proposed_changes: [{ name: "stop", current_value: 3, proposed_value: 2 }],
+    });
+    const llama = makeInsight({
+      model: "llama",
+      proposed_changes: [{ name: "stop", current_value: 3, proposed_value: 2.5 }],
+    });
+    const gpt = makeInsight({
+      model: "gpt",
+      recommendation: "keep",
+      proposed_changes: [],
+    });
+    const s = computeConvergenceSummary("bt-mixed", [opus, llama, gpt]);
+    expect(s.n_pairs).toBe(3);
+    // opus↔llama = actionable (both propose stop). opus↔gpt and llama↔gpt
+    // each have one empty side → parameter_overlap = 0, and both are
+    // "actionable" pairs (at least one non-empty). Total actionable = 3.
+    expect(s.n_actionable_pairs).toBe(3);
+    // opus↔llama overlap = 1 (same param). opus↔gpt = 0. llama↔gpt = 0.
+    // Mean over actionable = 1/3.
+    expect(s.mean_parameter_overlap).toBeCloseTo(1 / 3, 5);
   });
 
   it("single insight: 0 pairs, no comparison possible", () => {
