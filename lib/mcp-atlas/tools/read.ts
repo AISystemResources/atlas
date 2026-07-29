@@ -236,6 +236,24 @@ export const READ_TOOL_DEFS = [
     },
   },
   {
+    name: "compare_insights",
+    description:
+      "Multi-model distillation convergence — inspect whether different LLMs, given identical backtest evidence, produced the same optimisation. Returns every insight on a backtest plus a pairwise agreement matrix on five axes: recommendation agreement, parameter overlap (Jaccard), same-direction sign per shared parameter, value distance per shared parameter (normalised by |current|), and trade-citation overlap (Jaccard). " +
+      "Zero-insight and single-insight backtests return trivially (n_pairs=0). Use this after multiple LLMs (Claude / GPT / Llama / other) have posted insights via submit_distillation_insight on the same backtest — the point of the tool is to measure whether the models converge, which is the capstone research question, not to fetch raw insight bodies (use get_backtest_for_distillation for that).",
+    annotations: {
+      title: "Compare distillation insights across models",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        backtest_id: { type: "string", description: "The ticket_backtest UUID." },
+      },
+      required: ["backtest_id"],
+    },
+  },
+  {
     name: "get_backtest_for_distillation",
     description:
       "Fetch a backtest in a shape designed for YOU (the LLM) to reason over and then submit your own distillation insight via submit_distillation_insight. " +
@@ -646,6 +664,49 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         if (error) return toolError(error.message);
         if (!data) return toolError("not found", "not_found");
         return textContent(data);
+      }
+
+      case "compare_insights": {
+        const id = typeof args.backtest_id === "string" ? args.backtest_id : "";
+        if (!id) return toolError("backtest_id is required", "invalid_request");
+
+        const sb = getServiceClient();
+
+        // Ownership check — mirror get_ticket_backtest's convention. The
+        // convergence data belongs to whoever owns the backtest, since
+        // that's who invited the models to reason over it.
+        const { data: bt } = await sb
+          .from("ticket_backtests")
+          .select("id, user_id, ticket_logic_id, ticker, timeframe, start_date, end_date, total_trades")
+          .eq("id", id)
+          .maybeSingle();
+        if (!bt) return toolError("not found", "not_found");
+        if ((bt as { user_id: string }).user_id !== userId) {
+          return toolError("not found", "not_found");
+        }
+
+        const { data: insightRows, error: insErr } = await sb
+          .from("ticket_backtest_insights")
+          .select(
+            "id, model, recommendation, rationale, proposed_changes, winning_trade_ids, losing_trade_ids, created_at",
+          )
+          .eq("backtest_id", id)
+          .order("created_at", { ascending: true });
+        if (insErr) return toolError(insErr.message);
+
+        const { computeConvergenceSummary } = await import(
+          "@/lib/mcp-atlas/insight-convergence"
+        );
+        const summary = computeConvergenceSummary(
+          id,
+          ((insightRows ?? []) as unknown as Parameters<typeof computeConvergenceSummary>[1]),
+        );
+
+        return textContent({
+          backtest: bt,
+          summary,
+          insights: insightRows ?? [],
+        });
       }
 
       case "get_backtest_for_distillation": {

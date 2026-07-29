@@ -34,6 +34,8 @@ export const READ_TOOL_NAMES = new Set<string>([
   // Research vault read access (PR #180 / #181)
   "list_papers",
   "get_paper",
+  // Multi-model distillation convergence analysis (capstone apparatus)
+  "compare_insights",
 ]);
 
 // ── Write tools ──────────────────────────────────────────────────────────────
