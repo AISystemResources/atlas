@@ -65,7 +65,24 @@ export interface PairwiseAgreement {
   model_a: string;
   model_b: string;
   recommendation_agreement: boolean;
-  parameter_overlap_jaccard: number; // 0..1
+  /**
+   * Jaccard overlap on the sets of proposed-change parameter names.
+   *
+   * IMPORTANT: this is null (not 1) when BOTH insights proposed no
+   * changes. Rationale: the mathematical convention `jaccard(∅, ∅) = 1`
+   * inflates "tightest pair" reports on all-keep backtests — two models
+   * that both declined to act haven't actually converged on any lever;
+   * they've converged on abstaining. Consumers of the metric should
+   * skip nulls when averaging.
+   *
+   * When ONE insight is empty and the other is non-empty, this is 0
+   * (real disagreement — one model wants a change, the other doesn't).
+   *
+   * When both are non-empty, this is the standard Jaccard value in [0, 1].
+   */
+  parameter_overlap_jaccard: number | null;
+  /** True iff both insights proposed zero parameter changes. */
+  both_declined_to_change: boolean;
   shared_parameters: string[];
   per_param: PerParamAgreement[];
   trade_citation_jaccard: number; // 0..1 over union(winning ∪ losing)
@@ -76,9 +93,17 @@ export interface ConvergenceSummary {
   n_models: number;
   models: string[];
   n_pairs: number;
+  /** How many of the n_pairs had at least one insight proposing a change. */
+  n_actionable_pairs: number;
   // Aggregates across all pairs:
   mean_recommendation_agreement: number; // 0..1 (fraction of pairs that agree)
-  mean_parameter_overlap: number;        // 0..1
+  /**
+   * Mean parameter overlap across actionable pairs only. Null when all
+   * pairs are both-declined (nothing to average). This prevents the
+   * both-empty artefact from inflating headline convergence numbers on
+   * unanimous-keep backtests.
+   */
+  mean_parameter_overlap: number | null;
   mean_value_distance: number | null;    // null if no pairs share any parameter
   mean_trade_citation_overlap: number;   // 0..1
   pairs: PairwiseAgreement[];
@@ -88,6 +113,20 @@ export interface ConvergenceSummary {
 
 function jaccard<T>(a: Set<T>, b: Set<T>): number {
   if (a.size === 0 && b.size === 0) return 1; // by convention: both empty = perfect overlap
+  const intersection = new Set([...a].filter((x) => b.has(x)));
+  const union = new Set([...a, ...b]);
+  return intersection.size / union.size;
+}
+
+/**
+ * Parameter-set overlap with the both-declined distinction. Returns null
+ * when both sets are empty (see PairwiseAgreement.parameter_overlap_jaccard
+ * for the reasoning). Trade citations still use plain Jaccard because
+ * unanimous "no evidence cited" is a legitimate no-signal case.
+ */
+function parameterOverlap(a: Set<string>, b: Set<string>): number | null {
+  if (a.size === 0 && b.size === 0) return null;
+  if (a.size === 0 || b.size === 0) return 0;
   const intersection = new Set([...a].filter((x) => b.has(x)));
   const union = new Set([...a, ...b]);
   return intersection.size / union.size;
@@ -144,7 +183,8 @@ export function computePairwiseAgreement(a: Insight, b: Insight): PairwiseAgreem
     model_a: a.model,
     model_b: b.model,
     recommendation_agreement: a.recommendation === b.recommendation,
-    parameter_overlap_jaccard: jaccard(setA, setB),
+    parameter_overlap_jaccard: parameterOverlap(setA, setB),
+    both_declined_to_change: setA.size === 0 && setB.size === 0,
     shared_parameters: shared,
     per_param: perParam,
     trade_citation_jaccard: jaccard(tradesA, tradesB),
@@ -174,14 +214,19 @@ export function computeConvergenceSummary(
     xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
 
   const distances = pairs.flatMap((p) => p.per_param.map((x) => x.value_distance));
+  const actionablePairs = pairs.filter((p) => !p.both_declined_to_change);
+  const overlapValues = actionablePairs
+    .map((p) => p.parameter_overlap_jaccard)
+    .filter((v): v is number => v !== null);
 
   return {
     backtest_id: backtestId,
     n_models: picked.length,
     models: uniqueModels,
     n_pairs: pairs.length,
+    n_actionable_pairs: actionablePairs.length,
     mean_recommendation_agreement: mean(pairs.map((p) => (p.recommendation_agreement ? 1 : 0))),
-    mean_parameter_overlap: mean(pairs.map((p) => p.parameter_overlap_jaccard)),
+    mean_parameter_overlap: overlapValues.length === 0 ? null : mean(overlapValues),
     mean_value_distance: distances.length === 0 ? null : mean(distances),
     mean_trade_citation_overlap: mean(pairs.map((p) => p.trade_citation_jaccard)),
     pairs,
