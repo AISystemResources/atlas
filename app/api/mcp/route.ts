@@ -138,10 +138,13 @@ async function dispatch(req: JsonRpcRequest, ctx: AuthContext) {
       case "initialize":
         return rpcResult(id, {
           protocolVersion: "2025-06-18",
-          capabilities: { tools: { listChanged: false } },
+          capabilities: {
+            tools: { listChanged: false },
+            prompts: { listChanged: false },
+          },
           serverInfo: SERVER_INFO,
           instructions:
-            "Atlas API MCP — provides read/write access to your Atlas account. Read tools require scope=read or read_write. Write tools require scope=write or read_write. Admin tools require role=superadmin.",
+            "Atlas API MCP — read/write access to your Atlas account. Read tools require scope=read or read_write; writes require scope=write or read_write; admin tools require role=superadmin. Slash commands: /atlas_start renders a bespoke onboarding walkthrough tailored to your current state.",
         });
 
       case "notifications/initialized":
@@ -159,6 +162,20 @@ async function dispatch(req: JsonRpcRequest, ctx: AuthContext) {
 
         const out = await handleToolCall(params.name, params.arguments ?? {}, ctx);
         return rpcResult(id, out);
+      }
+
+      case "prompts/list": {
+        const { PROMPT_DEFS } = await import("@/lib/mcp-atlas/prompts");
+        return rpcResult(id, { prompts: PROMPT_DEFS });
+      }
+
+      case "prompts/get": {
+        const params = (req.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
+        if (!params.name) return rpcError(id, -32602, "missing prompt name");
+        const { renderPrompt } = await import("@/lib/mcp-atlas/prompts");
+        const rendered = await renderPrompt(params.name, params.arguments ?? {}, ctx.user_id);
+        if (!rendered) return rpcError(id, -32602, `Unknown prompt: ${params.name}`);
+        return rpcResult(id, rendered);
       }
 
       case "ping":
