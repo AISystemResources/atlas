@@ -42,7 +42,7 @@ export async function requireTier(
   const tier = (data as Record<string, unknown> | null)?.["tier"] as string ?? "free";
   if ((TIER_RANK[tier] ?? 0) < (TIER_RANK[minTier] ?? 1)) {
     return Response.json(
-      { error: "Pro plan required", upgrade_url: "/pricing" },
+      { error: "Pro plan required" },
       { status: 403 }
     );
   }

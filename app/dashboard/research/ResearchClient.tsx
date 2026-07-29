@@ -630,21 +630,13 @@ export function ResearchClient({ initialPapers }: { initialPapers: PaperRow[] })
           >
             — Extraction copies a prompt to your clipboard; run it inside your MCP-connected
             LLM (Claude or ChatGPT).{" "}
-            {isPro ? (
-              <Link
-                href="/dashboard/settings"
-                style={{ color: "var(--brand)", textDecoration: "underline", textUnderlineOffset: 2 }}
-              >
-                Connect the Atlas MCP →
-              </Link>
-            ) : (
-              <Link
-                href="/pricing"
-                style={{ color: "var(--brand)", textDecoration: "underline", textUnderlineOffset: 2 }}
-              >
-                Requires Atlas Pro →
-              </Link>
-            )}
+            <Link
+              href="/dashboard/settings"
+              style={{ color: "var(--brand)", textDecoration: "underline", textUnderlineOffset: 2 }}
+            >
+              Connect the Atlas MCP →
+            </Link>{" "}
+            {/* SUS-eval window: no free tier, no /pricing — every signup is Pro. */}
           </p>
         </section>
       )}

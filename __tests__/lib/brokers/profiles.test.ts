@@ -18,7 +18,7 @@ describe("BrokerProfile catalog", () => {
 
   it("seeds all canonical profiles", () => {
     const ids = new Set(BROKER_PROFILES.map((p) => p.id));
-    for (const id of ["pure", "alpaca-paper", "alpaca-live", "ibkr-paper", "pepperstone-cfd-dow"]) {
+    for (const id of ["pure", "ibkr-paper", "pepperstone-cfd-dow"]) {
       expect(ids.has(id)).toBe(true);
     }
   });
@@ -38,39 +38,6 @@ describe("applyFillFriction", () => {
     });
     expect(out.fillPrice).toBe(100);
     expect(out.commission).toBe(0);
-  });
-
-  it("alpaca-paper BUY: equity spread + slippage make fill ~0.07% above mid", () => {
-    const out = applyFillFriction(getBrokerProfile("alpaca-paper"), {
-      action: "BUY",
-      referencePrice: 100,
-      qty: 10,
-      asset: "equity",
-    });
-    // 5 bps spread + 2 bps slippage = 7 bps = 0.07%
-    expect(out.fillPrice).toBeCloseTo(100.07, 2);
-    expect(out.commission).toBe(0);
-  });
-
-  it("alpaca-paper SELL: same friction goes the other way", () => {
-    const out = applyFillFriction(getBrokerProfile("alpaca-paper"), {
-      action: "SELL",
-      referencePrice: 100,
-      qty: 10,
-      asset: "equity",
-    });
-    expect(out.fillPrice).toBeCloseTo(99.93, 2);
-  });
-
-  it("alpaca-paper crypto: wider spread than equity (10 vs 5 bps)", () => {
-    const buy = applyFillFriction(getBrokerProfile("alpaca-paper"), {
-      action: "BUY",
-      referencePrice: 60000,
-      qty: 1,
-      asset: "crypto",
-    });
-    // 10 bps spread + 2 bps slippage = 12 bps on $60k = $72
-    expect(buy.fillPrice).toBeCloseTo(60072, 0);
   });
 
   it("ibkr-paper: commission per-share with min", () => {

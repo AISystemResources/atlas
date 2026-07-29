@@ -78,7 +78,7 @@ export async function PUT(req: Request): Promise<Response> {
     const tier = (prof as Record<string, unknown> | null)?.["tier"] as string ?? "free";
     if (tier === "free") {
       return Response.json(
-        { error: "Free plan limited to 5 tickers", upgrade_url: "/pricing" },
+        { error: "Free plan limited to 5 tickers" },
         { status: 403 }
       );
     }

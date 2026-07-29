@@ -15,12 +15,11 @@
  *     correct at close; sufficient for v1.
  *
  * Sprint 077B will parameterise this by a BrokerProfile so the fill
- * engine can model alpaca-paper vs ibkr-paper vs pepperstone-cfd
- * frictions per profile.
+ * engine can model ibkr-paper vs pepperstone-cfd frictions per profile.
  *
  * No broker credentials are required — that's the whole point. A user
  * onboarded via the founder invite code can paper-trade with $100K
- * virtual cash before ever connecting Alpaca.
+ * virtual cash without connecting an external broker.
  */
 
 import { getServiceClient } from "@/lib/supabase-server";
